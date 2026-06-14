@@ -1,0 +1,26 @@
+# Netlify deployment with static frontend + serverless API.
+# The frontend stays in netlify-static-preview so private files such as users.json
+# are not published as public assets.
+
+[build]
+  publish = "netlify-static-preview"
+  command = ""
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  included_files = [
+    "users.json",
+    "submission-history.json",
+    "services/**",
+    "schemas/**"
+  ]
+
+[functions.analyze-worker-background]
+  background = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true

@@ -1,0 +1,1369 @@
+[
+  {
+    "submissionId": "7935bfc7f1ac95be8f6dbdea",
+    "username": "krupomtest",
+    "dateTime": "2026-06-07T06:15:09.273Z",
+    "taskType": "Task 2",
+    "essayType": "Advantage / Disadvantage",
+    "visualType": "",
+    "shortPromptPreview": "Some people believe that educating children at home provides more benefits than sending them to school. Do the advant...",
+    "estimatedBandRange": "7.0-7.5",
+    "bandRangeMin": 7,
+    "bandRangeMax": 7.5,
+    "criteriaScores": {
+      "Task Response": {
+        "range": "7.0-8.0",
+        "diagnosis": "ตอบคำถามครบและมีจุดยืนชัดว่า disadvantages outweigh advantages. จุดที่ยังไม่ถึง Band 8 อย่างมั่นคงคือบางตัวอย่างยังเป็นข้อมูลกว้างหรือเขียนไม่ชัด ทำให้การสนับสนุนเหตุผลยังไม่คมเท่าที่ควร",
+        "evidence": "Although home schooling can provide flexibility and personalized learning, I believe that the disadvantages outweigh the advantages, as socialisation and character development play a crucial role in preparing children for modern society."
+      },
+      "Coherence & Cohesion": {
+        "range": "7.0-8.0",
+        "diagnosis": "โครงสร้างชัด: BP1 advantages, BP2 socialisation disadvantage, BP3 character/parental-resource disadvantage. การเชื่อมโยงโดยรวมดี แต่บางประโยคตัวอย่างเชื่อมกลไกไม่ลื่น โดยเฉพาะประโยคที่ใช้ 'by experiences' ทำให้ route สะดุด",
+        "evidence": "For instance, a student participating in a school group presentation must learn how to divide tasks, deal with differing opinions and present ideas confidently in front of classmates, by experiences that closely resemble collaboration in university and workplace."
+      },
+      "Lexical Resource": {
+        "range": "7.0",
+        "diagnosis": "มีคำศัพท์เหมาะกับหัวข้อ เช่น personalised learning, emotional intelligence, resilience แต่ยังมี collocation และ word choice ที่ไม่เป็นธรรมชาติ เช่น 'foster some students to perform better', 'all rounded education', และ 'some home schooling ... follow'",
+        "evidence": "This may foster some students to perform better academically, especially those who struggle in traditional classroom environments."
+      },
+      "Grammatical Range & Accuracy": {
+        "range": "6.5-7.0",
+        "diagnosis": "มี complex sentences และ control โดยรวมดี แต่มีข้อผิดพลาดเรื่อง subject-verb agreement, article/plural, preposition และ sentence construction ที่ทำให้ความแม่นยำยังไม่ถึง Band 8",
+        "evidence": "For example, some home schooling in European countries such as the UK follow personalised learning plans that allow them to progress at their own pace or focus more on subjects aligned with their abilities and interests."
+      }
+    },
+    "mainScoreLimitingFactor": "The essay has a clear position and logical paragraphing, but Band 8 is limited by imprecise example construction, several awkward collocations, and a few grammar errors that reduce sentence control.",
+    "mostUrgentRepair": "Repair the example sentences so that each example has a clear actor, situation, mechanism, and link back to why the disadvantage outweighs the advantage.",
+    "top3Issues": [
+      {
+        "issue": "Example precision",
+        "whyItMatters": "ตัวอย่างบางประโยคมี actor และ mechanism ไม่ชัด ทำให้ Task Response และ Coherence ยังไม่ถึงระดับ Band 8"
+      },
+      {
+        "issue": "Collocation accuracy",
+        "whyItMatters": "คำบางคำใช้ได้ในเชิงความหมาย แต่ไม่เป็นธรรมชาติใน academic English จึงลด Lexical Resource"
+      },
+      {
+        "issue": "Complex sentence control",
+        "whyItMatters": "ประโยคยาวบางประโยคมีโครงสร้างผิดหรือวลีแทรกไม่ถูกตำแหน่ง ทำให้ Grammatical Range & Accuracy ลดลง"
+      }
+    ],
+    "taskResponseOrAchievementRange": "7.0-8.0",
+    "coherenceRange": "7.0-8.0",
+    "lexicalRange": "7.0",
+    "grammarRange": "6.5-7.0",
+    "report": {
+      "taskType": "Task 2",
+      "essayType": "Advantage / Disadvantage",
+      "visualType": "Bar Chart",
+      "targetBand": "8.0",
+      "generatedAt": "2026-06-07T06:15:09.271Z",
+      "analysisMode": "Full diagnostic engine",
+      "estimatedBandRange": "7.0-7.5",
+      "mainScoreLimitingFactor": "The essay has a clear position and logical paragraphing, but Band 8 is limited by imprecise example construction, several awkward collocations, and a few grammar errors that reduce sentence control.",
+      "mostUrgentRepair": "Repair the example sentences so that each example has a clear actor, situation, mechanism, and link back to why the disadvantage outweighs the advantage.",
+      "criteriaScores": {
+        "Task Response": {
+          "range": "7.0-8.0",
+          "diagnosis": "ตอบคำถามครบและมีจุดยืนชัดว่า disadvantages outweigh advantages. จุดที่ยังไม่ถึง Band 8 อย่างมั่นคงคือบางตัวอย่างยังเป็นข้อมูลกว้างหรือเขียนไม่ชัด ทำให้การสนับสนุนเหตุผลยังไม่คมเท่าที่ควร",
+          "evidence": "Although home schooling can provide flexibility and personalized learning, I believe that the disadvantages outweigh the advantages, as socialisation and character development play a crucial role in preparing children for modern society."
+        },
+        "Coherence & Cohesion": {
+          "range": "7.0-8.0",
+          "diagnosis": "โครงสร้างชัด: BP1 advantages, BP2 socialisation disadvantage, BP3 character/parental-resource disadvantage. การเชื่อมโยงโดยรวมดี แต่บางประโยคตัวอย่างเชื่อมกลไกไม่ลื่น โดยเฉพาะประโยคที่ใช้ 'by experiences' ทำให้ route สะดุด",
+          "evidence": "For instance, a student participating in a school group presentation must learn how to divide tasks, deal with differing opinions and present ideas confidently in front of classmates, by experiences that closely resemble collaboration in university and workplace."
+        },
+        "Lexical Resource": {
+          "range": "7.0",
+          "diagnosis": "มีคำศัพท์เหมาะกับหัวข้อ เช่น personalised learning, emotional intelligence, resilience แต่ยังมี collocation และ word choice ที่ไม่เป็นธรรมชาติ เช่น 'foster some students to perform better', 'all rounded education', และ 'some home schooling ... follow'",
+          "evidence": "This may foster some students to perform better academically, especially those who struggle in traditional classroom environments."
+        },
+        "Grammatical Range & Accuracy": {
+          "range": "6.5-7.0",
+          "diagnosis": "มี complex sentences และ control โดยรวมดี แต่มีข้อผิดพลาดเรื่อง subject-verb agreement, article/plural, preposition และ sentence construction ที่ทำให้ความแม่นยำยังไม่ถึง Band 8",
+          "evidence": "For example, some home schooling in European countries such as the UK follow personalised learning plans that allow them to progress at their own pace or focus more on subjects aligned with their abilities and interests."
+        }
+      },
+      "kruPomScores": {
+        "Essay Type Recognition": {
+          "status": "Strong",
+          "diagnosis": "รู้ประเภท essay ถูกต้อง มีการพูดทั้ง advantages และ disadvantages และตัดสินชัดว่า disadvantages outweigh advantages"
+        },
+        "Prompt Coverage": {
+          "status": "Strong",
+          "diagnosis": "ครอบคลุมคำถามหลักเรื่อง home-schooling vs school และตอบคำว่า outweigh ชัดเจนทั้งใน introduction และ conclusion"
+        },
+        "Thesis Route Clarity": {
+          "status": "Strong",
+          "diagnosis": "Thesis บอกทั้ง concession และ main position ชัด โดย route หลักคือ socialisation + character development สำคัญกว่าความยืดหยุ่นของ home schooling"
+        },
+        "Body Paragraph Route Alignment": {
+          "status": "Strong",
+          "diagnosis": "แต่ละ body paragraph เดินตาม thesis ได้ดี: BP1 ยอมรับข้อดี, BP2-BP3 สนับสนุนเหตุผลว่าข้อเสียสำคัญกว่า"
+        },
+        "Topic Sentence Strength": {
+          "status": "Strong",
+          "diagnosis": "Topic sentences ชัดและทำหน้าที่นำย่อหน้า เช่น 'The primary advantage...' และ 'Another major disadvantage...'"
+        },
+        "Explanation Depth": {
+          "status": "Moderate",
+          "diagnosis": "คำอธิบายมีเหตุผล แต่บางจุดยังควรเพิ่ม mechanism ให้ชัดขึ้น เช่น home schooling จำกัดประสบการณ์ทางสังคมอย่างไร และทำไมโรงเรียนสร้าง resilience ได้มากกว่า"
+        },
+        "SAR Example Quality": {
+          "status": "Needs Work",
+          "diagnosis": "ตัวอย่างมีทิศทางดีแต่ยังมีปัญหาเรื่องความแม่นของข้อมูลและการระบุตัวแสดง เช่น 'some home schooling in European countries such as the UK follow...' ทำให้ตัวอย่างดูไม่เนียนและเสียความน่าเชื่อถือ"
+        },
+        "Link Back Control": {
+          "status": "Moderate",
+          "diagnosis": "มี link back หลายจุด เช่น 'These qualities are increasingly important...' แต่บางย่อหน้ายังควรผูกกลับไปที่ outweigh โดยตรงมากขึ้น"
+        },
+        "Conclusion Closure": {
+          "status": "Strong",
+          "diagnosis": "Conclusion ปิดประเด็นดี ย้ำจุดยืนและเหตุผลหลักโดยไม่เพิ่มประเด็นใหม่"
+        },
+        "LFC CPC Control": {
+          "status": "Moderate",
+          "diagnosis": "Logic-Flow-Control โดยรวมดี แต่ Clause-Phrase-Control มีจุดสะดุดจากวลีที่วางผิด เช่น 'by experiences that closely resemble...'"
+        },
+        "Template / Memorized Pattern Risk": {
+          "status": "Strong",
+          "diagnosis": "ไม่พบความเสี่ยงสูงของการเขียนแบบท่องจำ เนื้อหาเชื่อมกับ prompt โดยตรง แม้บางวลีใน introduction และ conclusion จะเป็น academic pattern ที่ค่อนข้างคุ้น"
+        },
+        "Vocabulary Precision": {
+          "status": "Needs Work",
+          "diagnosis": "คำศัพท์หลายคำดี แต่ต้องปรับ collocation ให้แม่น เช่น 'enable students to perform better' แทน 'foster some students to perform better' และ 'well-rounded education' แทน 'all rounded education'"
+        },
+        "Grammar Risk": {
+          "status": "Needs Work",
+          "diagnosis": "ความเสี่ยงหลักคือ agreement และ phrase construction ในประโยคยาว ถ้าแก้จุดเหล่านี้ งานจะเข้าใกล้ Band 8 มากขึ้น"
+        },
+        "Paragraph Balance": {
+          "status": "Strong",
+          "diagnosis": "สัดส่วนย่อหน้าดี มีหนึ่งย่อหน้าข้อดีและสองย่อหน้าข้อเสีย เหมาะกับ position ที่บอกว่าข้อเสียมากกว่า"
+        }
+      },
+      "top3Issues": [
+        {
+          "issue": "Example precision",
+          "whyItMatters": "ตัวอย่างบางประโยคมี actor และ mechanism ไม่ชัด ทำให้ Task Response และ Coherence ยังไม่ถึงระดับ Band 8"
+        },
+        {
+          "issue": "Collocation accuracy",
+          "whyItMatters": "คำบางคำใช้ได้ในเชิงความหมาย แต่ไม่เป็นธรรมชาติใน academic English จึงลด Lexical Resource"
+        },
+        {
+          "issue": "Complex sentence control",
+          "whyItMatters": "ประโยคยาวบางประโยคมีโครงสร้างผิดหรือวลีแทรกไม่ถูกตำแหน่ง ทำให้ Grammatical Range & Accuracy ลดลง"
+        }
+      ],
+      "feedbackCards": [
+        {
+          "issueType": "Unclear example actor and grammar control",
+          "severity": "Needs Work",
+          "criteria": [
+            "Task Response",
+            "Grammatical Range & Accuracy",
+            "Lexical Resource"
+          ],
+          "framework": [
+            "SAR Example Quality",
+            "Grammar Risk",
+            "Vocabulary Precision"
+          ],
+          "paragraphLocation": "Body Paragraph 1",
+          "exactSentence": "For example, some home schooling in European countries such as the UK follow personalised learning plans that allow them to progress at their own pace or focus more on subjects aligned with their abilities and interests.",
+          "sentenceFunction": "ประโยคนี้พยายามยกตัวอย่างเพื่อพิสูจน์ว่า home schooling สามารถปรับการเรียนให้เหมาะกับเด็กแต่ละคนได้",
+          "whyItLimitsBand": "ปัญหาคือ 'some home schooling ... follow' ไม่มีตัวแสดงที่ถูกต้อง เพราะ home schooling ไม่ใช่คนที่ follow a plan และ 'European countries such as the UK' ทำให้ตัวอย่างดูกว้างแต่ไม่แม่น ส่งผลต่อความน่าเชื่อถือและ grammar accuracy",
+          "kruPomDiagnosis": "Route ของตัวอย่างถูก แต่ data packaging ยังไม่ดี ต้องระบุว่าใครทำอะไร เช่น children, families, or parents และต้องทำให้กลไกชัดว่า personalised plans ช่วย performance อย่างไร",
+          "targetedRevision": "For example, some home-schooled children in the UK follow personalised learning plans, which allow them to move faster in subjects they find easy and spend more time on areas where they need support.",
+          "whyRevisionIsStronger": "ประโยคใหม่มี actor ชัดเจนคือ 'home-schooled children' และอธิบายกลไกของ personalised learning แบบเป็นรูปธรรม จึงช่วยทั้ง Task Response และ Grammar control",
+          "studentAction": "เวลาเขียน example ให้เช็ก 4 ส่วน: Who? does what? in what situation? so what?"
+        },
+        {
+          "issueType": "Awkward collocation",
+          "severity": "Needs Work",
+          "criteria": [
+            "Lexical Resource",
+            "Grammatical Range & Accuracy"
+          ],
+          "framework": [
+            "Vocabulary Precision",
+            "LFC CPC Control"
+          ],
+          "paragraphLocation": "Body Paragraph 1",
+          "exactSentence": "This may foster some students to perform better academically, especially those who struggle in traditional classroom environments.",
+          "sentenceFunction": "ประโยคนี้ต้องการอธิบายผลดีของการเรียนแบบปรับเฉพาะบุคคลต่อผลการเรียน",
+          "whyItLimitsBand": "คำว่า 'foster' มักใช้กับ abstract nouns เช่น foster independence, foster creativity แต่ 'foster students to perform better' ไม่เป็น collocation ที่ธรรมชาติ ทำให้ Lexical Resource เสียความแม่น",
+          "kruPomDiagnosis": "ความคิดถูก แต่ verb choice ยังไม่ precise สำหรับ Band 8 ควรใช้ enable, help, allow หรือ encourage ตามความหมายที่ต้องการ",
+          "targetedRevision": "This may help some students perform better academically, particularly those who find conventional classroom settings difficult.",
+          "whyRevisionIsStronger": "ประโยคใหม่ใช้ collocation ที่เป็นธรรมชาติกว่า คือ 'help students perform better' และ 'conventional classroom settings' ทำให้น้ำเสียง academic และแม่นขึ้น",
+          "studentAction": "สร้าง list collocation สำหรับ verb ที่ใช้บ่อย: help students do, enable students to do, allow students to do, foster independence/creativity/resilience"
+        },
+        {
+          "issueType": "Weak clause connection in example",
+          "severity": "Needs Work",
+          "criteria": [
+            "Coherence & Cohesion",
+            "Grammatical Range & Accuracy"
+          ],
+          "framework": [
+            "LFC CPC Control",
+            "SAR Example Quality"
+          ],
+          "paragraphLocation": "Body Paragraph 2",
+          "exactSentence": "For instance, a student participating in a school group presentation must learn how to divide tasks, deal with differing opinions and present ideas confidently in front of classmates, by experiences that closely resemble collaboration in university and workplace.",
+          "sentenceFunction": "ประโยคนี้ยกตัวอย่างกิจกรรมในโรงเรียนเพื่อแสดงว่าเด็กได้ฝึกทักษะสังคมและการทำงานร่วมกับผู้อื่น",
+          "whyItLimitsBand": "ส่วนท้าย 'by experiences that closely resemble...' เชื่อมผิดและทำให้ประโยคยาวเกินไป กลไกจริงคือ group presentation itself mirrors future collaboration ไม่ใช่เด็กเรียนรู้ 'by experiences' ในรูปแบบนี้",
+          "kruPomDiagnosis": "ตัวอย่างดีมากในเชิง content แต่ต้องตัดประโยคให้ route ชัด: activity → skill practised → relevance to university/workplace",
+          "targetedRevision": "For instance, when students complete a group presentation at school, they have to divide tasks, respond to differing opinions, and present their ideas confidently. This experience mirrors the collaboration they will later need at university and in the workplace.",
+          "whyRevisionIsStronger": "ประโยคใหม่แบ่งเป็นสองประโยค ทำให้ flow ชัดขึ้นและ link back ไปยัง future relevance ได้ตรงกว่าเดิม",
+          "studentAction": "ถ้าประโยคตัวอย่างยาวเกิน 30 คำ ให้แยกเป็น 2 ประโยค: example sentence + meaning/link-back sentence"
+        },
+        {
+          "issueType": "Overgeneralised disadvantage mechanism",
+          "severity": "Moderate",
+          "criteria": [
+            "Task Response",
+            "Coherence & Cohesion"
+          ],
+          "framework": [
+            "Explanation Depth",
+            "Link Back Control"
+          ],
+          "paragraphLocation": "Body Paragraph 3",
+          "exactSentence": "By contrast, home schooling may limit exposure to these experiences, which could affect a child’s personal growth.",
+          "sentenceFunction": "ประโยคนี้เปรียบเทียบ home schooling กับ school เพื่อแสดงข้อเสียด้าน personal development",
+          "whyItLimitsBand": "แนวคิดถูก แต่กลไกยังสั้นเกินไปสำหรับ Band 8 เพราะยังไม่บอกว่า exposure แบบไหนถูกจำกัด และทำไมสิ่งนั้นสำคัญกว่า flexibility ของ home schooling",
+          "kruPomDiagnosis": "นี่คือ link-back sentence แต่ยังเป็น link-back แบบกว้าง ควรเพิ่ม condition เพื่อไม่ overclaim และผูกกลับไปที่ outweigh โดยตรง",
+          "targetedRevision": "By contrast, unless parents deliberately arrange regular group activities and external feedback, home-schooled children may have fewer opportunities to practise independence, conflict management, and resilience outside the family setting.",
+          "whyRevisionIsStronger": "ประโยคใหม่แม่นกว่าเพราะไม่เหมารวมว่า home schooling แย่เสมอไป และระบุประสบการณ์ที่หายไปอย่างชัดเจน",
+          "studentAction": "เมื่อเขียนข้อเสีย ให้ใช้โครงสร้าง 'unless + condition, this may lead to + specific missing experience'"
+        },
+        {
+          "issueType": "Minor lexical form error",
+          "severity": "Needs Work",
+          "criteria": [
+            "Lexical Resource",
+            "Grammatical Range & Accuracy"
+          ],
+          "framework": [
+            "Vocabulary Precision",
+            "Grammar Risk"
+          ],
+          "paragraphLocation": "Body Paragraph 3",
+          "exactSentence": "Furthermore, not all parents possess the teaching skills, subject knowledge, or resources necessary to provide an all rounded education.",
+          "sentenceFunction": "ประโยคนี้เพิ่มข้อเสียอีกด้าน คือผู้ปกครองบางคนอาจไม่มีทักษะหรือทรัพยากรพอในการสอน",
+          "whyItLimitsBand": "ประเด็นดีและเกี่ยวกับ prompt โดยตรง แต่คำว่า 'all rounded education' ควรเป็น 'a well-rounded education' ซึ่งเป็น fixed collocation ที่เป็นธรรมชาติกว่า",
+          "kruPomDiagnosis": "นี่เป็นจุดเล็กแต่สำคัญสำหรับ Band 8 เพราะคำผิดใน collocation ที่ใช้บ่อยจะทำให้ examiner เห็นว่า lexical control ยังไม่สูงมาก",
+          "targetedRevision": "Furthermore, not all parents possess the teaching skills, subject knowledge, or resources needed to provide a well-rounded education.",
+          "whyRevisionIsStronger": "ประโยคใหม่ใช้ collocation ที่ถูกต้องและกระชับกว่า โดย 'needed to provide' ฟังเป็นธรรมชาติกว่า 'necessary to provide' ในบริบทนี้",
+          "studentAction": "จำเป็น phrase เป็นก้อน: 'a well-rounded education', 'a balanced curriculum', 'adequate teaching resources'"
+        }
+      ],
+      "paragraphFeedback": [
+        {
+          "paragraphLocation": "Introduction",
+          "exactEvidence": "Although home schooling can provide flexibility and personalized learning, I believe that the disadvantages outweigh the advantages, as socialisation and character development play a crucial role in preparing children for modern society.",
+          "diagnosis": "Introduction ทำหน้าที่ได้ดีมาก มี concession และ position ชัดเจน พร้อม route หลักสองเส้นคือ socialisation และ character development",
+          "action": "คงโครงสร้างนี้ไว้ แต่ถ้าต้องการ Band 8 ให้ทำให้ body paragraphs กลับมาพิสูจน์สอง route นี้แบบเฉพาะเจาะจงทุกครั้ง"
+        },
+        {
+          "paragraphLocation": "Body Paragraph 1",
+          "exactEvidence": "The primary advantage of home schooling is that it allows education to be designed to a child’s individual needs.",
+          "diagnosis": "Topic sentence ชัดและตรงกับข้อดีของ home schooling แต่ตัวอย่างในย่อหน้านี้ยังต้องทำให้ actor และ mechanism แม่นขึ้น",
+          "action": "หลัง topic sentence ให้เขียน chain แบบ clear cause-effect: flexible pace → targeted support → improved learning outcome"
+        },
+        {
+          "paragraphLocation": "Body Paragraph 2",
+          "exactEvidence": "Schools are not only places for academic learning but also environments where children learn how to interact with people from different backgrounds and personalities.",
+          "diagnosis": "ย่อหน้านี้มี route แข็งแรง เพราะอธิบายว่าโรงเรียนให้ social exposure ที่บ้านอาจให้ได้ยาก จุดที่ต้องแก้คือประโยคตัวอย่างควรแยกให้สั้นและชัดขึ้น",
+          "action": "แยก example ออกเป็น 2 ประโยค: หนึ่งประโยคเล่ากิจกรรม อีกหนึ่งประโยคอธิบายว่ากิจกรรมนั้นเตรียมเด็กสำหรับสังคมจริงอย่างไร"
+        },
+        {
+          "paragraphLocation": "Body Paragraph 3",
+          "exactEvidence": "Schools help children build independence, responsibility, discipline, and resilience.",
+          "diagnosis": "ย่อหน้านี้ตรงกับ thesis เรื่อง character development และเพิ่มประเด็น parental resources ได้ดี แต่ link กลับไปที่ outweigh ยังควรชัดกว่านี้",
+          "action": "ท้ายย่อหน้าให้เพิ่มประโยคเปรียบเทียบว่าเหตุผลด้าน character development สำคัญกว่า flexibility ของ home schooling อย่างไร"
+        },
+        {
+          "paragraphLocation": "Conclusion",
+          "exactEvidence": "In an age where communication skills, social adaptability, and personal development are increasingly important, attending school provides children with valuable experiences that extend far beyond academic achievement.",
+          "diagnosis": "Conclusion ปิดดีและย้ำ value ของ school beyond academics อย่างชัดเจน ไม่มีประเด็นใหม่ที่ทำให้หลุดคำถาม",
+          "action": "รักษาวิธีปิดแบบนี้ไว้ แต่หลีกเลี่ยงการใช้วลี conclusion ที่กว้างเกินไปบ่อย ๆ โดยให้ใส่ keyword จาก essay เช่น social adaptability และ resilience"
+        }
+      ],
+      "revisedThesis": "Although home schooling can offer flexibility and more personalised instruction, I believe its disadvantages are more significant because children also need regular social interaction, external feedback, and structured challenges that are more consistently provided in schools.",
+      "revisedParagraphSuggestions": [
+        {
+          "paragraphLocation": "Body Paragraph 1",
+          "suggestion": "Keep this as the concession paragraph, but make the example more concrete: show how personalised pacing helps a child who is ahead in mathematics or behind in reading."
+        },
+        {
+          "paragraphLocation": "Body Paragraph 2",
+          "suggestion": "After the group-presentation example, add one direct link-back sentence: 'These repeated interactions are difficult to reproduce fully at home, which is why the social cost of home schooling can be substantial.'"
+        },
+        {
+          "paragraphLocation": "Body Paragraph 3",
+          "suggestion": "Combine the character-development point with the parental-resource point more tightly: schools provide trained teachers, deadlines, rules, peer conflict, and external assessment, while some parents may struggle to recreate all of these."
+        }
+      ],
+      "practicePlan": [
+        {
+          "day": 1,
+          "title": "Example Repair Drill",
+          "task": "Rewrite 5 examples using this pattern: situation + actor + action + result + link to argument."
+        },
+        {
+          "day": 2,
+          "title": "Collocation Upgrade",
+          "task": "Make a correction list from this essay: help students perform better, home-schooled children, a well-rounded education, group activities, external feedback."
+        },
+        {
+          "day": 3,
+          "title": "Outweigh Link-Back Practice",
+          "task": "Write 6 final sentences for body paragraphs that explicitly compare why one side is stronger than the other."
+        },
+        {
+          "day": 4,
+          "title": "Complex Sentence Control",
+          "task": "Take 5 long sentences from your essay and split each into two clearer sentences without losing meaning."
+        },
+        {
+          "day": 5,
+          "title": "Full Essay Rebuild",
+          "task": "Rewrite this essay in 38-40 minutes, focusing on precise examples and one direct outweigh sentence at the end of each disadvantage paragraph."
+        }
+      ],
+      "warnings": [],
+      "disclaimer": "This diagnostic report provides an estimated band range based on IELTS Writing criteria and Kru Pom IELTS writing framework. It is not an official IELTS score and does not replace assessment by certified IELTS examiners.",
+      "thaiDisclaimer": "รายงานนี้เป็นการประเมินเชิง diagnostic ตาม IELTS Writing Criteria และ framework ของ Kru Pom IELTS ไม่ใช่คะแนนทางการจาก IELTS examiner"
+    }
+  },
+  {
+    "submissionId": "608aeadd8504e3c0e073c164",
+    "username": "krupomtest",
+    "dateTime": "2026-06-07T08:36:23.722Z",
+    "taskType": "Task 1",
+    "essayType": "",
+    "visualType": "Bar Chart",
+    "shortPromptPreview": "The graph below shows the types of transport used by tourists from five countries who visited New Zealand in 2004. Su...",
+    "estimatedBandRange": "6.0-6.5",
+    "bandRangeMin": 6,
+    "bandRangeMax": 6.5,
+    "criteriaScores": {
+      "Task Achievement": {
+        "range": "6.0-6.5",
+        "diagnosis": "มีการครอบคลุมทุกประเทศและทุกวิธีเดินทาง และตัวเลขส่วนใหญ่ใกล้เคียงกราฟ แต่ overview มี main trend ที่คลาดเคลื่อน โดยเฉพาะการบอกว่า coach ต่ำที่สุดและ ferry ต่ำที่สุดทุกกลุ่ม ซึ่งไม่ตรงกับภาพทั้งหมด",
+        "evidence": "“Overall, travelled by car was the most dominant form of transportation for most countries, whereas coach tended to be least preferred. In contrast, Japanese relied more on air and coach, while the ferry was the least used option across all groups, particularly among Japanese and Korean.”"
+      },
+      "Coherence & Cohesion": {
+        "range": "6.0-6.5",
+        "diagnosis": "โครงสร้างพื้นฐานชัดเจน มี introduction, overview และ body 2 ย่อหน้า แต่บางประโยคเชื่อมข้อมูลหลายชุดในประโยคเดียว ทำให้ความสัมพันธ์ระหว่างประเทศกับประเภทการเดินทางไม่คม",
+        "evidence": "“Air travel was the most popular in Japan, at around 55%, followed by the British for approximately 35%, the remaining countries were generally at a lower proportion, especially in Australia accounted for just over 10%.”"
+      },
+      "Lexical Resource": {
+        "range": "6.0",
+        "diagnosis": "ใช้คำเกี่ยวกับกราฟได้พอสมควร เช่น proportion, accounted for, recorded แต่มี collocation ที่ไม่เป็นธรรมชาติหรือใช้คำที่สื่อความหมายเกินภาพ เช่น relied more, dependence, carried the lowest proportion",
+        "evidence": "“Australians showed a higher dependence than this group, at around 15%.”"
+      },
+      "Grammatical Range & Accuracy": {
+        "range": "6.0",
+        "diagnosis": "มี complex sentences บ้าง แต่ยังมี sentence fragment, subject-verb/form errors และ punctuation ที่ทำให้ความหมายสะดุด",
+        "evidence": "“For coach travel, even though the overall usage can be seen as the lowest.”"
+      }
+    },
+    "mainScoreLimitingFactor": "The report identifies many figures correctly, but the overview contains inaccurate general trends and several sentences have grammar/collocation problems that reduce clarity.",
+    "mostUrgentRepair": "Rewrite the overview so it reports only the two or three safest visible patterns: car was the most used mode for British, German, Korean and Australian tourists, while Japanese tourists used air and coach the most; ferry use was generally low except among German and British visitors.",
+    "top3Issues": [
+      {
+        "issueType": "Overview Data Accuracy",
+        "title": "Overview Data Accuracy",
+        "severity": "Critical",
+        "criteria": [
+          "Task Achievement",
+          "Data Accuracy"
+        ],
+        "summary": "ประโยคนี้กระทบ Task Achievement เพราะ overview ต้องเป็นส่วนที่แม่นที่สุดของรายงาน แต่คำว่า ‘coach tended to be least preferred’ ไม่ใช่ภาพรวมที่ปลอดภัยจากกราฟ: ferry appears to have the lowest total overall, while coach is the lowest only for some countries.",
+        "feedbackCardId": "card-1",
+        "exactSentence": "Overall, travelled by car was the most dominant form of transportation for most countries, whereas coach tended to be least preferred.",
+        "paragraphLocation": "Overview",
+        "whyItLimitsBand": "ประโยคนี้กระทบ Task Achievement เพราะ overview ต้องเป็นส่วนที่แม่นที่สุดของรายงาน แต่คำว่า ‘coach tended to be least preferred’ ไม่ใช่ภาพรวมที่ปลอดภัยจากกราฟ: ferry appears to have the lowest total overall, while coach is the lowest only for some countries."
+      },
+      {
+        "issueType": "Overgeneralisation",
+        "title": "Overgeneralisation",
+        "severity": "Critical",
+        "criteria": [
+          "Task Achievement",
+          "Coherence & Cohesion"
+        ],
+        "summary": "คำว่า ‘across all groups’ ไม่ตรงกับกราฟ เพราะ for British, German and Australian visitors, coach is lower than ferry. This makes the overview less reliable.",
+        "feedbackCardId": "card-2",
+        "exactSentence": "In contrast, Japanese relied more on air and coach, while the ferry was the least used option across all groups, particularly among Japanese and Korean.",
+        "paragraphLocation": "Overview",
+        "whyItLimitsBand": "คำว่า ‘across all groups’ ไม่ตรงกับกราฟ เพราะ for British, German and Australian visitors, coach is lower than ferry. This makes the overview less reliable."
+      },
+      {
+        "issueType": "Unclear Grouping Sentence",
+        "title": "Unclear Grouping Sentence",
+        "severity": "Needs Work",
+        "criteria": [
+          "Coherence & Cohesion",
+          "Task Achievement"
+        ],
+        "summary": "ประโยคนี้ทำให้ grouping ไม่ชัด เพราะ ‘moderate to low’ ไม่บอกว่า mode ไหนสูงหรือต่ำในประเทศใด และยังไม่ตรงกับ Japanese coach/air, which are both above 50%.",
+        "feedbackCardId": "card-3",
+        "exactSentence": "In terms of air and coach travel, the figures showed moderate to low in most nationalities.",
+        "paragraphLocation": "Body Paragraph 1",
+        "whyItLimitsBand": "ประโยคนี้ทำให้ grouping ไม่ชัด เพราะ ‘moderate to low’ ไม่บอกว่า mode ไหนสูงหรือต่ำในประเทศใด และยังไม่ตรงกับ Japanese coach/air, which are both above 50%."
+      }
+    ],
+    "taskResponseOrAchievementRange": "6.0-6.5",
+    "coherenceRange": "6.0-6.5",
+    "lexicalRange": "6.0",
+    "grammarRange": "6.0",
+    "report": {
+      "taskType": "Task 1",
+      "essayType": "Discuss Both Views",
+      "visualType": "Bar Chart",
+      "targetBand": "7.5",
+      "generatedAt": "2026-06-07T08:36:23.717Z",
+      "analysisMode": "Full diagnostic engine with Task 1 image input",
+      "estimatedBandRange": "6.0-6.5",
+      "mainScoreLimitingFactor": "The report identifies many figures correctly, but the overview contains inaccurate general trends and several sentences have grammar/collocation problems that reduce clarity.",
+      "mostUrgentRepair": "Rewrite the overview so it reports only the two or three safest visible patterns: car was the most used mode for British, German, Korean and Australian tourists, while Japanese tourists used air and coach the most; ferry use was generally low except among German and British visitors.",
+      "criteriaScores": {
+        "Task Achievement": {
+          "range": "6.0-6.5",
+          "diagnosis": "มีการครอบคลุมทุกประเทศและทุกวิธีเดินทาง และตัวเลขส่วนใหญ่ใกล้เคียงกราฟ แต่ overview มี main trend ที่คลาดเคลื่อน โดยเฉพาะการบอกว่า coach ต่ำที่สุดและ ferry ต่ำที่สุดทุกกลุ่ม ซึ่งไม่ตรงกับภาพทั้งหมด",
+          "evidence": "“Overall, travelled by car was the most dominant form of transportation for most countries, whereas coach tended to be least preferred. In contrast, Japanese relied more on air and coach, while the ferry was the least used option across all groups, particularly among Japanese and Korean.”"
+        },
+        "Coherence & Cohesion": {
+          "range": "6.0-6.5",
+          "diagnosis": "โครงสร้างพื้นฐานชัดเจน มี introduction, overview และ body 2 ย่อหน้า แต่บางประโยคเชื่อมข้อมูลหลายชุดในประโยคเดียว ทำให้ความสัมพันธ์ระหว่างประเทศกับประเภทการเดินทางไม่คม",
+          "evidence": "“Air travel was the most popular in Japan, at around 55%, followed by the British for approximately 35%, the remaining countries were generally at a lower proportion, especially in Australia accounted for just over 10%.”"
+        },
+        "Lexical Resource": {
+          "range": "6.0",
+          "diagnosis": "ใช้คำเกี่ยวกับกราฟได้พอสมควร เช่น proportion, accounted for, recorded แต่มี collocation ที่ไม่เป็นธรรมชาติหรือใช้คำที่สื่อความหมายเกินภาพ เช่น relied more, dependence, carried the lowest proportion",
+          "evidence": "“Australians showed a higher dependence than this group, at around 15%.”"
+        },
+        "Grammatical Range & Accuracy": {
+          "range": "6.0",
+          "diagnosis": "มี complex sentences บ้าง แต่ยังมี sentence fragment, subject-verb/form errors และ punctuation ที่ทำให้ความหมายสะดุด",
+          "evidence": "“For coach travel, even though the overall usage can be seen as the lowest.”"
+        }
+      },
+      "kruPomScores": {
+        "Visual Understanding": {
+          "status": "Moderate",
+          "diagnosis": "เข้าใจภาพรวมหลายจุด เช่น car สูงในหลายประเทศ และ Japanese สูงใน air/coach แต่ยังสรุป lowest mode ผิดใน overview"
+        },
+        "Prompt Coverage": {
+          "status": "Strong",
+          "diagnosis": "รายงานครบทั้ง 5 ประเทศและ 4 ประเภทการเดินทาง"
+        },
+        "Overview Quality": {
+          "status": "Needs Work",
+          "diagnosis": "มี overview แต่ main feature บางส่วนไม่แม่น: coach ไม่ใช่ lowest overall และ ferry ไม่ได้ต่ำที่สุดในทุกกลุ่ม"
+        },
+        "Data Selection": {
+          "status": "Moderate",
+          "diagnosis": "เลือกตัวเลขสำคัญหลายจุดได้ดี แต่บางจุดควรรวมเป็น pattern แทนการไล่ตัวเลขจำนวนมาก"
+        },
+        "Grouping Logic": {
+          "status": "Moderate",
+          "diagnosis": "แบ่ง body เป็น air/coach และ car/ferry ได้ แต่ยังไม่ชัดว่ากำลังเปรียบเทียบตาม mode หรือ nationality"
+        },
+        "Data Accuracy": {
+          "status": "Moderate",
+          "diagnosis": "ตัวเลขส่วนใหญ่ใกล้เคียงกราฟ แต่ generalisation ใน overview และ body บางประโยคไม่ตรงกับข้อมูล"
+        },
+        "Comparison Precision": {
+          "status": "Needs Work",
+          "diagnosis": "มีการเปรียบเทียบ แต่บางคำกว้างเกินไป เช่น ‘across all groups’ และ ‘moderate to low in most nationalities’"
+        },
+        "Report Tone Control": {
+          "status": "Moderate",
+          "diagnosis": "โดยรวมเป็น objective report แต่บางคำ เช่น relied และ dependence ฟังเหมือนตีความพฤติกรรมมากกว่ารายงานสัดส่วน"
+        },
+        "Task 1 Objective Reporting": {
+          "status": "Moderate",
+          "diagnosis": "ควรใช้ภาษากลาง เช่น ‘used’ หรือ ‘the proportion was’ แทนคำที่สื่อเหตุผลหรือความชอบ"
+        },
+        "LFC CPC Control": {
+          "status": "Needs Work",
+          "diagnosis": "มีปัญหา logical flow และ clause control ในประโยคยาว โดยเฉพาะ run-on sentence และ fragment"
+        },
+        "Vocabulary Precision": {
+          "status": "Needs Work",
+          "diagnosis": "ต้องแก้ collocation เช่น ‘showed moderate to low’, ‘carried the lowest proportion’, ‘higher dependence’"
+        },
+        "Grammar Risk": {
+          "status": "Needs Work",
+          "diagnosis": "ความผิดด้าน sentence form และ article/preposition ทำให้คำตอบยังไม่ถึง Band 7.5"
+        }
+      },
+      "top3Issues": [
+        {
+          "issueType": "Overview Data Accuracy",
+          "title": "Overview Data Accuracy",
+          "severity": "Critical",
+          "criteria": [
+            "Task Achievement",
+            "Data Accuracy"
+          ],
+          "summary": "ประโยคนี้กระทบ Task Achievement เพราะ overview ต้องเป็นส่วนที่แม่นที่สุดของรายงาน แต่คำว่า ‘coach tended to be least preferred’ ไม่ใช่ภาพรวมที่ปลอดภัยจากกราฟ: ferry appears to have the lowest total overall, while coach is the lowest only for some countries.",
+          "feedbackCardId": "card-1",
+          "exactSentence": "Overall, travelled by car was the most dominant form of transportation for most countries, whereas coach tended to be least preferred.",
+          "paragraphLocation": "Overview",
+          "whyItLimitsBand": "ประโยคนี้กระทบ Task Achievement เพราะ overview ต้องเป็นส่วนที่แม่นที่สุดของรายงาน แต่คำว่า ‘coach tended to be least preferred’ ไม่ใช่ภาพรวมที่ปลอดภัยจากกราฟ: ferry appears to have the lowest total overall, while coach is the lowest only for some countries."
+        },
+        {
+          "issueType": "Overgeneralisation",
+          "title": "Overgeneralisation",
+          "severity": "Critical",
+          "criteria": [
+            "Task Achievement",
+            "Coherence & Cohesion"
+          ],
+          "summary": "คำว่า ‘across all groups’ ไม่ตรงกับกราฟ เพราะ for British, German and Australian visitors, coach is lower than ferry. This makes the overview less reliable.",
+          "feedbackCardId": "card-2",
+          "exactSentence": "In contrast, Japanese relied more on air and coach, while the ferry was the least used option across all groups, particularly among Japanese and Korean.",
+          "paragraphLocation": "Overview",
+          "whyItLimitsBand": "คำว่า ‘across all groups’ ไม่ตรงกับกราฟ เพราะ for British, German and Australian visitors, coach is lower than ferry. This makes the overview less reliable."
+        },
+        {
+          "issueType": "Unclear Grouping Sentence",
+          "title": "Unclear Grouping Sentence",
+          "severity": "Needs Work",
+          "criteria": [
+            "Coherence & Cohesion",
+            "Task Achievement"
+          ],
+          "summary": "ประโยคนี้ทำให้ grouping ไม่ชัด เพราะ ‘moderate to low’ ไม่บอกว่า mode ไหนสูงหรือต่ำในประเทศใด และยังไม่ตรงกับ Japanese coach/air, which are both above 50%.",
+          "feedbackCardId": "card-3",
+          "exactSentence": "In terms of air and coach travel, the figures showed moderate to low in most nationalities.",
+          "paragraphLocation": "Body Paragraph 1",
+          "whyItLimitsBand": "ประโยคนี้ทำให้ grouping ไม่ชัด เพราะ ‘moderate to low’ ไม่บอกว่า mode ไหนสูงหรือต่ำในประเทศใด และยังไม่ตรงกับ Japanese coach/air, which are both above 50%."
+        }
+      ],
+      "feedbackCards": [
+        {
+          "issueType": "Overview Data Accuracy",
+          "severity": "Critical",
+          "criteria": [
+            "Task Achievement",
+            "Data Accuracy"
+          ],
+          "framework": [
+            "Overview Quality",
+            "Visual Understanding",
+            "Comparison Precision"
+          ],
+          "paragraphLocation": "Overview",
+          "exactSentence": "Overall, travelled by car was the most dominant form of transportation for most countries, whereas coach tended to be least preferred.",
+          "sentenceFunction": "This sentence is trying to summarise the main trend and identify the most and least common transport types.",
+          "whyItLimitsBand": "ประโยคนี้กระทบ Task Achievement เพราะ overview ต้องเป็นส่วนที่แม่นที่สุดของรายงาน แต่คำว่า ‘coach tended to be least preferred’ ไม่ใช่ภาพรวมที่ปลอดภัยจากกราฟ: ferry appears to have the lowest total overall, while coach is the lowest only for some countries.",
+          "kruPomDiagnosis": "ปัญหาคือ route การอ่านภาพรวมยังปนระหว่าง ‘lowest by country’ กับ ‘lowest overall’. ถ้าจะสรุป overview ต้องเลือก pattern ที่ไม่ขัดกับข้อมูลใดในกราฟ",
+          "targetedRevision": "Overall, car travel was the most common mode for British, German, Korean and Australian visitors, whereas Japanese tourists used air and coach the most.",
+          "whyRevisionIsStronger": "The revision removes the unsafe claim about coach being least preferred and focuses on the clearest visible pattern across countries.",
+          "studentAction": "Before writing the overview, mark the highest bar for each country and check whether your ‘overall lowest’ claim is true for the whole chart or only for some countries."
+        },
+        {
+          "issueType": "Overgeneralisation",
+          "severity": "Critical",
+          "criteria": [
+            "Task Achievement",
+            "Coherence & Cohesion"
+          ],
+          "framework": [
+            "Overview Quality",
+            "Data Accuracy",
+            "Comparison Precision"
+          ],
+          "paragraphLocation": "Overview",
+          "exactSentence": "In contrast, Japanese relied more on air and coach, while the ferry was the least used option across all groups, particularly among Japanese and Korean.",
+          "sentenceFunction": "This sentence is trying to add an exception for Japanese visitors and summarise ferry use.",
+          "whyItLimitsBand": "คำว่า ‘across all groups’ ไม่ตรงกับกราฟ เพราะ for British, German and Australian visitors, coach is lower than ferry. This makes the overview less reliable.",
+          "kruPomDiagnosis": "ปัญหาไม่ใช่ไม่มี comparison แต่ comparison กว้างเกินข้อมูลจริง ควรแยก ‘generally low’ ออกจาก ‘lowest in every group’",
+          "targetedRevision": "Ferry use was generally lower than car use, although it was relatively high among German and British visitors and lowest for Japanese and Korean visitors.",
+          "whyRevisionIsStronger": "This version reports the ferry pattern more carefully and avoids claiming that ferry was the lowest option for every nationality.",
+          "studentAction": "Replace absolute phrases like ‘across all groups’ with safer wording such as ‘generally’, ‘in most groups’, or specify the exact countries."
+        },
+        {
+          "issueType": "Unclear Grouping Sentence",
+          "severity": "Needs Work",
+          "criteria": [
+            "Coherence & Cohesion",
+            "Task Achievement"
+          ],
+          "framework": [
+            "Grouping Logic",
+            "Comparison Precision",
+            "Vocabulary Precision"
+          ],
+          "paragraphLocation": "Body Paragraph 1",
+          "exactSentence": "In terms of air and coach travel, the figures showed moderate to low in most nationalities.",
+          "sentenceFunction": "This sentence is trying to introduce the first body paragraph by grouping air and coach travel.",
+          "whyItLimitsBand": "ประโยคนี้ทำให้ grouping ไม่ชัด เพราะ ‘moderate to low’ ไม่บอกว่า mode ไหนสูงหรือต่ำในประเทศใด และยังไม่ตรงกับ Japanese coach/air, which are both above 50%.",
+          "kruPomDiagnosis": "ประโยคเปิด body ควรเป็น mini-topic sentence ที่ชี้ pattern ไม่ใช่คำกว้าง ๆ ที่ครอบข้อมูลไม่ครบ",
+          "targetedRevision": "Air and coach use varied considerably: Japanese visitors recorded the highest proportions for both modes, while Australians had the lowest figures.",
+          "whyRevisionIsStronger": "The revision gives a clear comparison route: highest group versus lowest group, which prepares the reader for the data that follows.",
+          "studentAction": "Start each body paragraph with one comparison pattern, for example ‘highest vs lowest’ or ‘exception vs majority’, before giving numbers."
+        },
+        {
+          "issueType": "Run-on Sentence and Comparison Control",
+          "severity": "Needs Work",
+          "criteria": [
+            "Coherence & Cohesion",
+            "Grammatical Range & Accuracy"
+          ],
+          "framework": [
+            "LFC CPC Control",
+            "Grammar Risk",
+            "Comparison Precision"
+          ],
+          "paragraphLocation": "Body Paragraph 1",
+          "exactSentence": "Air travel was the most popular in Japan, at around 55%, followed by the British for approximately 35%, the remaining countries were generally at a lower proportion, especially in Australia accounted for just over 10%.",
+          "sentenceFunction": "This sentence is trying to compare air travel figures across the five nationalities.",
+          "whyItLimitsBand": "This is a run-on sentence with several comparison points joined incorrectly. It lowers grammatical accuracy and makes the comparison route difficult to process.",
+          "kruPomDiagnosis": "ข้อมูลถูกเลือกมาดี แต่ sentence control ยังไม่รองรับจำนวนข้อมูล ควรแบ่งเป็นสอง clauses/sentences และใช้ subject ให้ชัดเจน",
+          "targetedRevision": "Air travel was most common among Japanese visitors, at about 55%, followed by British visitors at roughly 35%. The figures were lower for the other groups, with Australians recording the smallest share, at just over 10%.",
+          "whyRevisionIsStronger": "The revision separates the highest, second-highest and lowest figures clearly, while correcting the grammar around ‘Australia/Australians’.",
+          "studentAction": "When one sentence contains more than three numbers or comparisons, split it into two sentences."
+        },
+        {
+          "issueType": "Sentence Fragment",
+          "severity": "Needs Work",
+          "criteria": [
+            "Grammatical Range & Accuracy",
+            "Coherence & Cohesion"
+          ],
+          "framework": [
+            "Grammar Risk",
+            "LFC CPC Control"
+          ],
+          "paragraphLocation": "Body Paragraph 1",
+          "exactSentence": "For coach travel, even though the overall usage can be seen as the lowest.",
+          "sentenceFunction": "This sentence is trying to introduce the coach travel comparison.",
+          "whyItLimitsBand": "This is not a complete sentence because ‘even though’ creates a dependent clause but no main clause follows. It also repeats the inaccurate idea that coach was the lowest overall.",
+          "kruPomDiagnosis": "ปัญหาหลักคือ grammar route: ใช้ concession linker แล้วไม่จบ main clause ทำให้ประโยคไม่สมบูรณ์",
+          "targetedRevision": "For coach travel, Japanese visitors again had the highest figure, at just above 50%, whereas Australians recorded the lowest, at around 8%.",
+          "whyRevisionIsStronger": "The revision becomes a complete comparison sentence and uses the actual highest-lowest contrast visible in the chart.",
+          "studentAction": "Avoid starting a Task 1 sentence with ‘even though’ unless you already know the main clause that will complete it."
+        },
+        {
+          "issueType": "Vocabulary Precision and Objective Tone",
+          "severity": "Needs Work",
+          "criteria": [
+            "Lexical Resource",
+            "Task Achievement"
+          ],
+          "framework": [
+            "Vocabulary Precision",
+            "Report Tone Control",
+            "Task 1 Objective Reporting"
+          ],
+          "paragraphLocation": "Body Paragraph 2",
+          "exactSentence": "Australians showed a higher dependence than this group, at around 15%.",
+          "sentenceFunction": "This sentence is trying to compare Australian ferry use with Japanese and Korean ferry use.",
+          "whyItLimitsBand": "คำว่า ‘dependence’ สื่อความหมายเหมือนการพึ่งพาหรือเหตุผลในการเดินทาง ซึ่งกราฟแสดงแค่เปอร์เซ็นต์การใช้ transport ไม่ได้แสดง dependency. ‘this group’ ก็ไม่ชัดว่าหมายถึงใคร",
+          "kruPomDiagnosis": "ปัญหาคือ tone และ reference: ควรใช้ภาษารายงานเชิงตัวเลข และระบุประเทศให้ชัด",
+          "targetedRevision": "The figure for Australian visitors was slightly higher, at around 15%, compared with about 10% for Japanese visitors and just under 10% for Korean visitors.",
+          "whyRevisionIsStronger": "The revision reports only what the chart shows and makes the comparison group explicit.",
+          "studentAction": "In Task 1, replace interpretive nouns such as ‘dependence’ with neutral reporting phrases like ‘the figure’, ‘the proportion’, or ‘the percentage’."
+        }
+      ],
+      "paragraphFeedback": [
+        {
+          "paragraphLocation": "Introduction",
+          "exactEvidence": "The bar chart illustrates the proportion of visitors from different countries who travelled in New Zealand using 4 types of transport - air, coach, car, and ferry - during 2004.",
+          "diagnosis": "Introduction ทำหน้าที่ paraphrase prompt ได้ครบ แต่ควรใช้ ‘four’ แทน ‘4’ ใน academic writing และ hyphen รอบ list ควรเปลี่ยนเป็น commas หรือ colon เพื่อความเป็นทางการ",
+          "action": "Rewrite the introduction with formal numbering: ‘four types of transport: air, coach, car and ferry.’"
+        },
+        {
+          "paragraphLocation": "Overview",
+          "exactEvidence": "Overall, travelled by car was the most dominant form of transportation for most countries, whereas coach tended to be least preferred.",
+          "diagnosis": "มี overview ชัดเจน แต่ grammar ผิดที่ ‘travelled by car’ และข้อมูล ‘coach tended to be least preferred’ ไม่ใช่ overall pattern ที่แม่นที่สุด",
+          "action": "Use ‘car travel’ as the subject and summarise the safest highest-pattern first."
+        },
+        {
+          "paragraphLocation": "Body Paragraph 1",
+          "exactEvidence": "For coach travel, even though the overall usage can be seen as the lowest.",
+          "diagnosis": "ย่อหน้านี้มีข้อมูลหลายตัวถูกต้อง แต่ประโยคนี้เป็น fragment และยังย้ำ generalisation ที่ไม่แม่น ทำให้ flow เสีย",
+          "action": "Turn this into a complete highest-lowest comparison for coach travel."
+        },
+        {
+          "paragraphLocation": "Body Paragraph 2",
+          "exactEvidence": "Only the British and German recorded the significant figure, at around 36% and nearly 50% respectively, while usage among Japanese and Korean was low, at approximately 10% and below.",
+          "diagnosis": "ข้อมูล ferry โดยรวมค่อนข้างตรง แต่คำว่า ‘the significant figure’ ไม่เป็นธรรมชาติ และควรระบุว่า German ferry use is higher than British ferry use",
+          "action": "Replace ‘recorded the significant figure’ with ‘had relatively high figures’ and make the comparison between Germany and Britain explicit."
+        }
+      ],
+      "revisedThesis": "",
+      "revisedParagraphSuggestions": [],
+      "practicePlan": [
+        {
+          "day": 1,
+          "title": "Overview Accuracy Drill",
+          "task": "Take 5 bar charts and write only the overview. For each overview, underline any absolute phrase such as ‘all’, ‘every’, or ‘across all groups’ and check it against every bar."
+        },
+        {
+          "day": 2,
+          "title": "Highest-Lowest Comparison Sentences",
+          "task": "Write 10 sentences using this structure: ‘X recorded the highest figure, at __%, whereas Y had the lowest, at __%.’ Then vary the structure without changing the meaning."
+        },
+        {
+          "day": 3,
+          "title": "Fragment Repair",
+          "task": "Find all sentences beginning with ‘although’, ‘even though’, ‘whereas’, or ‘while’ in your Task 1 reports. Check whether each one has a complete main clause."
+        },
+        {
+          "day": 4,
+          "title": "Objective Task 1 Vocabulary",
+          "task": "Create a replacement list: ‘relied on’ → ‘used’; ‘dependence’ → ‘proportion/percentage’; ‘carried the lowest proportion’ → ‘recorded the lowest figure’."
+        },
+        {
+          "day": 5,
+          "title": "Full Report Rewrite",
+          "task": "Rewrite this report in 160-180 words. Keep the same grouping, but correct the overview and use one clear comparison sentence for each transport type."
+        }
+      ],
+      "warnings": [],
+      "disclaimer": "This diagnostic report provides an estimated band range based on IELTS Writing criteria and Kru Pom IELTS writing framework. It is not an official IELTS score and does not replace assessment by certified IELTS examiners.",
+      "thaiDisclaimer": "รายงานนี้เป็นการประเมินเชิง diagnostic ตาม IELTS Writing Criteria และ framework ของ Kru Pom IELTS ไม่ใช่คะแนนทางการจาก IELTS examiner"
+    }
+  },
+  {
+    "submissionId": "3c41429cd6366d950c6b9203",
+    "username": "krupomtest",
+    "dateTime": "2026-06-07T10:08:08.836Z",
+    "taskType": "Task 1",
+    "essayType": "",
+    "visualType": "Line Graph",
+    "promptPreview": "The graph below shows the quantities of goods transported in the UK between 1974 and 2002 by four different modes of ...",
+    "shortPromptPreview": "The graph below shows the quantities of goods transported in the UK between 1974 and 2002 by four different modes of ...",
+    "estimatedBandRange": "6.0-6.5",
+    "bandRangeMin": 6,
+    "bandRangeMax": 6.5,
+    "criteriaScores": {
+      "Task Achievement": {
+        "range": "6.0",
+        "diagnosis": "มี overview และเลือกข้อมูลหลักได้หลายจุด เช่น road สูงสุด และ rail ผันผวน แต่คะแนนถูกจำกัดเพราะมีข้อมูลสำคัญผิด โดยเฉพาะ pipeline และการอธิบาย water หลังปี 1994 ที่ใช้คำเกินจริง",
+        "evidence": "“Overall, it is evident that the majority of mode of transport was road, whereas the pipeline declined for 28 years.”"
+      },
+      "Coherence & Cohesion": {
+        "range": "6.0-6.5",
+        "diagnosis": "โครงสร้าง 4 ย่อหน้าชัดเจน แต่ grouping ยังไม่แม่น เพราะจับ road กับ water เป็นกลุ่ม “highest usage” ทั้งที่ road สูงสุดตลอด ส่วน water ควรถูกอธิบายเป็น second-highest with fluctuation. การเชื่อมโยงบางจุดทำให้ผู้อ่านตาม trend ยาก",
+        "evidence": "“In detail, roads and water are one of the highest usage among modes of transport...”"
+      },
+      "Lexical Resource": {
+        "range": "6.0",
+        "diagnosis": "มีคำศัพท์ Task 1 เช่น illustrates, accounting for, increased, fluctuated แต่มี collocation และ word choice ที่ไม่เป็นธรรมชาติ เช่น amount of products shipping, majority of mode, dropped 10 times, calculated to be",
+        "evidence": "“The line graph illustrates the amount of products shipping in the UK...”"
+      },
+      "Grammatical Range & Accuracy": {
+        "range": "6.0",
+        "diagnosis": "สื่อสารได้โดยรวม แต่มีปัญหา noun phrase, subject-verb agreement, article/plural และ tense/passive ทำให้ความเป็น academic report ลดลง",
+        "evidence": "“In 1974, rail accounted for 40 million tonnes, while the goods that have been transported through pipeline was calculated to be approximately 10 million tonnes in the initial phase.”"
+      }
+    },
+    "kruPomScores": {
+      "Visual Understanding": {
+        "status": "Moderate",
+        "diagnosis": "เข้าใจภาพรวมบางส่วน เช่น road สูงสุด และ rail fluctuation แต่เข้าใจผิดชัดเจนเรื่อง pipeline ซึ่งไม่ได้ลดลงตลอดช่วงเวลา"
+      },
+      "Prompt Coverage": {
+        "status": "Strong",
+        "diagnosis": "ครอบคลุมทั้ง 4 modes และช่วงเวลา 1974-2002 พร้อมรายงานหน่วย million tonnes"
+      },
+      "Overview Quality": {
+        "status": "Needs Work",
+        "diagnosis": "มี overview แต่มี main feature ผิด: pipeline ไม่ได้ declined for 28 years; มันเพิ่มขึ้นจากระดับต่ำสุดไปประมาณ 20 กว่า million tonnes แล้วทรงตัว"
+      },
+      "Data Selection": {
+        "status": "Moderate",
+        "diagnosis": "เลือกจุดเริ่มต้น จุดสิ้นสุด และจุดเปลี่ยนสำคัญได้หลายจุด แต่บางตัวเลขและการตีความผิดหรือเกินจริง"
+      },
+      "Grouping Logic": {
+        "status": "Needs Work",
+        "diagnosis": "ควร group เป็น road as highest and rising, water as second and fluctuating upward, rail as fluctuating around 30-40, pipeline as lowest but rising then stable"
+      },
+      "Data Accuracy": {
+        "status": "Needs Work",
+        "diagnosis": "มีความคลาดเคลื่อนสำคัญ เช่น pipeline decline, water dropped 10 times, และการบอกว่า pipeline remained the same for eight years ทั้งที่มีการเปลี่ยนเล็กน้อย"
+      },
+      "Comparison Precision": {
+        "status": "Moderate",
+        "diagnosis": "มีการเปรียบเทียบ road/water/rail/pipeline แต่ยังไม่ชัดว่า road สูงกว่า mode อื่นตลอด และ pipeline ต่ำสุดตลอด"
+      },
+      "Report Tone Control": {
+        "status": "Moderate",
+        "diagnosis": "น้ำเสียงส่วนใหญ่เป็นรายงานข้อมูล แต่คำอย่าง dramatically, drastically และ dropped 10 times ทำให้ดูเกินข้อมูลในกราฟ"
+      },
+      "Task 1 Objective Reporting": {
+        "status": "Needs Work",
+        "diagnosis": "ควรรายงานสิ่งที่เห็นจากกราฟโดยไม่ตีความเกินจริงหรือใช้คำที่ทำให้ข้อมูลเปลี่ยนความหมาย"
+      },
+      "LFC CPC Control": {
+        "status": "Needs Work",
+        "diagnosis": "มีปัญหา Language Form Control และ Clause/Phrase Control ใน noun phrases และ passive clauses เช่น products shipping, goods that have been transported, was calculated"
+      },
+      "Vocabulary Precision": {
+        "status": "Needs Work",
+        "diagnosis": "คำศัพท์หลายคำพยายามเป็น academic แต่ collocation ยังไม่แม่น เช่น amount of products shipping, majority of mode, one of the highest usage"
+      },
+      "Grammar Risk": {
+        "status": "Needs Work",
+        "diagnosis": "ความผิดด้าน agreement, tense, article และ phrase structure เกิดซ้ำและอาจจำกัดคะแนน GRA ที่ประมาณ Band 6"
+      }
+    },
+    "mainScoreLimitingFactor": "Data accuracy and overview control: the report identifies the main modes but gives an incorrect overall trend for pipeline and uses some imprecise or exaggerated data descriptions.",
+    "mostUrgentRepair": "Fix the overview first: describe the four main trends accurately without raw data, especially that pipeline increased overall and then levelled off, not declined.",
+    "top3Issues": [
+      {
+        "issueType": "Incorrect overview trend for pipeline",
+        "title": "Incorrect overview trend for pipeline",
+        "severity": "Critical",
+        "criteria": [
+          "Task Achievement"
+        ],
+        "summary": "Overview เป็นส่วนสำคัญของ Task Achievement; ถ้า main trend ผิด คะแนนจะถูกจำกัดแม้ body จะมีรายละเอียดมาก",
+        "feedbackCardId": "card-1",
+        "exactSentence": "Overall, it is evident that the majority of mode of transport was road, whereas the pipeline declined for 28 years.",
+        "paragraphLocation": "Overview",
+        "whyItLimitsBand": "Overview ที่มี main trend ผิดจะกระทบ Task Achievement โดยตรง เพราะ pipeline ไม่ได้ลดลงตลอด 28 ปี จากกราฟ pipeline เริ่มต่ำมาก ประมาณ 5 million tonnes แล้วเพิ่มขึ้นถึงประมาณ 25 ก่อนลดลงเล็กน้อยและทรงตัวราว 20 กว่า"
+      },
+      {
+        "issueType": "Exaggerated or inaccurate data language",
+        "title": "Exaggerated or inaccurate data language",
+        "severity": "Needs Work",
+        "criteria": [
+          "Task Achievement",
+          "Coherence & Cohesion"
+        ],
+        "summary": "คำอย่าง “dropped 10 times” ทำให้ตัวเลขผิดความหมาย เพราะ water ลดจากประมาณ 57 เหลือ 50 ไม่ใช่ลดลงสิบเท่า",
+        "feedbackCardId": "card-2",
+        "exactSentence": "Other modes of transport trends, particularly rail and water, were gradually increasing over time.",
+        "paragraphLocation": "Overview",
+        "whyItLimitsBand": "ข้อมูลนี้ไม่แม่นพอ เพราะ water เพิ่มโดยรวมแต่มีช่วงลดลงหลัง 1994 ส่วน rail ไม่ได้ gradually increase; มันผันผวนและจบใกล้ระดับเดิม"
+      },
+      {
+        "issueType": "Imprecise academic noun phrases",
+        "title": "Imprecise academic noun phrases",
+        "severity": "Needs Work",
+        "criteria": [
+          "Lexical Resource",
+          "Grammatical Range & Accuracy"
+        ],
+        "summary": "Task 1 ต้องใช้ wording ที่แม่น เช่น quantity of goods transported, not amount of products shipping",
+        "feedbackCardId": "card-3",
+        "exactSentence": "The line graph illustrates the amount of products shipping in the UK across four different types of modes of transport - road, water, rail, and pipeline - between 1974 and 2002.",
+        "paragraphLocation": "Introduction",
+        "whyItLimitsBand": "คำว่า “amount of products shipping” ไม่เป็นธรรมชาติ และ “types of modes of transport” ซ้ำความหมาย ทำให้ Lexical Resource และ grammar control ดูไม่แม่น"
+      }
+    ],
+    "feedbackCards": [
+      {
+        "issueType": "Data Accuracy - Overview Trend",
+        "severity": "Critical",
+        "criteria": [
+          "Task Achievement"
+        ],
+        "framework": [
+          "Visual Understanding",
+          "Overview Quality",
+          "Data Accuracy"
+        ],
+        "paragraphLocation": "Overview",
+        "exactSentence": "Overall, it is evident that the majority of mode of transport was road, whereas the pipeline declined for 28 years.",
+        "sentenceFunction": "This sentence is trying to summarize the main overall trends across the whole period.",
+        "whyItLimitsBand": "Overview ที่มี main trend ผิดจะกระทบ Task Achievement โดยตรง เพราะ pipeline ไม่ได้ลดลงตลอด 28 ปี จากกราฟ pipeline เริ่มต่ำมาก ประมาณ 5 million tonnes แล้วเพิ่มขึ้นถึงประมาณ 25 ก่อนลดลงเล็กน้อยและทรงตัวราว 20 กว่า",
+        "kruPomDiagnosis": "ปัญหาคืออ่านเส้น pipeline แบบดูช่วงท้ายอย่างเดียว แล้วสรุปทั้ง period ว่า declined. Route ที่ถูกต้องคือดู start point, highest point, end point ก่อนเขียน overview",
+        "targetedRevision": "Overall, road was consistently the dominant mode of transport, while pipeline remained the least used despite rising markedly in the early years and then levelling off.",
+        "whyRevisionIsStronger": "ประโยคใหม่จับ main features ได้ถูกต้อง: road สูงสุดตลอด และ pipeline ต่ำสุดแต่ไม่ได้ decline ทั้งช่วงเวลา",
+        "studentAction": "ก่อนเขียน overview ให้เขียน mini-check 3 จุดสำหรับทุกเส้น: start, peak/lowest, end แล้วค่อยสรุป trend"
+      },
+      {
+        "issueType": "Overview Development",
+        "severity": "Needs Work",
+        "criteria": [
+          "Task Achievement",
+          "Coherence & Cohesion"
+        ],
+        "framework": [
+          "Overview Quality",
+          "Comparison Precision"
+        ],
+        "paragraphLocation": "Overview",
+        "exactSentence": "Other modes of transport trends, particularly rail and water, were gradually increasing over time.",
+        "sentenceFunction": "This sentence is trying to add the remaining overall trends for water and rail.",
+        "whyItLimitsBand": "ข้อมูลนี้ไม่แม่นพอ เพราะ water เพิ่มโดยรวมแต่มีช่วงลดลงหลัง 1994 ส่วน rail ไม่ได้ gradually increase; มันผันผวนและจบใกล้ระดับเดิม",
+        "kruPomDiagnosis": "ปัญหา development คือใช้คำรวม “gradually increasing” กับสองเส้นที่มี pattern ต่างกัน ทำให้ comparison ไม่ precise",
+        "targetedRevision": "Water also rose overall, although it dipped in the late 1990s, whereas rail fluctuated and finished at roughly its initial level.",
+        "whyRevisionIsStronger": "ประโยคใหม่แยก pattern ของ water และ rail ชัดเจน จึงรายงานภาพรวมแบบ IELTS-ready มากกว่า",
+        "studentAction": "อย่าใช้ trend verb เดียวครอบหลายเส้น ถ้าเส้นกราฟมี movement ต่างกัน ให้แยกด้วย whereas หรือ while"
+      },
+      {
+        "issueType": "Lexical Precision - Introduction",
+        "severity": "Needs Work",
+        "criteria": [
+          "Lexical Resource",
+          "Grammatical Range & Accuracy"
+        ],
+        "framework": [
+          "Vocabulary Precision",
+          "LFC CPC Control"
+        ],
+        "paragraphLocation": "Introduction",
+        "exactSentence": "The line graph illustrates the amount of products shipping in the UK across four different types of modes of transport - road, water, rail, and pipeline - between 1974 and 2002.",
+        "sentenceFunction": "This sentence is trying to paraphrase the task and introduce the visual.",
+        "whyItLimitsBand": "คำว่า “amount of products shipping” ไม่เป็นธรรมชาติ และ “types of modes of transport” ซ้ำความหมาย ทำให้ Lexical Resource และ grammar control ดูไม่แม่น",
+        "kruPomDiagnosis": "ปัญหาคือ paraphrase พยายามเปลี่ยนคำมากเกินไปจน collocation เสีย สำหรับ Task 1 ควรใช้ phrase ที่ตรงและปลอดภัย เช่น quantities of goods transported",
+        "targetedRevision": "The line graph illustrates the quantities of goods transported in the UK by road, water, rail and pipeline between 1974 and 2002.",
+        "whyRevisionIsStronger": "ประโยคใหม่ใช้ collocation ที่ถูกต้องและกระชับ: quantities of goods transported, by road/water/rail/pipeline",
+        "studentAction": "ฝึกเขียน introduction โดยเปลี่ยนเฉพาะโครงสร้างประโยค ไม่จำเป็นต้อง paraphrase ทุกคำจากโจทย์"
+      },
+      {
+        "issueType": "Data Accuracy - Exaggerated Change",
+        "severity": "Critical",
+        "criteria": [
+          "Task Achievement",
+          "Lexical Resource"
+        ],
+        "framework": [
+          "Data Accuracy",
+          "Report Tone Control",
+          "Task 1 Objective Reporting"
+        ],
+        "paragraphLocation": "Body Paragraph 1",
+        "exactSentence": "After 1994, the trend dropped 10 times and grew back drastically in the following years.",
+        "sentenceFunction": "This sentence is trying to describe the fall and recovery in water transport after 1994.",
+        "whyItLimitsBand": "“dropped 10 times” ทำให้ข้อมูลผิดอย่างรุนแรง เพราะ water ลดจากประมาณ 57 million tonnes ในปี 1994 ไปประมาณ 50 ในปี 1998 ไม่ใช่ลดลงสิบเท่า และคำว่า “drastically” ค่อนข้างแรงเกินข้อมูล",
+        "kruPomDiagnosis": "ปัญหาคือใช้ภาษาขยายความแทนการอ้างอิงตัวเลขจริง ใน Task 1 ต้องใช้ magnitude ที่สัมพันธ์กับกราฟ",
+        "targetedRevision": "After 1994, water transport fell to about 50 million tonnes in 1998 before recovering to around 65 million tonnes in 2002.",
+        "whyRevisionIsStronger": "ประโยคใหม่ให้จุดเวลาและตัวเลขประมาณที่ตรงกับกราฟ ทำให้ข้อมูลชัดและไม่เกินจริง",
+        "studentAction": "เมื่อมี rise/fall ให้ใส่ from/to หรือ year + approximate figure อย่างน้อยหนึ่งชุดเพื่อกันการใช้คำเกินจริง"
+      },
+      {
+        "issueType": "Grouping and Comparison Logic",
+        "severity": "Needs Work",
+        "criteria": [
+          "Coherence & Cohesion",
+          "Task Achievement"
+        ],
+        "framework": [
+          "Grouping Logic",
+          "Comparison Precision"
+        ],
+        "paragraphLocation": "Body Paragraph 1",
+        "exactSentence": "In detail, roads and water are one of the highest usage among modes of transport, accounting for approximately 70 million tonnes and 40 million tonnes in the first period respectively.",
+        "sentenceFunction": "This sentence is trying to start the first body paragraph by grouping the higher transport modes and giving starting figures.",
+        "whyItLimitsBand": "การ group ยังไม่คม เพราะ road เป็น highest ตลอด แต่ water เริ่มใกล้ rail ประมาณ 40 million tonnes และเป็น second-highest later. นอกจากนี้ “roads and water are one of the highest usage” ผิดทั้ง grammar และ collocation",
+        "kruPomDiagnosis": "ปัญหาคือใช้ grouping แบบกว้างเกินไป ควรชัดว่า road คือ dominant line ส่วน water คือ rising second line, ไม่ใช่บอกว่าทั้งคู่เป็น one of the highest usage",
+        "targetedRevision": "Road was the most widely used mode throughout the period, starting at about 70 million tonnes, while water began at just under 40 million tonnes and later became the second-highest category.",
+        "whyRevisionIsStronger": "ประโยคใหม่เปรียบเทียบ hierarchy ชัดเจนและใช้ wording ที่ถูกต้องกว่า เช่น most widely used mode และ second-highest category",
+        "studentAction": "ตอนเปิด body paragraph ให้เขียน hierarchy ก่อน: highest, second-highest, lowest หรือ most stable"
+      },
+      {
+        "issueType": "Grammar and Register - Passive/Noun Phrase Control",
+        "severity": "Needs Work",
+        "criteria": [
+          "Grammatical Range & Accuracy",
+          "Lexical Resource"
+        ],
+        "framework": [
+          "LFC CPC Control",
+          "Vocabulary Precision",
+          "Grammar Risk"
+        ],
+        "paragraphLocation": "Body Paragraph 2",
+        "exactSentence": "In 1974, rail accounted for 40 million tonnes, while the goods that have been transported through pipeline was calculated to be approximately 10 million tonnes in the initial phase.",
+        "sentenceFunction": "This sentence is trying to compare the starting figures for rail and pipeline.",
+        "whyItLimitsBand": "ประโยคนี้สื่อสารได้แต่ซับซ้อนเกินจำเป็นและมี grammar risk: “goods ... was” ไม่ agree, present perfect passive ไม่เหมาะกับปี 1974, และ “was calculated to be” ไม่จำเป็นในรายงานกราฟ",
+        "kruPomDiagnosis": "ปัญหาคือพยายามใช้ passive academic style จนโครงสร้างหนักและผิด ควรใช้ simple past/simple verb สำหรับข้อมูลในกราฟ",
+        "targetedRevision": "In 1974, rail transported about 40 million tonnes of goods, compared with only around 5 million tonnes by pipeline.",
+        "whyRevisionIsStronger": "ประโยคใหม่กระชับกว่า ใช้ compared with เพื่อเปรียบเทียบ และตัวเลข pipeline ใกล้กับกราฟมากกว่า approximately 10 million tonnes",
+        "studentAction": "ลด passive ที่ไม่จำเป็นใน Task 1; ใช้ pattern ง่าย ๆ เช่น X transported..., compared with..."
+      },
+      {
+        "issueType": "Data Accuracy - Pipeline Detail",
+        "severity": "Needs Work",
+        "criteria": [
+          "Task Achievement"
+        ],
+        "framework": [
+          "Data Accuracy",
+          "Visual Understanding"
+        ],
+        "paragraphLocation": "Body Paragraph 2",
+        "exactSentence": "However, it slightly decreased and showed no changes throughout the final year.",
+        "sentenceFunction": "This sentence is trying to describe the final stage of the pipeline trend.",
+        "whyItLimitsBand": "คำว่า “throughout the final year” ไม่ตรงกับกราฟ เพราะกราฟแสดงหลายปี ไม่ใช่ข้อมูลภายในปีเดียว และควรระบุช่วงที่ทรงตัว เช่น from 1994 to 2002",
+        "kruPomDiagnosis": "ปัญหาคือ time reference ไม่ precise. ใน line graph ต้องบอกช่วงเวลาให้ชัด เช่น between 1994 and 2002",
+        "targetedRevision": "It then fell slightly to just over 20 million tonnes in 1994 and remained broadly stable until 2002.",
+        "whyRevisionIsStronger": "ประโยคใหม่ใช้ time range ชัดเจนและรายงาน movement ตามภาพ: fell slightly, then remained stable",
+        "studentAction": "ทุกครั้งที่เขียน “remained stable” ให้ตามด้วยช่วงเวลา เช่น from X to Y หรือ until Y"
+      }
+    ],
+    "practicePlan": [
+      {
+        "day": 1,
+        "title": "Overview Accuracy Drill",
+        "task": "ใช้กราฟเส้น 3 ชุด ฝึกเขียน overview 2 ประโยคโดยห้ามใส่ตัวเลข และต้องเช็ค start, peak/lowest, end ของทุกเส้นก่อนเขียน"
+      },
+      {
+        "day": 2,
+        "title": "Data Language Control",
+        "task": "ฝึกเขียน 10 ประโยคแบบ from/to และ year + approximate figure เช่น rose from X to Y, fell to around X, remained stable at about X"
+      },
+      {
+        "day": 3,
+        "title": "Grouping Logic",
+        "task": "ฝึกจัดกลุ่มเส้นกราฟเป็น dominant, second-highest, fluctuating, lowest แล้วเขียน body paragraph opening sentence สำหรับแต่ละกลุ่ม"
+      },
+      {
+        "day": 4,
+        "title": "Vocabulary Precision",
+        "task": "แก้ collocation ที่ผิด 15 จุด เช่น amount of products shipping → quantities of goods transported, highest usage → most widely used mode"
+      },
+      {
+        "day": 5,
+        "title": "Full Task 1 Rewrite",
+        "task": "เขียนรายงานใหม่ 160-190 คำ โดยใช้ overview ที่ถูกต้องและใส่ตัวเลขเฉพาะใน body paragraphs จากนั้นตรวจว่าทุกตัวเลขตรงกับภาพ"
+      }
+    ],
+    "taskResponseOrAchievementRange": "6.0",
+    "coherenceRange": "6.0-6.5",
+    "lexicalRange": "6.0",
+    "grammarRange": "6.0",
+    "report": {
+      "taskType": "Task 1",
+      "essayType": "Discuss Both Views",
+      "visualType": "Line Graph",
+      "targetBand": "7.0",
+      "generatedAt": "2026-06-07T10:08:08.834Z",
+      "analysisMode": "Full diagnostic engine with Task 1 image input",
+      "estimatedBandRange": "6.0-6.5",
+      "mainScoreLimitingFactor": "Data accuracy and overview control: the report identifies the main modes but gives an incorrect overall trend for pipeline and uses some imprecise or exaggerated data descriptions.",
+      "mostUrgentRepair": "Fix the overview first: describe the four main trends accurately without raw data, especially that pipeline increased overall and then levelled off, not declined.",
+      "criteriaScores": {
+        "Task Achievement": {
+          "range": "6.0",
+          "diagnosis": "มี overview และเลือกข้อมูลหลักได้หลายจุด เช่น road สูงสุด และ rail ผันผวน แต่คะแนนถูกจำกัดเพราะมีข้อมูลสำคัญผิด โดยเฉพาะ pipeline และการอธิบาย water หลังปี 1994 ที่ใช้คำเกินจริง",
+          "evidence": "“Overall, it is evident that the majority of mode of transport was road, whereas the pipeline declined for 28 years.”"
+        },
+        "Coherence & Cohesion": {
+          "range": "6.0-6.5",
+          "diagnosis": "โครงสร้าง 4 ย่อหน้าชัดเจน แต่ grouping ยังไม่แม่น เพราะจับ road กับ water เป็นกลุ่ม “highest usage” ทั้งที่ road สูงสุดตลอด ส่วน water ควรถูกอธิบายเป็น second-highest with fluctuation. การเชื่อมโยงบางจุดทำให้ผู้อ่านตาม trend ยาก",
+          "evidence": "“In detail, roads and water are one of the highest usage among modes of transport...”"
+        },
+        "Lexical Resource": {
+          "range": "6.0",
+          "diagnosis": "มีคำศัพท์ Task 1 เช่น illustrates, accounting for, increased, fluctuated แต่มี collocation และ word choice ที่ไม่เป็นธรรมชาติ เช่น amount of products shipping, majority of mode, dropped 10 times, calculated to be",
+          "evidence": "“The line graph illustrates the amount of products shipping in the UK...”"
+        },
+        "Grammatical Range & Accuracy": {
+          "range": "6.0",
+          "diagnosis": "สื่อสารได้โดยรวม แต่มีปัญหา noun phrase, subject-verb agreement, article/plural และ tense/passive ทำให้ความเป็น academic report ลดลง",
+          "evidence": "“In 1974, rail accounted for 40 million tonnes, while the goods that have been transported through pipeline was calculated to be approximately 10 million tonnes in the initial phase.”"
+        }
+      },
+      "kruPomScores": {
+        "Visual Understanding": {
+          "status": "Moderate",
+          "diagnosis": "เข้าใจภาพรวมบางส่วน เช่น road สูงสุด และ rail fluctuation แต่เข้าใจผิดชัดเจนเรื่อง pipeline ซึ่งไม่ได้ลดลงตลอดช่วงเวลา"
+        },
+        "Prompt Coverage": {
+          "status": "Strong",
+          "diagnosis": "ครอบคลุมทั้ง 4 modes และช่วงเวลา 1974-2002 พร้อมรายงานหน่วย million tonnes"
+        },
+        "Overview Quality": {
+          "status": "Needs Work",
+          "diagnosis": "มี overview แต่มี main feature ผิด: pipeline ไม่ได้ declined for 28 years; มันเพิ่มขึ้นจากระดับต่ำสุดไปประมาณ 20 กว่า million tonnes แล้วทรงตัว"
+        },
+        "Data Selection": {
+          "status": "Moderate",
+          "diagnosis": "เลือกจุดเริ่มต้น จุดสิ้นสุด และจุดเปลี่ยนสำคัญได้หลายจุด แต่บางตัวเลขและการตีความผิดหรือเกินจริง"
+        },
+        "Grouping Logic": {
+          "status": "Needs Work",
+          "diagnosis": "ควร group เป็น road as highest and rising, water as second and fluctuating upward, rail as fluctuating around 30-40, pipeline as lowest but rising then stable"
+        },
+        "Data Accuracy": {
+          "status": "Needs Work",
+          "diagnosis": "มีความคลาดเคลื่อนสำคัญ เช่น pipeline decline, water dropped 10 times, และการบอกว่า pipeline remained the same for eight years ทั้งที่มีการเปลี่ยนเล็กน้อย"
+        },
+        "Comparison Precision": {
+          "status": "Moderate",
+          "diagnosis": "มีการเปรียบเทียบ road/water/rail/pipeline แต่ยังไม่ชัดว่า road สูงกว่า mode อื่นตลอด และ pipeline ต่ำสุดตลอด"
+        },
+        "Report Tone Control": {
+          "status": "Moderate",
+          "diagnosis": "น้ำเสียงส่วนใหญ่เป็นรายงานข้อมูล แต่คำอย่าง dramatically, drastically และ dropped 10 times ทำให้ดูเกินข้อมูลในกราฟ"
+        },
+        "Task 1 Objective Reporting": {
+          "status": "Needs Work",
+          "diagnosis": "ควรรายงานสิ่งที่เห็นจากกราฟโดยไม่ตีความเกินจริงหรือใช้คำที่ทำให้ข้อมูลเปลี่ยนความหมาย"
+        },
+        "LFC CPC Control": {
+          "status": "Needs Work",
+          "diagnosis": "มีปัญหา Language Form Control และ Clause/Phrase Control ใน noun phrases และ passive clauses เช่น products shipping, goods that have been transported, was calculated"
+        },
+        "Vocabulary Precision": {
+          "status": "Needs Work",
+          "diagnosis": "คำศัพท์หลายคำพยายามเป็น academic แต่ collocation ยังไม่แม่น เช่น amount of products shipping, majority of mode, one of the highest usage"
+        },
+        "Grammar Risk": {
+          "status": "Needs Work",
+          "diagnosis": "ความผิดด้าน agreement, tense, article และ phrase structure เกิดซ้ำและอาจจำกัดคะแนน GRA ที่ประมาณ Band 6"
+        }
+      },
+      "top3Issues": [
+        {
+          "issueType": "Incorrect overview trend for pipeline",
+          "title": "Incorrect overview trend for pipeline",
+          "severity": "Critical",
+          "criteria": [
+            "Task Achievement"
+          ],
+          "summary": "Overview เป็นส่วนสำคัญของ Task Achievement; ถ้า main trend ผิด คะแนนจะถูกจำกัดแม้ body จะมีรายละเอียดมาก",
+          "feedbackCardId": "card-1",
+          "exactSentence": "Overall, it is evident that the majority of mode of transport was road, whereas the pipeline declined for 28 years.",
+          "paragraphLocation": "Overview",
+          "whyItLimitsBand": "Overview ที่มี main trend ผิดจะกระทบ Task Achievement โดยตรง เพราะ pipeline ไม่ได้ลดลงตลอด 28 ปี จากกราฟ pipeline เริ่มต่ำมาก ประมาณ 5 million tonnes แล้วเพิ่มขึ้นถึงประมาณ 25 ก่อนลดลงเล็กน้อยและทรงตัวราว 20 กว่า"
+        },
+        {
+          "issueType": "Exaggerated or inaccurate data language",
+          "title": "Exaggerated or inaccurate data language",
+          "severity": "Needs Work",
+          "criteria": [
+            "Task Achievement",
+            "Coherence & Cohesion"
+          ],
+          "summary": "คำอย่าง “dropped 10 times” ทำให้ตัวเลขผิดความหมาย เพราะ water ลดจากประมาณ 57 เหลือ 50 ไม่ใช่ลดลงสิบเท่า",
+          "feedbackCardId": "card-2",
+          "exactSentence": "Other modes of transport trends, particularly rail and water, were gradually increasing over time.",
+          "paragraphLocation": "Overview",
+          "whyItLimitsBand": "ข้อมูลนี้ไม่แม่นพอ เพราะ water เพิ่มโดยรวมแต่มีช่วงลดลงหลัง 1994 ส่วน rail ไม่ได้ gradually increase; มันผันผวนและจบใกล้ระดับเดิม"
+        },
+        {
+          "issueType": "Imprecise academic noun phrases",
+          "title": "Imprecise academic noun phrases",
+          "severity": "Needs Work",
+          "criteria": [
+            "Lexical Resource",
+            "Grammatical Range & Accuracy"
+          ],
+          "summary": "Task 1 ต้องใช้ wording ที่แม่น เช่น quantity of goods transported, not amount of products shipping",
+          "feedbackCardId": "card-3",
+          "exactSentence": "The line graph illustrates the amount of products shipping in the UK across four different types of modes of transport - road, water, rail, and pipeline - between 1974 and 2002.",
+          "paragraphLocation": "Introduction",
+          "whyItLimitsBand": "คำว่า “amount of products shipping” ไม่เป็นธรรมชาติ และ “types of modes of transport” ซ้ำความหมาย ทำให้ Lexical Resource และ grammar control ดูไม่แม่น"
+        }
+      ],
+      "feedbackCards": [
+        {
+          "issueType": "Data Accuracy - Overview Trend",
+          "severity": "Critical",
+          "criteria": [
+            "Task Achievement"
+          ],
+          "framework": [
+            "Visual Understanding",
+            "Overview Quality",
+            "Data Accuracy"
+          ],
+          "paragraphLocation": "Overview",
+          "exactSentence": "Overall, it is evident that the majority of mode of transport was road, whereas the pipeline declined for 28 years.",
+          "sentenceFunction": "This sentence is trying to summarize the main overall trends across the whole period.",
+          "whyItLimitsBand": "Overview ที่มี main trend ผิดจะกระทบ Task Achievement โดยตรง เพราะ pipeline ไม่ได้ลดลงตลอด 28 ปี จากกราฟ pipeline เริ่มต่ำมาก ประมาณ 5 million tonnes แล้วเพิ่มขึ้นถึงประมาณ 25 ก่อนลดลงเล็กน้อยและทรงตัวราว 20 กว่า",
+          "kruPomDiagnosis": "ปัญหาคืออ่านเส้น pipeline แบบดูช่วงท้ายอย่างเดียว แล้วสรุปทั้ง period ว่า declined. Route ที่ถูกต้องคือดู start point, highest point, end point ก่อนเขียน overview",
+          "targetedRevision": "Overall, road was consistently the dominant mode of transport, while pipeline remained the least used despite rising markedly in the early years and then levelling off.",
+          "whyRevisionIsStronger": "ประโยคใหม่จับ main features ได้ถูกต้อง: road สูงสุดตลอด และ pipeline ต่ำสุดแต่ไม่ได้ decline ทั้งช่วงเวลา",
+          "studentAction": "ก่อนเขียน overview ให้เขียน mini-check 3 จุดสำหรับทุกเส้น: start, peak/lowest, end แล้วค่อยสรุป trend"
+        },
+        {
+          "issueType": "Overview Development",
+          "severity": "Needs Work",
+          "criteria": [
+            "Task Achievement",
+            "Coherence & Cohesion"
+          ],
+          "framework": [
+            "Overview Quality",
+            "Comparison Precision"
+          ],
+          "paragraphLocation": "Overview",
+          "exactSentence": "Other modes of transport trends, particularly rail and water, were gradually increasing over time.",
+          "sentenceFunction": "This sentence is trying to add the remaining overall trends for water and rail.",
+          "whyItLimitsBand": "ข้อมูลนี้ไม่แม่นพอ เพราะ water เพิ่มโดยรวมแต่มีช่วงลดลงหลัง 1994 ส่วน rail ไม่ได้ gradually increase; มันผันผวนและจบใกล้ระดับเดิม",
+          "kruPomDiagnosis": "ปัญหา development คือใช้คำรวม “gradually increasing” กับสองเส้นที่มี pattern ต่างกัน ทำให้ comparison ไม่ precise",
+          "targetedRevision": "Water also rose overall, although it dipped in the late 1990s, whereas rail fluctuated and finished at roughly its initial level.",
+          "whyRevisionIsStronger": "ประโยคใหม่แยก pattern ของ water และ rail ชัดเจน จึงรายงานภาพรวมแบบ IELTS-ready มากกว่า",
+          "studentAction": "อย่าใช้ trend verb เดียวครอบหลายเส้น ถ้าเส้นกราฟมี movement ต่างกัน ให้แยกด้วย whereas หรือ while"
+        },
+        {
+          "issueType": "Lexical Precision - Introduction",
+          "severity": "Needs Work",
+          "criteria": [
+            "Lexical Resource",
+            "Grammatical Range & Accuracy"
+          ],
+          "framework": [
+            "Vocabulary Precision",
+            "LFC CPC Control"
+          ],
+          "paragraphLocation": "Introduction",
+          "exactSentence": "The line graph illustrates the amount of products shipping in the UK across four different types of modes of transport - road, water, rail, and pipeline - between 1974 and 2002.",
+          "sentenceFunction": "This sentence is trying to paraphrase the task and introduce the visual.",
+          "whyItLimitsBand": "คำว่า “amount of products shipping” ไม่เป็นธรรมชาติ และ “types of modes of transport” ซ้ำความหมาย ทำให้ Lexical Resource และ grammar control ดูไม่แม่น",
+          "kruPomDiagnosis": "ปัญหาคือ paraphrase พยายามเปลี่ยนคำมากเกินไปจน collocation เสีย สำหรับ Task 1 ควรใช้ phrase ที่ตรงและปลอดภัย เช่น quantities of goods transported",
+          "targetedRevision": "The line graph illustrates the quantities of goods transported in the UK by road, water, rail and pipeline between 1974 and 2002.",
+          "whyRevisionIsStronger": "ประโยคใหม่ใช้ collocation ที่ถูกต้องและกระชับ: quantities of goods transported, by road/water/rail/pipeline",
+          "studentAction": "ฝึกเขียน introduction โดยเปลี่ยนเฉพาะโครงสร้างประโยค ไม่จำเป็นต้อง paraphrase ทุกคำจากโจทย์"
+        },
+        {
+          "issueType": "Data Accuracy - Exaggerated Change",
+          "severity": "Critical",
+          "criteria": [
+            "Task Achievement",
+            "Lexical Resource"
+          ],
+          "framework": [
+            "Data Accuracy",
+            "Report Tone Control",
+            "Task 1 Objective Reporting"
+          ],
+          "paragraphLocation": "Body Paragraph 1",
+          "exactSentence": "After 1994, the trend dropped 10 times and grew back drastically in the following years.",
+          "sentenceFunction": "This sentence is trying to describe the fall and recovery in water transport after 1994.",
+          "whyItLimitsBand": "“dropped 10 times” ทำให้ข้อมูลผิดอย่างรุนแรง เพราะ water ลดจากประมาณ 57 million tonnes ในปี 1994 ไปประมาณ 50 ในปี 1998 ไม่ใช่ลดลงสิบเท่า และคำว่า “drastically” ค่อนข้างแรงเกินข้อมูล",
+          "kruPomDiagnosis": "ปัญหาคือใช้ภาษาขยายความแทนการอ้างอิงตัวเลขจริง ใน Task 1 ต้องใช้ magnitude ที่สัมพันธ์กับกราฟ",
+          "targetedRevision": "After 1994, water transport fell to about 50 million tonnes in 1998 before recovering to around 65 million tonnes in 2002.",
+          "whyRevisionIsStronger": "ประโยคใหม่ให้จุดเวลาและตัวเลขประมาณที่ตรงกับกราฟ ทำให้ข้อมูลชัดและไม่เกินจริง",
+          "studentAction": "เมื่อมี rise/fall ให้ใส่ from/to หรือ year + approximate figure อย่างน้อยหนึ่งชุดเพื่อกันการใช้คำเกินจริง"
+        },
+        {
+          "issueType": "Grouping and Comparison Logic",
+          "severity": "Needs Work",
+          "criteria": [
+            "Coherence & Cohesion",
+            "Task Achievement"
+          ],
+          "framework": [
+            "Grouping Logic",
+            "Comparison Precision"
+          ],
+          "paragraphLocation": "Body Paragraph 1",
+          "exactSentence": "In detail, roads and water are one of the highest usage among modes of transport, accounting for approximately 70 million tonnes and 40 million tonnes in the first period respectively.",
+          "sentenceFunction": "This sentence is trying to start the first body paragraph by grouping the higher transport modes and giving starting figures.",
+          "whyItLimitsBand": "การ group ยังไม่คม เพราะ road เป็น highest ตลอด แต่ water เริ่มใกล้ rail ประมาณ 40 million tonnes และเป็น second-highest later. นอกจากนี้ “roads and water are one of the highest usage” ผิดทั้ง grammar และ collocation",
+          "kruPomDiagnosis": "ปัญหาคือใช้ grouping แบบกว้างเกินไป ควรชัดว่า road คือ dominant line ส่วน water คือ rising second line, ไม่ใช่บอกว่าทั้งคู่เป็น one of the highest usage",
+          "targetedRevision": "Road was the most widely used mode throughout the period, starting at about 70 million tonnes, while water began at just under 40 million tonnes and later became the second-highest category.",
+          "whyRevisionIsStronger": "ประโยคใหม่เปรียบเทียบ hierarchy ชัดเจนและใช้ wording ที่ถูกต้องกว่า เช่น most widely used mode และ second-highest category",
+          "studentAction": "ตอนเปิด body paragraph ให้เขียน hierarchy ก่อน: highest, second-highest, lowest หรือ most stable"
+        },
+        {
+          "issueType": "Grammar and Register - Passive/Noun Phrase Control",
+          "severity": "Needs Work",
+          "criteria": [
+            "Grammatical Range & Accuracy",
+            "Lexical Resource"
+          ],
+          "framework": [
+            "LFC CPC Control",
+            "Vocabulary Precision",
+            "Grammar Risk"
+          ],
+          "paragraphLocation": "Body Paragraph 2",
+          "exactSentence": "In 1974, rail accounted for 40 million tonnes, while the goods that have been transported through pipeline was calculated to be approximately 10 million tonnes in the initial phase.",
+          "sentenceFunction": "This sentence is trying to compare the starting figures for rail and pipeline.",
+          "whyItLimitsBand": "ประโยคนี้สื่อสารได้แต่ซับซ้อนเกินจำเป็นและมี grammar risk: “goods ... was” ไม่ agree, present perfect passive ไม่เหมาะกับปี 1974, และ “was calculated to be” ไม่จำเป็นในรายงานกราฟ",
+          "kruPomDiagnosis": "ปัญหาคือพยายามใช้ passive academic style จนโครงสร้างหนักและผิด ควรใช้ simple past/simple verb สำหรับข้อมูลในกราฟ",
+          "targetedRevision": "In 1974, rail transported about 40 million tonnes of goods, compared with only around 5 million tonnes by pipeline.",
+          "whyRevisionIsStronger": "ประโยคใหม่กระชับกว่า ใช้ compared with เพื่อเปรียบเทียบ และตัวเลข pipeline ใกล้กับกราฟมากกว่า approximately 10 million tonnes",
+          "studentAction": "ลด passive ที่ไม่จำเป็นใน Task 1; ใช้ pattern ง่าย ๆ เช่น X transported..., compared with..."
+        },
+        {
+          "issueType": "Data Accuracy - Pipeline Detail",
+          "severity": "Needs Work",
+          "criteria": [
+            "Task Achievement"
+          ],
+          "framework": [
+            "Data Accuracy",
+            "Visual Understanding"
+          ],
+          "paragraphLocation": "Body Paragraph 2",
+          "exactSentence": "However, it slightly decreased and showed no changes throughout the final year.",
+          "sentenceFunction": "This sentence is trying to describe the final stage of the pipeline trend.",
+          "whyItLimitsBand": "คำว่า “throughout the final year” ไม่ตรงกับกราฟ เพราะกราฟแสดงหลายปี ไม่ใช่ข้อมูลภายในปีเดียว และควรระบุช่วงที่ทรงตัว เช่น from 1994 to 2002",
+          "kruPomDiagnosis": "ปัญหาคือ time reference ไม่ precise. ใน line graph ต้องบอกช่วงเวลาให้ชัด เช่น between 1994 and 2002",
+          "targetedRevision": "It then fell slightly to just over 20 million tonnes in 1994 and remained broadly stable until 2002.",
+          "whyRevisionIsStronger": "ประโยคใหม่ใช้ time range ชัดเจนและรายงาน movement ตามภาพ: fell slightly, then remained stable",
+          "studentAction": "ทุกครั้งที่เขียน “remained stable” ให้ตามด้วยช่วงเวลา เช่น from X to Y หรือ until Y"
+        }
+      ],
+      "paragraphFeedback": [
+        {
+          "paragraphLocation": "Introduction",
+          "exactEvidence": "The information was gathered in the form of Million tonnes.",
+          "diagnosis": "ประโยคนี้พยายามบอกหน่วย แต่ wording ไม่เป็นธรรมชาติและไม่จำเป็นต้องบอกว่า information was gathered. หน่วยควรเขียนสั้น ๆ ว่า measured in million tonnes",
+          "action": "เปลี่ยนเป็น: The figures are measured in million tonnes."
+        },
+        {
+          "paragraphLocation": "Overview",
+          "exactEvidence": "Overall, it is evident that the majority of mode of transport was road, whereas the pipeline declined for 28 years.",
+          "diagnosis": "มี overview แต่ main trend ของ pipeline ผิด และ phrase “majority of mode of transport” ไม่ถูกต้อง ควรบอกว่า road was the dominant mode throughout",
+          "action": "เขียน overview ใหม่โดยไม่ใส่ตัวเลข และตรวจ start-end ของแต่ละเส้นก่อนสรุป"
+        },
+        {
+          "paragraphLocation": "Body Paragraph 1",
+          "exactEvidence": "For roads, the trend progressively increased and almost reached 100 million tonnes in 2002.",
+          "diagnosis": "ข้อมูลโดยรวมถูกว่า road เพิ่มขึ้นและเกือบถึง 100 ในปี 2002 แต่ควรใช้ subject เป็น road transport ไม่ใช่ roads และควรระบุว่า it fluctuated slightly before rising more strongly after 1994",
+          "action": "เพิ่ม mini-development: Road transport fluctuated slightly before climbing to about 95 million tonnes in 2002."
+        },
+        {
+          "paragraphLocation": "Body Paragraph 2",
+          "exactEvidence": "For rail, it is noticeable that the trend has fluctuated throughout the years and ended at the same amount as the beginning.",
+          "diagnosis": "ใจความถูกบางส่วน เพราะ rail fluctuated และจบใกล้จุดเริ่มต้น แต่ tense ควรเป็น past/simple reporting และ “same amount as the beginning” ควรเป็น “roughly the same level as in 1974”",
+          "action": "แก้เป็น: Rail fluctuated throughout the period and finished at roughly the same level as in 1974."
+        }
+      ],
+      "revisedThesis": "",
+      "revisedParagraphSuggestions": [],
+      "practicePlan": [
+        {
+          "day": 1,
+          "title": "Overview Accuracy Drill",
+          "task": "ใช้กราฟเส้น 3 ชุด ฝึกเขียน overview 2 ประโยคโดยห้ามใส่ตัวเลข และต้องเช็ค start, peak/lowest, end ของทุกเส้นก่อนเขียน"
+        },
+        {
+          "day": 2,
+          "title": "Data Language Control",
+          "task": "ฝึกเขียน 10 ประโยคแบบ from/to และ year + approximate figure เช่น rose from X to Y, fell to around X, remained stable at about X"
+        },
+        {
+          "day": 3,
+          "title": "Grouping Logic",
+          "task": "ฝึกจัดกลุ่มเส้นกราฟเป็น dominant, second-highest, fluctuating, lowest แล้วเขียน body paragraph opening sentence สำหรับแต่ละกลุ่ม"
+        },
+        {
+          "day": 4,
+          "title": "Vocabulary Precision",
+          "task": "แก้ collocation ที่ผิด 15 จุด เช่น amount of products shipping → quantities of goods transported, highest usage → most widely used mode"
+        },
+        {
+          "day": 5,
+          "title": "Full Task 1 Rewrite",
+          "task": "เขียนรายงานใหม่ 160-190 คำ โดยใช้ overview ที่ถูกต้องและใส่ตัวเลขเฉพาะใน body paragraphs จากนั้นตรวจว่าทุกตัวเลขตรงกับภาพ"
+        }
+      ],
+      "warnings": [],
+      "disclaimer": "This diagnostic report provides an estimated band range based on IELTS Writing criteria and Kru Pom IELTS writing framework. It is not an official IELTS score and does not replace assessment by certified IELTS examiners.",
+      "thaiDisclaimer": "รายงานนี้เป็นการประเมินเชิง diagnostic ตาม IELTS Writing Criteria และ framework ของ Kru Pom IELTS ไม่ใช่คะแนนทางการจาก IELTS examiner"
+    }
+  }
+]

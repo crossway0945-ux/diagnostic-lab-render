@@ -1,6 +1,6 @@
 {
   "name": "ielts-writing-7-diagnostic-lab",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Sale-readiness release of the evidence-based IELTS Writing diagnostic with canonical analysis and scoring.",
   "type": "module",
   "scripts": {

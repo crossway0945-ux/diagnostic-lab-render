@@ -2825,6 +2825,170 @@ function normalizeGeneratedFeedbackCard(card = {}) {
   };
 }
 
+function recoverGeneratedFeedbackCards(cards = [], payload = {}) {
+  const taskType = payload.taskType || "";
+  const safety = taskType === "Task 2"
+    ? (payload.task2Safety || analyzeTask2Safety(payload))
+    : null;
+  const repaired = cards
+    .map((card) => taskType === "Task 2" ? repairUnsafeTask2Revision(card, safety) : card)
+    .map(normalizeGeneratedFeedbackCard)
+    .filter((card) => isReleaseReadyFeedbackCard(card, payload, safety));
+  const unique = dedupeReleaseFeedbackCards(repaired);
+  const usable = unique.length ? unique : buildReleaseFallbackCards(payload, safety);
+  return repairRepeatedGeneratedGuidance(usable, taskType);
+}
+
+function repairUnsafeTask2Revision(card = {}, safety = {}) {
+  let targetedRevision = String(card.targetedRevision || "")
+    .replace(/\bmight be not enough\b/gi, "might not be enough")
+    .replace(/\btaxes must be increase\b/gi, "taxes must be increased")
+    .replace(/\btax must be increase\b/gi, "tax must be increased")
+    .replace(/\bpay money same with before\b/gi, "pay the same amount as before")
+    .replace(/;\s*therefore\b/gi, ". Therefore,")
+    .replace(/\.\s*Therefore,\s*,/g, ". Therefore,")
+    .trim();
+  let revisionType = card.revisionType;
+  const fidelity = assessTask2RevisionFidelity({
+    exactSentence: card.exactSentence,
+    targetedRevision,
+    revisionType
+  });
+  targetedRevision = fidelity.targetedRevision;
+  revisionType = fidelity.revisionType;
+  if (
+    safety.positionConfidence === "low" &&
+    /\bi\s+(?:strongly|firmly|generally|partly|partially)?\s*(?:agree|disagree)\b/i.test(targetedRevision)
+  ) {
+    revisionType = "Teacher-Guided Expansion";
+  }
+  return { ...card, targetedRevision, revisionType };
+}
+
+function isReleaseReadyFeedbackCard(card = {}, payload = {}, safety = null) {
+  const requiredGeneratedFields = [
+    card.targetedRevision,
+    card.whyRevisionIsStronger,
+    card.kruPomDiagnosis,
+    card.studentAction
+  ];
+  if (requiredGeneratedFields.some((value) => !isCompleteGeneratedField(value) || hasRepeatedMeaningfulSequence(value))) {
+    return false;
+  }
+
+  if (payload.taskType === "Task 2") {
+    if (!REVISION_TYPES.includes(card.revisionType) || hasUnsafePartialTask2Revision(card)) return false;
+    if (
+      safety?.positionConfidence === "low" &&
+      /\bi\s+(?:strongly|firmly|generally|partly|partially)?\s*(?:agree|disagree)\b/i.test(card.targetedRevision || "") &&
+      card.revisionType !== "Teacher-Guided Expansion"
+    ) return false;
+  }
+
+  if (payload.taskType === "Task 1" && isTask1IntroductionCard(card, payload)) {
+    const revision = String(card.targetedRevision || "");
+    if (TASK1_PROMPT_LEAKAGE_PATTERN.test(revision)) return false;
+    if (hasRepeatedVisualPhrase(revision) || !isCompleteRevisionSentence(revision)) return false;
+    if (validateTask1VisualNumberAgreement(revision, payload).length) return false;
+    if (validateTask1ExplanationConsistency(card, payload).length) return false;
+  }
+
+  return true;
+}
+
+function dedupeReleaseFeedbackCards(cards = []) {
+  const seen = new Set();
+  return cards.filter((card) => {
+    const key = [card.issueType, card.paragraphLocation, card.exactSentence]
+      .map(normalizeEvidenceText)
+      .join("|");
+    if (!key.replace(/\|/g, "") || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildReleaseFallbackCards(payload, safety = null) {
+  let fallback = buildFallbackEvidenceCard(payload);
+  if (payload.taskType === "Task 1") {
+    fallback = repairTask1FeedbackCardRevision(fallback, payload);
+  } else if (payload.taskType === "Task 2") {
+    fallback = repairUnsafeTask2Revision(fallback, safety || analyzeTask2Safety(payload));
+  }
+  return normalizeCanonicalFeedbackCards([normalizeGeneratedFeedbackCard(fallback)], payload.taskType);
+}
+
+function repairRepeatedGeneratedGuidance(cards = [], taskType = "") {
+  const output = cards.map((card) => ({ ...card }));
+  for (const field of ["kruPomDiagnosis", "whyRevisionIsStronger", "studentAction"]) {
+    const groups = new Map();
+    output.forEach((card, index) => {
+      const value = normalizeEvidenceText(card[field]);
+      if (value.split(/\s+/).length < 8) return;
+      const indexes = groups.get(value) || [];
+      indexes.push(index);
+      groups.set(value, indexes);
+    });
+    for (const indexes of groups.values()) {
+      if (indexes.length < 3) continue;
+      indexes.slice(1).forEach((index) => {
+        output[index][field] = buildCardSpecificGuidance(field, output[index], taskType);
+      });
+    }
+  }
+  return output;
+}
+
+function buildCardSpecificGuidance(field, card = {}, taskType = "") {
+  const issue = String(card.issueType || "sentence-level control").trim();
+  const location = String(card.paragraphLocation || "the quoted paragraph").trim();
+  const evidence = truncate(String(card.exactSentence || "the quoted sentence").trim(), 90);
+  if (field === "kruPomDiagnosis") {
+    return `This ${issue.toLowerCase()} issue occurs in ${location}; focus the repair on the exact wording in "${evidence}".`;
+  }
+  if (field === "whyRevisionIsStronger") {
+    return taskType === "Task 1"
+      ? `This revision addresses ${issue.toLowerCase()} in ${location} while keeping the visual description objective and evidence-based.`
+      : `This revision addresses ${issue.toLowerCase()} in ${location} while preserving the student's original meaning and task route.`;
+  }
+  return `Rewrite the quoted sentence in ${location}, then check the rest of the response for the same ${issue.toLowerCase()} pattern.`;
+}
+
+function recoverExecutiveField(value, feedbackCards = [], kind = "summary") {
+  const clean = dedupeGeneratedText(value);
+  if (isCompleteGeneratedField(clean) && !hasRepeatedMeaningfulSequence(clean)) return clean;
+  const card = feedbackCards[0] || {};
+  const issue = String(card.issueType || "evidence-based route control").trim();
+  const location = String(card.paragraphLocation || "the response").trim();
+  if (kind === "repair") {
+    return `Revise the quoted sentence in ${location} using the targeted revision, then check the rest of the response for the same ${issue.toLowerCase()} issue.`;
+  }
+  const reason = String(card.whyItLimitsBand || "the quoted evidence needs a clearer task-specific function").trim();
+  return `The main score-limiting issue is ${issue.toLowerCase()} in ${location}: ${reason}`;
+}
+
+function selectDeterministicTopIssueCards(feedbackCards = [], payload = {}) {
+  const cards = Array.isArray(feedbackCards) ? feedbackCards : [];
+  if (payload.taskType !== "Task 2") return cards.slice(0, 3);
+  const safety = payload.task2Safety || analyzeTask2Safety(payload);
+  if (!safety.criticalInteraction && !safety.seriousInteraction) return cards.slice(0, 3);
+
+  const selected = [];
+  const used = new Set();
+  for (const category of ["completion", "thesis", "meaning"]) {
+    const index = cards.findIndex((card, cardIndex) => !used.has(cardIndex) && feedbackCardCategory(card) === category);
+    if (index < 0) continue;
+    used.add(index);
+    selected.push(cards[index]);
+  }
+  cards.forEach((card, index) => {
+    if (selected.length >= 3 || used.has(index)) return;
+    used.add(index);
+    selected.push(card);
+  });
+  return selected;
+}
+
 function dedupeGeneratedText(value) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   if (!text) return "";
@@ -2856,18 +3020,21 @@ function normalizeAnalysis(analysis, payload) {
   const locationAlignedCards = payload.taskType === "Task 2"
     ? alignTask2FeedbackCardLocations(guardedAnalysis.feedbackCards || fallback, payload.writing)
     : (guardedAnalysis.feedbackCards || fallback);
-  const feedbackCards = normalizeCanonicalFeedbackCards(
+  const canonicalCards = normalizeCanonicalFeedbackCards(
     locationAlignedCards.map(normalizeGeneratedFeedbackCard),
     payload.taskType
   );
-  const mainScoreLimitingFactor = reconcileTask1ExecutiveSummary(
+  const feedbackCards = recoverGeneratedFeedbackCards(canonicalCards, payload);
+  const reconciledMainScoreLimitingFactor = reconcileTask1ExecutiveSummary(
     guardedAnalysis.mainScoreLimitingFactor,
     guardedAnalysis.criteriaScores,
     feedbackCards,
     guardedAnalysis,
     payload
   );
-  const top3Issues = normalizeTopIssues(guardedAnalysis.top3Issues, feedbackCards);
+  const mainScoreLimitingFactor = recoverExecutiveField(reconciledMainScoreLimitingFactor, feedbackCards, "summary");
+  const mostUrgentRepair = recoverExecutiveField(guardedAnalysis.mostUrgentRepair, feedbackCards, "repair");
+  const top3Issues = normalizeTopIssues(selectDeterministicTopIssueCards(feedbackCards, payload), feedbackCards);
   const paragraphFeedback = normalizeParagraphFeedback(guardedAnalysis.paragraphFeedback, payload, feedbackCards);
   const practicePlan = enrichPracticePlan(
     Array.isArray(guardedAnalysis.practicePlan) && guardedAnalysis.practicePlan.length
@@ -2900,12 +3067,8 @@ function normalizeAnalysis(analysis, payload) {
     generatedAt: guardedAnalysis.generatedAt || new Date().toISOString(),
     analysisMode: guardedAnalysis.analysisMode || "Full diagnostic engine",
     estimatedBandRange: guardedAnalysis.estimatedBandRange || "6.0-6.5",
-    mainScoreLimitingFactor: payload.taskType === "Task 1"
-      ? dedupeGeneratedText(mainScoreLimitingFactor || "The main limiting factor needs evidence-based review.")
-      : (mainScoreLimitingFactor || "The main limiting factor needs evidence-based review."),
-    mostUrgentRepair: payload.taskType === "Task 1"
-      ? dedupeGeneratedText(guardedAnalysis.mostUrgentRepair || "Repair the highest-severity exact-sentence issue first.")
-      : (guardedAnalysis.mostUrgentRepair || "Repair the highest-severity exact-sentence issue first."),
+    mainScoreLimitingFactor,
+    mostUrgentRepair,
     criteriaScores: guardedAnalysis.criteriaScores || {},
     kruPomScores: guardedAnalysis.kruPomScores || {},
     canonicalTask2Analysis: guardedAnalysis.canonicalTask2Analysis || null,

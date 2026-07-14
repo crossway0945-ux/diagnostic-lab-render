@@ -1,6 +1,6 @@
-# V8 Final Sale-Readiness Release Gate
+# V8.1 Final Sale-Readiness Release Gate
 
-Date: 13 July 2026 (Asia/Bangkok)
+Date: 14 July 2026 (Asia/Bangkok)
 
 ## Decision
 
@@ -31,6 +31,8 @@ Command: `npm run check && npm test`
 | --- | --- | --- |
 | Syntax/integrity checks | PASS | Server, frontend, API, storage, job store, analyzer, routing, canonical object, schema, prompts and tests |
 | Inherited API/product suite | PASS | Authentication, quota protection, history, Task 1 image/data paths, provider failures and validation |
+| Recoverable provider-output gate | PASS | Incomplete cards are removed, repeated generic guidance is made card-specific, Top 3 links are rebuilt from retained evidence, and a valid report consumes one credit exactly once |
+| Fatal integrity gate | PASS | Conflicting backend word-count claims still fail after one retry, save no report and consume no additional credit |
 | V7 compatibility suite | PASS | 24 Task 2 fixtures, Evin arithmetic regression, archive/restore |
 | V8 Task 2 matrix | PASS | 30 fixtures: six task families × five quality/failure profiles |
 | V8 Task 1 matrix | PASS | 21 fixtures: line, bar, pie, table, map, process, structural and mixed visuals |

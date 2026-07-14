@@ -334,7 +334,7 @@ async function main() {
   await testTask1GoodsTransportIntroductionFormulaRegression();
   await testPoonReportIntegrityRegression();
   await testReportOutputQualityGateRules();
-  await testInvalidReportDoesNotConsumeCredit();
+  await testRecoverableProviderFormattingProducesReport();
   await testTask1HighBandStrategyPrompt();
   await testTask1MapModerateIssuesDoNotCreateCriticalCap();
   await testLangleyMapStrategyRegression();
@@ -393,7 +393,7 @@ async function testTeacherStudentSelectionReenablesAnalyzeButton() {
   const rootHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
   const previewHtml = await readFile(new URL("../netlify-static-preview/index.html", import.meta.url), "utf8");
   const selectionAvailabilitySync = /studentProfileSelect\.addEventListener\("change",[\s\S]*?updateSelectedStudentDisplay\(\);\s*updateAnalyzeAvailability\(\);\s*loadProgressHistory\(\);/;
-  const cacheBustedScript = "script.js?v=diagnostic-v8-sale-readiness";
+  const cacheBustedScript = "script.js?v=diagnostic-v8-1-output-recovery";
 
   for (const source of [rootScript, previewScript]) {
     assert.match(source, selectionAvailabilitySync);
@@ -1240,7 +1240,7 @@ async function testReportOutputQualityGateRules() {
   resetEnv();
 }
 
-async function testInvalidReportDoesNotConsumeCredit() {
+async function testRecoverableProviderFormattingProducesReport() {
   resetEnv();
   process.env.SESSION_SECRET = "test-session-secret";
   process.env.DIAGNOSTIC_STORAGE_ADAPTER = "local-json";
@@ -1261,31 +1261,57 @@ async function testInvalidReportDoesNotConsumeCredit() {
     }], null, 2));
     await writeFile(path.join(rootDir, "submission-history.json"), "[]\n");
 
-    const invalidOutput = buildPoonProviderOutput();
-    invalidOutput.feedbackCards[1].targetedRevision = "In addition.";
+    const recoverableOutput = buildPoonProviderOutput();
+    recoverableOutput.feedbackCards[1].targetedRevision = "In addition.";
     let providerCalls = 0;
     globalThis.fetch = async () => {
       providerCalls += 1;
       return {
         ok: true,
         status: 200,
-        json: async () => ({ output_text: JSON.stringify(invalidOutput) })
+        json: async () => ({ output_text: JSON.stringify(recoverableOutput) })
       };
     };
 
     const handler = createApiHandler({ rootDir });
     const storage = createStorage({ rootDir });
     const login = await request(handler, "POST", "/api/login", { username: "poon-test", password: "pass-a" });
-    const response = await request(handler, "POST", "/api/analyze", poonMarriageDivorcePayload, login.headers["Set-Cookie"]);
-    const user = await storage.getUserByUsername("poon-test");
-    const history = await storage.getSubmissionHistory("poon-test");
+    const recovered = await request(handler, "POST", "/api/analyze", poonMarriageDivorcePayload, login.headers["Set-Cookie"]);
+    const recoveredUser = await storage.getUserByUsername("poon-test");
+    const recoveredHistory = await storage.getSubmissionHistory("poon-test");
 
-    assert.equal(response.statusCode, 502);
-    assert.equal(response.json.errorCode, "REPORT_OUTPUT_VALIDATION_FAILED");
-    assert.ok(/No analysis credit was used/i.test(response.json.error));
+    assert.equal(recovered.statusCode, 200);
+    assert.equal(providerCalls, 1);
+    assert.equal(recoveredUser.used, 1);
+    assert.equal(recoveredHistory.length, 1);
+    assert.ok(recovered.json.analysis.feedbackCards.every((card) => card.targetedRevision !== "In addition."));
+    assert.equal(recovered.json.analysis.validationClassification.fatalIntegrity.length, 0);
+
+    const fatalOutput = buildPoonProviderOutput();
+    fatalOutput.mainScoreLimitingFactor = "The report has a verified word count of 999 words, which conflicts with the submitted response.";
+    providerCalls = 0;
+    globalThis.fetch = async () => {
+      providerCalls += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ output_text: JSON.stringify(fatalOutput) })
+      };
+    };
+    const fatal = await request(handler, "POST", "/api/analyze", {
+      ...poonMarriageDivorcePayload,
+      clientSubmissionId: "task1-fatal-metadata-conflict",
+      writing: `${poonMarriageDivorcePayload.writing}\n\nThis final sentence reports the submitted figures.`
+    }, login.headers["Set-Cookie"]);
+    const finalUser = await storage.getUserByUsername("poon-test");
+    const finalHistory = await storage.getSubmissionHistory("poon-test");
+
+    assert.equal(fatal.statusCode, 502);
+    assert.equal(fatal.json.errorCode, "REPORT_OUTPUT_VALIDATION_FAILED");
+    assert.ok(/No analysis credit was used/i.test(fatal.json.error));
     assert.equal(providerCalls, 2);
-    assert.equal(user.used, 0);
-    assert.equal(history.length, 0);
+    assert.equal(finalUser.used, 1);
+    assert.equal(finalHistory.length, 1);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
     resetEnv();
@@ -2075,6 +2101,8 @@ async function testTask2LowBandCompletionAndRouteSafety() {
 async function testUnderlengthProviderPartialFeedbackIsRepaired() {
   resetEnv();
   const localAnalysis = await analyzeWriting(poonCleanWaterPayload);
+  const malformedEvidence = localAnalysis.feedbackCards.at(-1).exactSentence;
+  const repeatedAction = "Rewrite the sentence carefully, then check every paragraph for the same language-control pattern before submitting the response.";
   const providerOutput = {
     ...localAnalysis,
     paragraphFeedback: [localAnalysis.paragraphFeedback[0]],
@@ -2098,6 +2126,11 @@ async function testUnderlengthProviderPartialFeedbackIsRepaired() {
       whyItLimitsBand: "The language reverses the charging meaning."
     }]
   };
+  providerOutput.feedbackCards = providerOutput.feedbackCards.map((card, index, cards) => ({
+    ...card,
+    ...(index < 4 ? { studentAction: repeatedAction } : {}),
+    ...(index === cards.length - 1 ? { targetedRevision: "In addition." } : {})
+  }));
   delete providerOutput.validationClassification;
 
   process.env.OPENAI_API_KEY = "test-key";
@@ -2123,6 +2156,9 @@ async function testUnderlengthProviderPartialFeedbackIsRepaired() {
     );
     assert.equal(analysis.validationClassification.fatalIntegrity.length, 0);
     assert.ok(analysis.validationClassification.diagnosticIssues.some((issue) => issue.code === "ESSAY_BELOW_MINIMUM"));
+    assert.ok(analysis.feedbackCards.every((card) => card.exactSentence !== malformedEvidence));
+    const repeatedActionCount = analysis.feedbackCards.filter((card) => card.studentAction === repeatedAction).length;
+    assert.ok(repeatedActionCount < 3);
     const thesisIssue = analysis.top3Issues.find((issue) => /thesis/i.test(issue.issueType));
     assert.ok(thesisIssue);
     assert.match(thesisIssue.paragraphLocation, /^Introduction/);

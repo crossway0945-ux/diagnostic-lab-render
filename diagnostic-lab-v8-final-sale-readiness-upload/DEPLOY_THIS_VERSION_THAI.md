@@ -1,6 +1,6 @@
-# Deploy Diagnostic Lab V8 บน Render
+# Deploy Diagnostic Lab V8.1 บน Render
 
-เวอร์ชันนี้เป็น V8 Final Sale-Readiness Consolidation: ใช้ canonical analysis/scoring ชุดเดียว แยก Task 1/Task 2 และ IELTS/Kru Pom framework อย่างถูกต้อง พร้อม regression gate และการจัดการโปรไฟล์นักเรียนแบบ archive หรือ permanent delete ที่ยืนยันสองขั้น
+เวอร์ชันนี้เป็น V8.1 Output-Recovery Hotfix บนฐาน V8 Final Sale-Readiness Consolidation: ใช้ canonical analysis/scoring ชุดเดียว แยก Task 1/Task 2 และ IELTS/Kru Pom framework อย่างถูกต้อง พร้อมตัดหรือซ่อมเฉพาะ output จาก AI ที่เป็นข้อความไม่สมบูรณ์หรือซ้ำก่อนถึง release gate โดยไม่ลดความเข้มงวดของการตรวจคะแนน จำนวนคำ ตัวตนนักเรียน route และ exact evidence
 
 ## สำคัญ: โครงสร้างอัปโหลดที่ใช้ในรอบนี้
 
@@ -43,6 +43,7 @@ Start Command: npm start
 7. การ revision ที่เพิ่ม premise ใหม่ต้องเป็น `Teacher-Guided Expansion` ไม่ใช่ `Route-Preserving Revision`
 8. ใน Student Profiles ทดลอง Archive แล้ว Restore; ประวัติและ account credits ต้องไม่ถูกลบ
 9. ทดลอง Permanent delete เฉพาะโปรไฟล์ทดสอบที่ archive แล้ว: ต้องขอชื่อยืนยัน, ลบเฉพาะ reports/progress/cache ของนักเรียนคนนั้น และ account credits ต้องไม่เปลี่ยน
+10. วิเคราะห์ Task 2 จริงอย่างน้อยหนึ่งชิ้นและยืนยันว่า output ที่มีการ์ดข้อความไม่สมบูรณ์เฉพาะจุดไม่ทำให้รายงานทั้งฉบับล้ม; ถ้าข้อมูลคะแนน/จำนวนคำ/ตัวตน/หลักฐานขัดแย้ง ระบบยังต้องปฏิเสธและไม่หักเครดิต
 
 ## Archive และ Permanent delete
 

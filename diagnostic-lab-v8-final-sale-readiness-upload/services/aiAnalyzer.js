@@ -2320,8 +2320,8 @@ function applyTask2StrictGuardrails(analysis, payload) {
     feedbackCards: lowBandProtected.feedbackCards || feedbackCards,
     criteriaScores: canonical.criterionScores,
     estimatedBandRange: canonical.overallBandRange.label || lowBandProtected.estimatedBandRange,
-    mainScoreLimitingFactor: reconcileTask2ExecutiveSummary(lowBandProtected.mainScoreLimitingFactor, canonical, safety),
-    mostUrgentRepair: reconcileTask2UrgentRepair(lowBandProtected.mostUrgentRepair, canonical, safety),
+    mainScoreLimitingFactor: canonical.executiveSummary.mainScoreLimitingFactor,
+    mostUrgentRepair: canonical.executiveSummary.mostUrgentRepair,
     kruPomScores: reconcileCanonicalTask2FrameworkScores(lowBandProtected.kruPomScores, canonical),
     canonicalTask2Analysis: canonical,
     task2EssayType: canonical.essayType,
@@ -2361,10 +2361,8 @@ function applyTask2StrictGuardrails(analysis, payload) {
     revisedThesisRevisionType: canonical.stanceRequired && safety.positionConfidence === "low"
       ? "Teacher-Guided Expansion"
       : "Route-Preserving Revision",
-    warnings: [
-      ...(Array.isArray(lowBandProtected.warnings) ? lowBandProtected.warnings : []),
-      "Task 2 V8 canonical route and criterion arithmetic applied."
-    ].filter((warning, index, list) => list.indexOf(warning) === index)
+    warnings: (Array.isArray(lowBandProtected.warnings) ? lowBandProtected.warnings : [])
+      .filter((warning) => !/canonical route and criterion arithmetic applied/i.test(String(warning)))
   };
 }
 

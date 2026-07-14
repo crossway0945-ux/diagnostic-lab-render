@@ -1,13 +1,13 @@
 # ค่าอัปโหลดและ Render สำหรับ V8
 
-แตก ZIP แล้วอัปโหลดโฟลเดอร์ `diagnostic-lab-v8-final-sale-readiness-upload` ทั้งโฟลเดอร์ไปที่ root ของ repository `diagnostic-lab-render` ภายในโฟลเดอร์นี้ต้องเห็น `package.json` ทันทีและต้องไม่มีโฟลเดอร์ชื่อเดิมซ้อน
+แตก ZIP แล้วเปิดโฟลเดอร์ที่ได้ จากนั้นอัปโหลด **ไฟล์และโฟลเดอร์ด้านในทั้งหมด** ไปที่ root ของ repository `diagnostic-lab-render` ให้ GitHub แสดง `package.json` ที่ระดับบนสุด
 
 ```text
-Root Directory: diagnostic-lab-v8-final-sale-readiness-upload
+Root Directory: เว้นว่าง (Leave blank)
 Build Command: npm install
 Start Command: npm start
 ```
 
-ห้ามเติม `/package.json` หรือ `/` ต่อท้าย Root Directory และห้ามให้โฟลเดอร์ `-upload` ซ้อนกันสองชั้น
+ห้ามใส่ชื่อ ZIP หรือชื่อโฟลเดอร์ที่แตกจาก ZIP ใน Root Directory เพราะแพ็กเกจนี้เป็น flat archive และ `package.json` อยู่ repository root
 
 รายละเอียดและ smoke test อยู่ใน `DEPLOY_THIS_VERSION_THAI.md`

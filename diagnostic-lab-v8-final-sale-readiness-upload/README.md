@@ -196,7 +196,7 @@ The print report hides web UI controls such as sidebar navigation, login, button
 
 Recommended production path for this project. Use Render as the main web app and backend host, not Netlify Drop.
 
-Upload the extracted `diagnostic-lab-v8-final-sale-readiness-upload` folder to the repository root. Set Render **Root Directory** to that exact folder name; do not append `/package.json`, a trailing slash, or a second nested copy of the folder name.
+This is a flat upload package. Open the extracted folder and upload its contents to the repository root so that GitHub shows `package.json`, `server.js`, and `services/` at the top level. In Render, leave **Root Directory blank**. Do not enter the ZIP filename or an extracted-folder name.
 
 This package includes `render.yaml`, `RENDER_ENV_TEMPLATE.txt`, and `RENDER_LAUNCH_GUIDE_THAI.md`.
 

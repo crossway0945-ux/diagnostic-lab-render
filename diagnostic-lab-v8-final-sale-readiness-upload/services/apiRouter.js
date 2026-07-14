@@ -4,6 +4,7 @@ import path from "node:path";
 import { createAnalysisJobStore } from "./analysisJobStore.js";
 import { analyzeWriting, getAnalyzerHealth, runProviderHealthCheck, validateReportOutput } from "./aiAnalyzer.js";
 import { projectCanonicalAnalysis } from "./canonicalAnalysis.js";
+import { classifyTask2Prompt } from "./task2Safety.js";
 import { getWordCountMetadata } from "../wordCount.js";
 import {
   createStorage,
@@ -142,7 +143,36 @@ export function createApiHandler(options = {}) {
         if (!profile) return jsonResponse(200, { ok: true, records: [] });
         const taskType = getQueryParam(request.path, "taskType");
         const records = await storage.getSubmissionHistory(session.user.username, profile.id, taskType);
-        return jsonResponse(200, { ok: true, records: records.map(sanitizeProgressRecordForClient) });
+        const validRecords = records.filter(isValidProgressRecord);
+        return jsonResponse(200, {
+          ok: true,
+          records: records.map(sanitizeProgressRecordForClient),
+          validRecords: validRecords.map(sanitizeProgressRecordForClient),
+          summary: buildServerProgressSummary(validRecords, null, taskType)
+        });
+      }
+
+      const submissionMatch = apiPath.match(/^\/api\/submissions\/([^/]+)$/);
+      if (method === "PATCH" && submissionMatch) {
+        const session = await requireSession(request, storage);
+        if (!isTeacherOrAdmin(session.user)) {
+          throw statusError("Only a teacher or administrator can invalidate a report.", 403, "VALIDATION_ERROR");
+        }
+        const body = readJsonBody(request);
+        if (String(body.action || "").trim().toLowerCase() !== "invalidate") {
+          throw statusError("Submission action must be invalidate.", 400, "VALIDATION_ERROR");
+        }
+        const reason = String(body.reason || "").trim();
+        if (reason.length < 5) throw statusError("Please record a reason for invalidating this analysis.", 400, "VALIDATION_ERROR");
+        if (typeof storage.markSubmissionInvalid !== "function") throw statusError("This storage adapter cannot invalidate reports.", 500, "INTERNAL_ERROR");
+        const updated = await storage.markSubmissionInvalid(session.user.username, decodeURIComponent(submissionMatch[1]), reason, session.user.username);
+        if (!updated) throw statusError("Submission was not found for this account.", 404, "VALIDATION_ERROR");
+        const records = await storage.getSubmissionHistory(session.user.username, updated.studentProfileId, updated.taskType);
+        return jsonResponse(200, {
+          ok: true,
+          record: sanitizeProgressRecordForClient(updated),
+          progressSummary: buildServerProgressSummary(records.filter(isValidProgressRecord), null, updated.taskType)
+        });
       }
 
       if (method === "GET" && apiPath === "/api/student-profiles") {
@@ -391,7 +421,7 @@ async function handleAnalyze(request, storage, jobStore) {
   const session = await requireSession(request, storage);
   const user = session.user;
   const body = readJsonBody(request);
-  const payload = validateAnalyzePayload(body);
+  const payload = applyTask2ClassificationGuard(validateAnalyzePayload(body));
 
   await enforceAnalysisAccess(storage, user, payload);
   const studentProfile = await resolveStudentProfileForAnalysis(storage, user, payload.studentProfileToken);
@@ -417,11 +447,17 @@ async function handleAnalyze(request, storage, jobStore) {
       quotaDeducted: false,
       duplicateCacheUsed: true
     });
-    return jsonResponse(200, buildDuplicateAnalysisResponse({
+    const duplicatePayload = buildDuplicateAnalysisResponse({
       user: latestUser || user,
       record: duplicateRecord,
       duplicateByHash: duplicateRecord.submissionHash === submissionHash && duplicateRecord.clientSubmissionId !== idempotencyKey
-    }));
+    });
+    duplicatePayload.progressSummary = buildServerProgressSummary(
+      (await storage.getSubmissionHistory(user.username, payload.studentProfileId, payload.taskType)).filter(isValidProgressRecord),
+      duplicateRecord,
+      payload.taskType
+    );
+    return jsonResponse(200, duplicatePayload);
   }
 
   if (shouldUseAsyncAnalysis()) {
@@ -484,11 +520,17 @@ async function handleAnalyze(request, storage, jobStore) {
       quotaDeducted: false,
       duplicateCacheUsed: true
     });
-    return jsonResponse(200, buildDuplicateAnalysisResponse({
+    const duplicatePayload = buildDuplicateAnalysisResponse({
       user: latestUser || user,
       record: savedRecord,
       duplicateByHash: savedRecord.submissionHash === submissionHash && savedRecord.clientSubmissionId !== idempotencyKey
-    }));
+    });
+    duplicatePayload.progressSummary = buildServerProgressSummary(
+      (await storage.getSubmissionHistory(user.username, payload.studentProfileId, payload.taskType)).filter(isValidProgressRecord),
+      savedRecord,
+      payload.taskType
+    );
+    return jsonResponse(200, duplicatePayload);
   }
 
   const updatedUser = await storage.incrementUsage(user.username).catch((error) => {
@@ -507,7 +549,12 @@ async function handleAnalyze(request, storage, jobStore) {
     duplicateSubmission: false,
     analysis: sanitizeAnalysisForClient(analysis),
     user: withExpiryFlags(addDailyLimitFlags(sanitizeUserForClient(updatedUser))),
-    progressRecord: sanitizeProgressRecordForClient(savedRecord)
+    progressRecord: sanitizeProgressRecordForClient(savedRecord),
+    progressSummary: buildServerProgressSummary(
+      (await storage.getSubmissionHistory(user.username, payload.studentProfileId, payload.taskType)).filter(isValidProgressRecord),
+      savedRecord,
+      payload.taskType
+    )
   });
 }
 
@@ -525,6 +572,7 @@ async function handleAnalyzeStatus(request, storage, jobStore, jobId) {
       analysis: sanitizeAnalysisForClient(job.analysis),
       user: job.user,
       progressRecord: sanitizeProgressRecordForClient(job.progressRecord),
+      progressSummary: job.progressSummary || null,
       duplicateSubmission: Boolean(job.duplicateSubmission),
       message: job.message || ""
     });
@@ -568,6 +616,7 @@ export async function processAnalyzeJob({ jobId, rootDir = process.cwd() }) {
     if (!user || user.status !== "active") {
       throw statusError("Please log in to use the diagnostic lab.", 401, "NOT_AUTHENTICATED");
     }
+    applyTask2ClassificationGuard(job.payload || {});
     await enforceAnalysisAccess(storage, user, job.payload || {});
     await assertOwnedStudentProfile(storage, user, job.payload || {});
 
@@ -584,6 +633,11 @@ export async function processAnalyzeJob({ jobId, rootDir = process.cwd() }) {
         record: duplicateRecord,
         duplicateByHash: duplicateRecord.submissionHash === submissionHash && duplicateRecord.clientSubmissionId !== job.payload?.clientSubmissionId
       });
+      duplicatePayload.progressSummary = buildServerProgressSummary(
+        (await storage.getSubmissionHistory(user.username, job.payload.studentProfileId, job.payload.taskType)).filter(isValidProgressRecord),
+        duplicateRecord,
+        job.payload.taskType
+      );
       await auditAnalyze(storage, latestUser || user, job.payload || {}, {
         openAiCalled: false,
         quotaDeducted: false,
@@ -597,6 +651,7 @@ export async function processAnalyzeJob({ jobId, rootDir = process.cwd() }) {
         analysis: duplicatePayload.analysis,
         user: duplicatePayload.user,
         progressRecord: duplicatePayload.progressRecord,
+        progressSummary: duplicatePayload.progressSummary,
         duplicateSubmission: duplicatePayload.duplicateSubmission,
         message: duplicatePayload.message
       };
@@ -635,6 +690,11 @@ export async function processAnalyzeJob({ jobId, rootDir = process.cwd() }) {
       analysis: savedRecord.report || savedRecord.analysis,
       user: withExpiryFlags(addDailyLimitFlags(sanitizeUserForClient(updatedUser || user))),
       progressRecord: savedRecord,
+      progressSummary: buildServerProgressSummary(
+        (await storage.getSubmissionHistory(user.username, job.payload.studentProfileId, job.payload.taskType)).filter(isValidProgressRecord),
+        savedRecord,
+        job.payload.taskType
+      ),
       duplicateSubmission: savedRecord !== progressRecord
     };
     await jobStore.set(jobId, completeJob);
@@ -1095,6 +1155,107 @@ function normalizeIdempotencyKey(value) {
   return key || randomBytes(16).toString("hex");
 }
 
+export function applyTask2ClassificationGuard(payload = {}) {
+  if (payload.taskType !== "Task 2") return payload;
+  const selectedLabel = String(payload.selectedEssayTypeLabel || payload.essayType || "").trim();
+  const classification = classifyTask2Prompt({ ...payload, essayType: selectedLabel });
+  Object.assign(payload, {
+    selectedEssayType: classification.selectedEssayType || "",
+    selectedEssayTypeLabel: classification.selectedEssayTypeLabel || selectedLabel,
+    canonicalEssayType: classification.essayType,
+    canonicalEssayTypeLabel: classification.essayTypeLabel,
+    promptClassificationConfidence: classification.confidence,
+    classificationMatch: classification.classificationMatch
+  });
+
+  if (classification.confidence === "high" && !classification.classificationMatch) {
+    const error = statusError(
+      `The selected essay type (${payload.selectedEssayTypeLabel}) does not match the prompt, which is classified as ${classification.essayTypeLabel}. Please correct the essay type before analysis.`,
+      409,
+      "ESSAY_TYPE_MISMATCH"
+    );
+    Object.assign(error, {
+      selectedEssayType: payload.selectedEssayTypeLabel,
+      detectedEssayType: classification.essayTypeLabel,
+      promptClassificationConfidence: classification.confidence,
+      classificationMatch: false
+    });
+    throw error;
+  }
+
+  if (classification.confidence === "low") {
+    const confirmed = payload.options?.essayTypeConfirmed === true || payload.options?.classificationConfirmed === true;
+    if (!confirmed) {
+      const error = statusError(
+        `The prompt type could not be classified with high confidence. Please confirm ${classification.essayTypeLabel} before analysis.`,
+        409,
+        "ESSAY_TYPE_CONFIRMATION_REQUIRED"
+      );
+      Object.assign(error, {
+        selectedEssayType: payload.selectedEssayTypeLabel,
+        detectedEssayType: classification.essayTypeLabel,
+        promptClassificationConfidence: classification.confidence,
+        classificationMatch: classification.classificationMatch
+      });
+      throw error;
+    }
+    payload.classificationConfirmation = {
+      confirmed: true,
+      confirmedEssayType: classification.essayType,
+      confirmedEssayTypeLabel: classification.essayTypeLabel,
+      confirmedAt: new Date().toISOString()
+    };
+  }
+
+  payload.essayType = classification.essayTypeLabel;
+  return payload;
+}
+
+function isValidProgressRecord(record = {}) {
+  return String(record.analysisValidity || "valid").toLowerCase() !== "invalid";
+}
+
+function stableProgressSort(records = []) {
+  return [...records].sort((a, b) => {
+    const timeDelta = new Date(a.dateTime || 0).getTime() - new Date(b.dateTime || 0).getTime();
+    return timeDelta || String(a.submissionId || "").localeCompare(String(b.submissionId || ""));
+  });
+}
+
+function buildServerProgressSummary(records = [], currentRecord = null, taskType = "") {
+  const valid = stableProgressSort(records.filter((record) =>
+    isValidProgressRecord(record) && (!taskType || record.taskType === taskType)
+  ));
+  const current = currentRecord && isValidProgressRecord(currentRecord)
+    ? currentRecord
+    : valid.at(-1) || null;
+  if (!current) {
+    return {
+      taskType: taskType || "",
+      previousSubmissionCount: 0,
+      previousEstimatedRange: "",
+      latestEstimatedRange: "",
+      currentMainRepair: "",
+      repeatedIssue: ""
+    };
+  }
+  const previous = valid.filter((record) => record.submissionId !== current.submissionId);
+  const previousLatest = previous.at(-1) || null;
+  const currentIssueKeys = new Set((current.top3Issues || []).map((issue) => String(issue.issueType || issue.title || issue).toLowerCase()).filter(Boolean));
+  const repeatedIssue = (previousLatest?.top3Issues || [])
+    .map((issue) => String(issue.issueType || issue.title || issue))
+    .find((issue) => currentIssueKeys.has(issue.toLowerCase())) || "";
+  return {
+    taskType: current.taskType || taskType,
+    currentSubmissionId: current.submissionId,
+    previousSubmissionCount: previous.length,
+    previousEstimatedRange: previousLatest?.estimatedBandRange || "",
+    latestEstimatedRange: current.estimatedBandRange || "",
+    currentMainRepair: current.mostUrgentRepair || current.mainScoreLimitingFactor || "",
+    repeatedIssue
+  };
+}
+
 function buildSubmissionHistoryRecord(username, payload, analysis, submissionHash = "") {
   analysis = analysis?.canonicalAnalysis
     ? projectCanonicalAnalysis(analysis.canonicalAnalysis, analysis)
@@ -1116,8 +1277,15 @@ function buildSubmissionHistoryRecord(username, payload, analysis, submissionHas
     studentDisplayNameSnapshot: payload.studentDisplayNameSnapshot,
     dateTime: new Date().toISOString(),
     taskType: payload.taskType,
-    taskSubtype: payload.taskType === "Task 2" ? payload.essayType : payload.visualType,
-    essayType: payload.taskType === "Task 2" ? payload.essayType : "",
+    taskSubtype: payload.taskType === "Task 2" ? (payload.canonicalEssayTypeLabel || payload.essayType) : payload.visualType,
+    essayType: payload.taskType === "Task 2" ? (payload.canonicalEssayTypeLabel || payload.essayType) : "",
+    selectedEssayType: payload.taskType === "Task 2" ? (payload.selectedEssayTypeLabel || payload.essayType) : "",
+    canonicalEssayType: payload.taskType === "Task 2" ? (payload.canonicalEssayType || "") : "",
+    canonicalEssayTypeLabel: payload.taskType === "Task 2" ? (payload.canonicalEssayTypeLabel || payload.essayType) : "",
+    promptClassificationConfidence: payload.taskType === "Task 2" ? (payload.promptClassificationConfidence || "") : "",
+    classificationMatch: payload.taskType === "Task 2" ? Boolean(payload.classificationMatch) : true,
+    classificationConfirmation: payload.taskType === "Task 2" ? (payload.classificationConfirmation || null) : null,
+    analysisValidity: "valid",
     visualType: payload.taskType === "Task 1" ? payload.visualType : "",
     wordCount: payload.wordCount,
     minimumWordCount: payload.minimumWordCount,
@@ -1353,6 +1521,9 @@ function normalizeError(error) {
   };
 
   if (debugHint) payload.debugHint = debugHint;
+  for (const key of ["selectedEssayType", "detectedEssayType", "promptClassificationConfidence", "classificationMatch"]) {
+    if (error?.[key] !== undefined) payload[key] = error[key];
+  }
   return { statusCode, errorCode, payload };
 }
 

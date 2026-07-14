@@ -61,6 +61,7 @@ let activeProgressTab = "";
 let currentAnalysis = buildSampleAnalysis();
 let currentUser = null;
 let progressRecords = [];
+let currentProgressSummary = null;
 let studentProfiles = [];
 let archivedStudentProfiles = [];
 let selectedStudentProfileToken = "";
@@ -106,6 +107,12 @@ document.addEventListener("click", (event) => {
   const historyPrintButton = event.target.closest("[data-history-print]");
   if (historyPrintButton) {
     loadHistoryReport(historyPrintButton.dataset.historyPrint, true);
+    return;
+  }
+
+  const historyInvalidateButton = event.target.closest("[data-history-invalidate]");
+  if (historyInvalidateButton) {
+    invalidateSubmission(historyInvalidateButton.dataset.historyInvalidate);
     return;
   }
 
@@ -261,13 +268,24 @@ form.addEventListener("submit", async (event) => {
 
   try {
     const payload = await collectPayload();
-    const response = await fetch("/api/analyze", {
+    let response = await fetch("/api/analyze", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload)
     });
 
-    const result = await readJsonResponse(response, "Analysis could not be completed. Please check your prompt and writing, then try again.");
+    let result = await readJsonResponse(response, "Analysis could not be completed. Please check your prompt and writing, then try again.");
+    if (!response.ok && result.errorCode === "ESSAY_TYPE_CONFIRMATION_REQUIRED") {
+      const confirmed = window.confirm(`${result.error}\n\nContinue using ${result.detectedEssayType || payload.essayType}?`);
+      if (!confirmed) return;
+      payload.options = { ...(payload.options || {}), essayTypeConfirmed: true };
+      response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      result = await readJsonResponse(response, "Analysis could not be completed after essay-type confirmation.");
+    }
     if (response.status === 202 && result.queued && result.jobId) {
       showToast("Analysis is running. Please keep this page open.");
       const completed = await waitForAnalysisJob(result.jobId);
@@ -321,6 +339,7 @@ async function waitForAnalysisJob(jobId) {
 }
 
 function handleCompletedAnalysis(result, payload) {
+  currentProgressSummary = result.progressSummary || null;
   renderAnalysis(result.analysis);
   activeProgressTab = normalizeProgressTab(result.analysis?.taskType || payload.taskType || activeTask);
   if (result.user) updateUserPanel(result.user);
@@ -437,6 +456,7 @@ function setAuthenticatedUser(user) {
 function showLoginScreen() {
   currentUser = null;
   progressRecords = [];
+  currentProgressSummary = null;
   studentProfiles = [];
   archivedStudentProfiles = [];
   selectedStudentProfileToken = "";
@@ -1100,7 +1120,7 @@ function renderReportPreview(analysis) {
     ["Disclaimer", "Diagnostic estimate only"]
   ];
 
-  const progressSummary = buildTaskProgressSummaryText(progressRecords, analysis.taskType);
+  const progressSummary = buildTaskProgressSummaryText(progressRecords, analysis.taskType, analysis, currentProgressSummary);
   if (progressSummary) rows.splice(8, 0, ["Progress Summary", progressSummary]);
 
   return rows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "-")}</strong></div>`).join("");
@@ -1126,7 +1146,7 @@ function renderPrintReport(analysis) {
   const frameworkNames = config.framework;
   const feedbackCards = normalized.feedbackCards || [];
   const topIssues = buildDashboardIssues(normalized.top3Issues, feedbackCards);
-  const taskRecords = sortProgressRecords(progressRecords).filter((record) => record.taskType === taskType);
+  const taskRecords = sortProgressRecords(progressRecords).filter((record) => isValidProgressRecord(record) && record.taskType === taskType);
   const taskSubtype = taskType === "Task 1"
     ? normalized.visualType || "Not Sure"
     : normalized.task2EssayTypeLabel || normalized.essayType || "Not Sure";
@@ -1205,7 +1225,7 @@ function renderPrintReport(analysis) {
       </section>
       <section class="print-section">
         <h2>${escapeHtml(taskType)} Progress Summary</h2>
-        ${renderPrintProgressSummary(taskType, taskRecords)}
+        ${renderPrintProgressSummary(taskType, taskRecords, normalized, currentProgressSummary)}
       </section>
       <section class="print-section print-disclaimer">
         <h2>Disclaimer</h2>
@@ -1305,23 +1325,23 @@ function renderPrintPlanItem(item, index) {
   </div>`;
 }
 
-function renderPrintProgressSummary(taskType, records) {
-  if (records.length <= 1) {
+function renderPrintProgressSummary(taskType, records, analysis, serverSummary) {
+  const summary = normalizeProgressSummary(records, taskType, analysis, serverSummary);
+  if (!summary.previousSubmissionCount) {
     return `<div class="print-summary-grid">
       ${renderPrintInfo(`Previous ${taskType} submissions`, "0")}
       ${renderPrintInfo("Previous estimated range", "No previous submission")}
+      ${renderPrintInfo("Latest estimated range", summary.latestEstimatedRange || analysis?.estimatedBandRange || "-")}
+      ${renderPrintInfo("Current main repair", summary.currentMainRepair || analysis?.mostUrgentRepair || "-")}
       ${renderPrintInfo("Repeated issue", "No repeated issue identified yet")}
     </div>`;
   }
-
-  const latest = records.at(-1);
-  const previous = records.at(-2);
   return `<div class="print-summary-grid">
-    ${renderPrintInfo(`Previous ${taskType} submissions`, String(Math.max(0, records.length - 1)))}
-    ${renderPrintInfo("Previous estimated range", previous?.estimatedBandRange || "-")}
-    ${renderPrintInfo("Latest estimated range", latest?.estimatedBandRange || "-")}
-    ${renderPrintInfo("Current main repair", latest?.mostUrgentRepair || "-")}
-    ${renderPrintInfo("Repeated issue", getTopRepeatedIssue(records) || "-")}
+    ${renderPrintInfo(`Previous ${taskType} submissions`, String(summary.previousSubmissionCount))}
+    ${renderPrintInfo("Previous estimated range", summary.previousEstimatedRange || "-")}
+    ${renderPrintInfo("Latest estimated range", summary.latestEstimatedRange || analysis?.estimatedBandRange || "-")}
+    ${renderPrintInfo("Current main repair", summary.currentMainRepair || analysis?.mostUrgentRepair || "-")}
+    ${renderPrintInfo("Repeated issue", summary.repeatedIssue || "-")}
   </div>`;
 }
 
@@ -1351,6 +1371,7 @@ async function loadProgressHistory() {
     const result = await readJsonResponse(response, "Progress history could not be loaded.");
     if (!response.ok || !result.ok) throw new Error(result.error || "Could not load progress history.");
     progressRecords = Array.isArray(result.records) ? result.records : [];
+    currentProgressSummary = result.summary || currentProgressSummary;
   } catch {
     progressRecords = [];
   }
@@ -1365,6 +1386,7 @@ function renderProgressTracker() {
   if (!progressEmpty || !progressContent) return;
 
   const records = sortProgressRecords(progressRecords);
+  const validRecords = records.filter(isValidProgressRecord);
   const hasRecords = records.length > 0;
   progressEmpty.classList.toggle("hidden", hasRecords);
   progressContent.classList.toggle("visible", hasRecords);
@@ -1374,8 +1396,8 @@ function renderProgressTracker() {
   activeProgressTab = normalizeProgressTab(activeProgressTab || getLatestProgressTask() || "Task 2");
   updateProgressTabUi();
 
-  task1ProgressBody.innerHTML = renderTaskProgress("Task 1", records.filter((record) => record.taskType === "Task 1"));
-  task2ProgressBody.innerHTML = renderTaskProgress("Task 2", records.filter((record) => record.taskType === "Task 2"));
+  task1ProgressBody.innerHTML = renderTaskProgress("Task 1", validRecords.filter((record) => record.taskType === "Task 1"));
+  task2ProgressBody.innerHTML = renderTaskProgress("Task 2", validRecords.filter((record) => record.taskType === "Task 2"));
   historyTableBody.innerHTML = records.map((record) => renderHistoryRow(record)).join("");
 }
 
@@ -1406,7 +1428,7 @@ function normalizeProgressTab(tabName) {
 }
 
 function getLatestProgressTask() {
-  const latest = sortProgressRecords(progressRecords).at(-1);
+  const latest = sortProgressRecords(progressRecords).filter(isValidProgressRecord).at(-1);
   return latest?.taskType === "Task 1" ? "Task 1" : latest?.taskType === "Task 2" ? "Task 2" : "";
 }
 
@@ -1530,17 +1552,41 @@ function renderIssueHistoryItem(record, index) {
 function renderHistoryRow(record, index) {
   const date = record.dateTime ? new Date(record.dateTime).toLocaleDateString("en-GB") : "-";
   const type = record.essayType || record.visualType || "-";
-  return `<tr>
+  const invalid = !isValidProgressRecord(record);
+  return `<tr${invalid ? ' class="invalid-history-row"' : ""}>
     <td>${escapeHtml(date)}</td>
     <td>${escapeHtml(record.taskType || "-")}</td>
     <td>${escapeHtml(type)}</td>
-    <td>${escapeHtml(record.estimatedBandRange || "-")}</td>
+    <td>${escapeHtml(record.estimatedBandRange || "-")} ${invalid ? '<span class="badge">Invalid</span>' : ""}</td>
     <td>${escapeHtml(getMainIssue(record))}</td>
     <td>
       <button class="text-button" type="button" data-history-report="${escapeHtml(record.submissionId)}">View Report</button>
       <button class="text-button" type="button" data-history-print="${escapeHtml(record.submissionId)}">Export PDF</button>
+      ${isTeacherAccount(currentUser) && !invalid ? `<button class="text-button" type="button" data-history-invalidate="${escapeHtml(record.submissionId)}">Mark analysis invalid</button>` : ""}
     </td>
   </tr>`;
+}
+
+async function invalidateSubmission(submissionId) {
+  if (!isTeacherAccount(currentUser)) return;
+  const reason = window.prompt("Reason for invalidating this analysis:");
+  if (!reason) return;
+  if (!window.confirm("Mark this report invalid and remove it from progress calculations? Credits will not change.")) return;
+  try {
+    const response = await fetch(`/api/submissions/${encodeURIComponent(submissionId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "invalidate", reason })
+    });
+    const result = await readJsonResponse(response, "The report could not be invalidated.");
+    if (!response.ok || !result.ok) throw new Error(result.error || "The report could not be invalidated.");
+    progressRecords = progressRecords.map((record) => record.submissionId === submissionId ? result.record : record);
+    currentProgressSummary = result.progressSummary || currentProgressSummary;
+    renderProgressTracker();
+    showToast("Analysis marked invalid. It is excluded from progress; credits were not changed.");
+  } catch (error) {
+    showError(error.message);
+  }
 }
 
 function loadHistoryReport(submissionId, shouldPrint) {
@@ -1580,7 +1626,7 @@ function getTaskProgressConfig(taskType) {
     emptyButton: "Start Task 2 Analysis",
     note: "Task 2 progress is tracked separately because Task Response, thesis route, body development, and SAR examples are specific to essay writing.",
     criteria: ["Task Response", "Coherence & Cohesion", "Lexical Resource", "Grammatical Range & Accuracy"],
-    framework: ["Thesis Route Clarity", "Body Paragraph Route Alignment", "Explanation Depth", "SAR Example Quality", "Link Back Control", "Conclusion Closure", "LFC CPC Control"]
+    framework: ["Position Clarity", "Thesis Route Clarity", "Body Paragraph Route Alignment", "Explanation Depth", "SAR Example Quality", "Link Back Control", "Conclusion Closure", "LFC CPC Control"]
   };
 }
 
@@ -1625,22 +1671,45 @@ function getMostImprovedArea(records) {
   return best.name;
 }
 
-function buildTaskProgressSummaryText(records, taskType) {
-  const sorted = sortProgressRecords(records).filter((record) => record.taskType === taskType);
-  if (!sorted.length) return "";
-
-  const latest = sorted.at(-1);
-  const previous = sorted.length > 1 ? sorted.at(-2) : null;
-  const repeatedIssue = getTopRepeatedIssue(sorted);
+function buildTaskProgressSummaryText(records, taskType, analysis, serverSummary) {
+  const summary = normalizeProgressSummary(records, taskType, analysis, serverSummary);
+  if (!summary.latestEstimatedRange) return "";
   const parts = [
-    `${taskType} submissions: ${sorted.length}`,
-    `Latest estimated range: ${latest.estimatedBandRange || "-"}`,
-    previous ? `Previous estimated range: ${previous.estimatedBandRange || "-"}` : "",
-    `Current main repair: ${latest.mostUrgentRepair || "-"}`,
-    repeatedIssue ? `Top repeated issue: ${repeatedIssue}` : ""
+    `Previous ${taskType} submissions: ${summary.previousSubmissionCount}`,
+    `Latest estimated range: ${summary.latestEstimatedRange}`,
+    summary.previousEstimatedRange ? `Previous estimated range: ${summary.previousEstimatedRange}` : "",
+    `Current main repair: ${summary.currentMainRepair || "-"}`,
+    summary.repeatedIssue ? `Top repeated issue: ${summary.repeatedIssue}` : ""
   ].filter(Boolean);
 
   return parts.join(" | ");
+}
+
+function normalizeProgressSummary(records, taskType, analysis, serverSummary) {
+  if (serverSummary && (!serverSummary.taskType || serverSummary.taskType === taskType)) {
+    return {
+      previousSubmissionCount: Number(serverSummary.previousSubmissionCount || 0),
+      previousEstimatedRange: serverSummary.previousEstimatedRange || "",
+      latestEstimatedRange: serverSummary.latestEstimatedRange || analysis?.estimatedBandRange || "",
+      currentMainRepair: serverSummary.currentMainRepair || analysis?.mostUrgentRepair || "",
+      repeatedIssue: serverSummary.repeatedIssue || ""
+    };
+  }
+  const sorted = sortProgressRecords(records).filter((record) => isValidProgressRecord(record) && record.taskType === taskType);
+  const currentId = analysis?.canonicalAnalysis?.metadata?.reportId || "";
+  const previous = sorted.filter((record) => record.submissionId !== currentId && record.clientSubmissionId !== currentId);
+  const previousLatest = previous.at(-1);
+  return {
+    previousSubmissionCount: previous.length,
+    previousEstimatedRange: previousLatest?.estimatedBandRange || "",
+    latestEstimatedRange: analysis?.estimatedBandRange || sorted.at(-1)?.estimatedBandRange || "",
+    currentMainRepair: analysis?.mostUrgentRepair || sorted.at(-1)?.mostUrgentRepair || "",
+    repeatedIssue: getTopRepeatedIssue(previous)
+  };
+}
+
+function isValidProgressRecord(record) {
+  return String(record?.analysisValidity || "valid").toLowerCase() !== "invalid";
 }
 
 function getTopRepeatedIssue(records) {
@@ -1702,7 +1771,10 @@ function rangeMidpoint(value) {
 }
 
 function sortProgressRecords(records) {
-  return [...(records || [])].sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
+  return [...(records || [])].sort((a, b) => {
+    const timeDelta = new Date(a.dateTime || 0) - new Date(b.dateTime || 0);
+    return timeDelta || String(a.submissionId || "").localeCompare(String(b.submissionId || ""));
+  });
 }
 
 function clamp(value, min, max) {

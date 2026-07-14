@@ -336,35 +336,46 @@ class JsonFileStorage {
       .filter((record) => record.username === username)
       .filter((record) => !studentProfileId || record.studentProfileId === studentProfileId)
       .filter((record) => !taskType || record.taskType === taskType)
-      .sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
+      .sort(compareSubmissionRecords);
   }
 
   async findSubmissionByKey(username, idempotencyKey, studentProfileId = "") {
     if (!idempotencyKey) return null;
     const records = await this.readHistory();
-    return records.find((record) => record.username === username && record.clientSubmissionId === idempotencyKey && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
+    return records.find((record) => record.username === username && record.clientSubmissionId === idempotencyKey && record.analysisValidity !== "invalid" && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
   }
 
   async findSubmissionByHash(username, submissionHash, studentProfileId = "") {
     if (!submissionHash) return null;
     const records = await this.readHistory();
-    return records.find((record) => record.username === username && record.submissionHash === submissionHash && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
+    return records.find((record) => record.username === username && record.submissionHash === submissionHash && record.analysisValidity !== "invalid" && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
   }
 
   async appendSubmission(record) {
     return this.withLock(async () => {
       const records = await this.readHistory();
       if (record.clientSubmissionId) {
-        const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.clientSubmissionId === record.clientSubmissionId);
+        const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.clientSubmissionId === record.clientSubmissionId && item.analysisValidity !== "invalid");
         if (existing) return existing;
       }
       if (record.submissionHash) {
-        const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.submissionHash === record.submissionHash);
+        const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.submissionHash === record.submissionHash && item.analysisValidity !== "invalid");
         if (existing) return existing;
       }
       records.push(record);
       await this.writeHistory(records);
       return record;
+    });
+  }
+
+  async markSubmissionInvalid(username, submissionId, reason, invalidatedBy = username) {
+    return this.withLock(async () => {
+      const records = await this.readHistory();
+      const index = records.findIndex((record) => record.username === username && record.submissionId === submissionId);
+      if (index < 0) return null;
+      records[index] = markInvalidRecord(records[index], reason, invalidatedBy);
+      await this.writeHistory(records);
+      return records[index];
     });
   }
 
@@ -575,34 +586,43 @@ class MemoryStorage {
       .filter((record) => record.username === username)
       .filter((record) => !studentProfileId || record.studentProfileId === studentProfileId)
       .filter((record) => !taskType || record.taskType === taskType)
-      .sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
+      .sort(compareSubmissionRecords);
   }
 
   async findSubmissionByKey(username, idempotencyKey, studentProfileId = "") {
     if (!idempotencyKey) return null;
     const records = await this.readHistory();
-    return records.find((record) => record.username === username && record.clientSubmissionId === idempotencyKey && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
+    return records.find((record) => record.username === username && record.clientSubmissionId === idempotencyKey && record.analysisValidity !== "invalid" && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
   }
 
   async findSubmissionByHash(username, submissionHash, studentProfileId = "") {
     if (!submissionHash) return null;
     const records = await this.readHistory();
-    return records.find((record) => record.username === username && record.submissionHash === submissionHash && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
+    return records.find((record) => record.username === username && record.submissionHash === submissionHash && record.analysisValidity !== "invalid" && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
   }
 
   async appendSubmission(record) {
     const records = await this.readHistory();
     if (record.clientSubmissionId) {
-      const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.clientSubmissionId === record.clientSubmissionId);
+      const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.clientSubmissionId === record.clientSubmissionId && item.analysisValidity !== "invalid");
       if (existing) return existing;
     }
     if (record.submissionHash) {
-      const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.submissionHash === record.submissionHash);
+      const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.submissionHash === record.submissionHash && item.analysisValidity !== "invalid");
       if (existing) return existing;
     }
     records.push(record);
     this.history = records;
     return record;
+  }
+
+  async markSubmissionInvalid(username, submissionId, reason, invalidatedBy = username) {
+    const records = await this.readHistory();
+    const index = records.findIndex((record) => record.username === username && record.submissionId === submissionId);
+    if (index < 0) return null;
+    records[index] = markInvalidRecord(records[index], reason, invalidatedBy);
+    this.history = records;
+    return records[index];
   }
 
   async readUsers() {
@@ -805,34 +825,43 @@ class BlobJsonStorage {
       .filter((record) => record.username === username)
       .filter((record) => !studentProfileId || record.studentProfileId === studentProfileId)
       .filter((record) => !taskType || record.taskType === taskType)
-      .sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
+      .sort(compareSubmissionRecords);
   }
 
   async findSubmissionByKey(username, idempotencyKey, studentProfileId = "") {
     if (!idempotencyKey) return null;
     const records = await this.readHistory();
-    return records.find((record) => record.username === username && record.clientSubmissionId === idempotencyKey && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
+    return records.find((record) => record.username === username && record.clientSubmissionId === idempotencyKey && record.analysisValidity !== "invalid" && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
   }
 
   async findSubmissionByHash(username, submissionHash, studentProfileId = "") {
     if (!submissionHash) return null;
     const records = await this.readHistory();
-    return records.find((record) => record.username === username && record.submissionHash === submissionHash && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
+    return records.find((record) => record.username === username && record.submissionHash === submissionHash && record.analysisValidity !== "invalid" && (!studentProfileId || record.studentProfileId === studentProfileId)) || null;
   }
 
   async appendSubmission(record) {
     const records = await this.readHistory();
     if (record.clientSubmissionId) {
-      const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.clientSubmissionId === record.clientSubmissionId);
+      const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.clientSubmissionId === record.clientSubmissionId && item.analysisValidity !== "invalid");
       if (existing) return existing;
     }
     if (record.submissionHash) {
-      const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.submissionHash === record.submissionHash);
+      const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.submissionHash === record.submissionHash && item.analysisValidity !== "invalid");
       if (existing) return existing;
     }
     records.push(record);
     await this.writeHistory(records);
     return record;
+  }
+
+  async markSubmissionInvalid(username, submissionId, reason, invalidatedBy = username) {
+    const records = await this.readHistory();
+    const index = records.findIndex((record) => record.username === username && record.submissionId === submissionId);
+    if (index < 0) return null;
+    records[index] = markInvalidRecord(records[index], reason, invalidatedBy);
+    await this.writeHistory(records);
+    return records[index];
   }
 
   async readUsers() {
@@ -909,6 +938,22 @@ class BlobJsonStorage {
     }
     return this.storePromise;
   }
+}
+
+function compareSubmissionRecords(a, b) {
+  const timeDelta = new Date(a.dateTime || 0).getTime() - new Date(b.dateTime || 0).getTime();
+  return timeDelta || String(a.submissionId || "").localeCompare(String(b.submissionId || ""));
+}
+
+function markInvalidRecord(record, reason, invalidatedBy) {
+  if (record.analysisValidity === "invalid") return record;
+  return {
+    ...record,
+    analysisValidity: "invalid",
+    invalidReason: String(reason || "").trim(),
+    invalidatedAt: new Date().toISOString(),
+    invalidatedBy: String(invalidatedBy || "").trim()
+  };
 }
 
 function validateNewStudentProfile(ownerAccountId, displayName) {

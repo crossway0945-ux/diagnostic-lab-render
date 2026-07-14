@@ -5,9 +5,9 @@
 ค่าที่ต้องตั้งคือ:
 
 ```text
-Root Directory: diagnostic-lab-v8-final-sale-readiness-upload
+Root Directory: เว้นว่าง (Leave blank)
 Build Command: npm install
 Start Command: npm start
 ```
 
-อัปโหลดโฟลเดอร์ `diagnostic-lab-v8-final-sale-readiness-upload` ทั้งโฟลเดอร์เข้า repository และตรวจให้เห็น `package.json` อยู่ภายในโฟลเดอร์นั้นทันที ห้ามมีโฟลเดอร์ชื่อเดียวกันซ้อนอีกชั้น
+เปิดโฟลเดอร์ที่แตกจาก ZIP แล้วอัปโหลด **ไฟล์และโฟลเดอร์ด้านในทั้งหมด** เข้า repository root จากนั้นตรวจว่า GitHub แสดง `package.json`, `server.js` และ `services/` ที่ระดับบนสุด เมื่อเป็นโครงสร้างนี้ต้องเว้น Root Directory ใน Render ให้ว่าง

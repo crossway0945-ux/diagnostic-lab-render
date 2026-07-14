@@ -1639,6 +1639,11 @@ input[type="checkbox"] {
   font-weight: 650;
 }
 
+.history-table .invalid-history-row {
+  opacity: 0.68;
+  background: rgba(139, 63, 63, 0.06);
+}
+
 .evidence-rule {
   display: grid;
   gap: 4px;

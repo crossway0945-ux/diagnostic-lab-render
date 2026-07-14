@@ -15,7 +15,7 @@ This package fixes only the Task 1 Map score/cap consistency bug.
 This document records an earlier Task 1 hotfix. Do not use its former Root Directory value for the V8 release. Current V8 settings are:
 
 ```text
-Root Directory: diagnostic-lab-v8-final-sale-readiness-upload
+Root Directory: LEAVE BLANK (the current ZIP is flat)
 Build Command: npm install
 Start Command: npm start
 ```

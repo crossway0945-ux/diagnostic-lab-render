@@ -65,6 +65,7 @@ export function buildCanonicalAnalysis({
   const taskType = payload.taskType || analysis.taskType || "Task 2";
   if (taskType === "Task 2" && analysis.canonicalTask2Analysis) {
     const base = analysis.canonicalTask2Analysis;
+    const display = projectCanonicalTask2Framework(base);
     return {
       ...base,
       metadata: {
@@ -75,12 +76,12 @@ export function buildCanonicalAnalysis({
         studentDisplayNameSnapshot: String(payload.studentDisplayNameSnapshot || base.metadata?.studentDisplayNameSnapshot || "")
       },
       executiveSummary: {
-        mainScoreLimitingFactor: String(analysis.mainScoreLimitingFactor || ""),
-        mostUrgentRepair: String(analysis.mostUrgentRepair || "")
+        mainScoreLimitingFactor: String(base.executiveSummary?.mainScoreLimitingFactor || ""),
+        mostUrgentRepair: String(base.executiveSummary?.mostUrgentRepair || "")
       },
       frameworkAssessment: {
         ...base.frameworkAssessment,
-        display: analysis.kruPomScores || {}
+        display
       },
       evidenceIssues: feedbackCards,
       topIssues,
@@ -160,6 +161,70 @@ export function buildCanonicalAnalysis({
       routeSource: "canonical-analysis-v8",
       scoreSource: "criterion-arithmetic",
       capSource: capMetadata.applied ? "explicit-canonical-cap" : "none"
+    }
+  };
+}
+
+export function projectCanonicalTask2Framework(canonical = {}) {
+  const route = canonical.routeAssessment || {};
+  const framework = canonical.frameworkAssessment || {};
+  const routeStatus = framework.bodyRouteAlignment?.status || "Needs Work";
+  const thesisStatus = framework.thesisRouteClarity?.status || "Needs Work";
+  const conclusionStatus = framework.conclusionClosure?.status || "Needs Work";
+  const positionClear = Boolean(route.position && !/unclear|contradictory/.test(route.position));
+  const partialConcession = (route.bodyRoutes || []).some((item) => /concession/.test(item.label || "") && /partially_developed|mentioned_only/.test(item.status || ""));
+  return {
+    "Essay Type Recognition": {
+      status: "Strong",
+      diagnosis: `The prompt is classified as ${canonical.metadata?.essayTypeLabel || "Task 2"} from its own wording.`
+    },
+    "Prompt Coverage": {
+      status: routeStatus,
+      diagnosis: route.missingRequirements?.length
+        ? `Missing required route(s): ${route.missingRequirements.join(", ")}.`
+        : /Moderate/i.test(routeStatus) ? "All required routes are present, but one route is only partially developed." : "All required routes are covered."
+    },
+    "Position Clarity": canonical.taskRequirements?.stanceRequired
+      ? {
+          status: positionClear ? "Strong" : "Needs Work",
+          diagnosis: positionClear ? `The writer's position is clear: ${route.position}.` : "The required position is not stated clearly enough."
+        }
+      : { status: "Not Applicable", diagnosis: "This task type does not require an agree/disagree position." },
+    "Thesis Route Clarity": {
+      status: thesisStatus,
+      diagnosis: positionClear
+        ? `The introduction states ${route.position}; route mapping is judged separately from position clarity.`
+        : "The thesis does not yet establish the required route clearly."
+    },
+    "Body Paragraph Route Alignment": {
+      status: routeStatus,
+      diagnosis: (route.bodyRoutes || []).map((item) => `Body ${item.index}: ${item.label} (${String(item.status || "").replaceAll("_", " ")})`).join(" | ")
+    },
+    "Explanation Depth": {
+      status: framework.explanationDepth?.status || routeStatus,
+      diagnosis: partialConcession
+        ? "The concession is relevant, but its relationship to the writer's main judgement is not fully explained."
+        : "Depth is based on whether each main idea has a controlled mechanism and consequence."
+    },
+    "SAR Example Quality": {
+      status: framework.sarExampleQuality?.status || routeStatus,
+      diagnosis: "SAR is diagnostic guidance only. Examples are judged by how clearly they prove the paragraph's main idea, not by a template penalty."
+    },
+    "Link Back Control": {
+      status: framework.linkBackControl?.status || routeStatus,
+      diagnosis: partialConcession
+        ? "The concession needs an explicit return to the writer's main judgement."
+        : "The body routes link back to the controlling judgement."
+    },
+    "Conclusion Closure": {
+      status: conclusionStatus,
+      diagnosis: conclusionStatus === "Strong"
+        ? "The conclusion restates the writer's judgement consistently."
+        : "The conclusion is missing, unfinished, or does not close the required route."
+    },
+    "LFC CPC Control": {
+      status: framework.lfcCpcControl?.status || routeStatus,
+      diagnosis: "This teaching framework describes paragraph control and does not create an unofficial IELTS score cap."
     }
   };
 }

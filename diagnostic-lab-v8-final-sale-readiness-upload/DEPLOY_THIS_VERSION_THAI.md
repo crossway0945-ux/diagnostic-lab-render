@@ -1,36 +1,34 @@
-# Deploy Diagnostic Lab V8.1 บน Render
+# Deploy Diagnostic Lab V8.2 บน Render
 
-เวอร์ชันนี้เป็น V8.1 Output-Recovery Hotfix บนฐาน V8 Final Sale-Readiness Consolidation: ใช้ canonical analysis/scoring ชุดเดียว แยก Task 1/Task 2 และ IELTS/Kru Pom framework อย่างถูกต้อง พร้อมตัดหรือซ่อมเฉพาะ output จาก AI ที่เป็นข้อความไม่สมบูรณ์หรือซ้ำก่อนถึง release gate โดยไม่ลดความเข้มงวดของการตรวจคะแนน จำนวนคำ ตัวตนนักเรียน route และ exact evidence
+เวอร์ชันนี้เป็น V8.2 Critical Correction: แก้ prompt classification, Opinion position/concession route, canonical framework projection, report invalidation และ progress integrity พร้อมเก็บ V8.1 output recovery ไว้ครบ
 
 ## สำคัญ: โครงสร้างอัปโหลดที่ใช้ในรอบนี้
 
-เมื่อใช้ Extract All จะได้โฟลเดอร์พร้อมอัปโหลดชื่อ `diagnostic-lab-v8-final-sale-readiness-upload` และภายในต้องเห็น `package.json`, `script.js`, `server.js` และโฟลเดอร์ `services` ทันที ห้ามมีโฟลเดอร์ชื่อเดิมซ้อนอีกชั้น
+เมื่อใช้ Extract All ให้เปิดโฟลเดอร์ที่ได้ แล้วอัปโหลด **ไฟล์และโฟลเดอร์ด้านในทั้งหมด** ไปที่ repository root ของ `diagnostic-lab-render`
 
-ให้อัปโหลดโฟลเดอร์ `diagnostic-lab-v8-final-sale-readiness-upload` ทั้งโฟลเดอร์ไปไว้ที่ repository root ของ `diagnostic-lab-render`
-
-ตรวจใน GitHub ก่อน deploy ว่า path ต่อไปนี้เปิดได้จริง:
+ตรวจใน GitHub ก่อน deploy ว่า path ต่อไปนี้เปิดได้จริงที่ระดับบนสุด:
 
 ```text
-diagnostic-lab-v8-final-sale-readiness-upload/package.json
-diagnostic-lab-v8-final-sale-readiness-upload/server.js
-diagnostic-lab-v8-final-sale-readiness-upload/script.js
-diagnostic-lab-v8-final-sale-readiness-upload/services/canonicalAnalysis.js
-diagnostic-lab-v8-final-sale-readiness-upload/tests/v8-sale-readiness.test.mjs
+package.json
+server.js
+script.js
+services/canonicalAnalysis.js
+tests/v8-2-opinion-route-progress.test.mjs
 ```
 
 ## ค่า Render ที่ถูกต้อง
 
 ```text
-Root Directory: diagnostic-lab-v8-final-sale-readiness-upload
+Root Directory: เว้นว่าง (Leave blank)
 Build Command: npm install
 Start Command: npm start
 ```
 
-คัดลอกชื่อ Root Directory ตามบรรทัดด้านบนเท่านั้น ห้ามเติม `/package.json` และห้ามเติม `/` ต่อท้าย
+ห้ามใส่ชื่อ ZIP หรือชื่อโฟลเดอร์ที่แตกจาก ZIP ใน Root Directory เพราะ `package.json` อยู่ repository root
 
 จากนั้นเลือก **Save Changes** แล้วเลือก **Manual Deploy > Clear build cache & deploy**
 
-ก่อน deploy ตรวจใน GitHub ให้แน่ใจว่า `package.json` อยู่ภายในโฟลเดอร์ชื่อนี้ตรงหนึ่งชั้น ไม่ได้ซ้อนโฟลเดอร์ชื่อเดิมสองครั้ง
+ก่อน deploy ตรวจใน GitHub ให้แน่ใจว่า `package.json` อยู่ระดับบนสุดของ repository
 
 ## Smoke test หลัง deploy
 

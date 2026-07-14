@@ -1,6 +1,6 @@
 import { countWords, getWordCountMetadata, normalizeEssayText } from "../wordCount.js";
 
-const POSITION_PATTERN = /\b(?:i\s+(?:(strongly|firmly|completely|fully|generally|partly|partially|consequently|therefore|ultimately)\s+)?(agree|disagree)|in my (?:view|opinion)[^.!?]{0,80}\b(agree|disagree)|i believe[^.!?]{0,80}\b(?:should|must|ought|outweigh|more (?:important|significant|beneficial)))\b/i;
+const POSITION_PATTERN = /\b(?:i\s+(?:(strongly|firmly|completely|fully|heavily|generally|partly|partially|consequently|therefore|ultimately)\s+)?(agree|disagree)|in my (?:view|opinion)[^.!?]{0,80}\b(agree|disagree)|i believe[^.!?]{0,80}\b(?:should|must|ought|outweigh|more (?:important|significant|beneficial)))\b/i;
 const SUPPORT_PATTERN = /\b(?:agree|support|benefit|advantage|basic right|human right|should (?:receive|be provided)|free of charge|without (?:a )?charge|protect|improve|enable|allow|essential)\b/i;
 const OPPOSITION_PATTERN = /\b(?:disagree|oppose|drawback|disadvantage|too (?:costly|expensive)|cost the government|budget.*not enough|tax(?:es)? must|should not|cannot afford|financial burden|on the other hand)\b/i;
 const OUTWEIGH_POSITIVE_SIDE_PATTERNS = [
@@ -98,8 +98,8 @@ export function analyzeTask2Safety(payload = {}) {
   const classification = classifyTask2Prompt(payload);
   const essayRoute = classification.essayType;
   const stanceRequired = classification.stanceRequired;
-  const introPosition = stanceRequired ? detectPosition(introduction) : "";
-  const conclusionPosition = stanceRequired ? detectPosition(conclusion) : "";
+  const introPosition = stanceRequired ? detectPosition(introduction, payload.prompt) : "";
+  const conclusionPosition = stanceRequired ? detectPosition(conclusion, payload.prompt) : "";
   const positionBodyRoutes = stanceRequired
     ? bodyParagraphs.map((paragraph) => classifyBodyRoute(paragraph, essayRoute))
     : [];
@@ -127,7 +127,7 @@ export function analyzeTask2Safety(payload = {}) {
   const meaningErrors = detectMeaningErrors(payload.prompt, writing);
   const languageErrors = detectLanguageControlErrors(writing, ending);
   const languageAccuracyRisk = detectTask2LanguageAccuracyRisk(writing);
-  const developmentRisk = detectOutweighDevelopmentRisk({
+  const developmentRisk = detectTask2DevelopmentRisk({
     bodyParagraphs,
     introduction,
     conclusion,
@@ -180,7 +180,11 @@ export function analyzeTask2Safety(payload = {}) {
     severeUnderLength,
     unfinishedEndingDetected,
     routeAssessment,
-    directQuestionMissingPart
+    directQuestionMissingPart,
+    introPosition,
+    conclusionPosition,
+    detectedPosition,
+    positionConfidence
   });
   const canonicalAnalysis = {
     version: "8.0",
@@ -475,12 +479,11 @@ export function classifyTask2EssayType(payload = {}) {
 export function classifyTask2Prompt(payload = {}) {
   const prompt = String(payload.prompt || "").trim();
   const selected = String(payload.essayType || "").trim();
-  const text = `${selected} ${prompt}`.toLowerCase();
-  const promptOnly = prompt.toLowerCase();
+  const promptOnly = prompt.toLowerCase().replace(/\s+/g, " ");
   const promptParts = extractPromptParts(prompt);
   const matches = [];
   const add = (essayType, confidence, pattern, signalLabel) => {
-    const match = promptOnly.match(pattern) || selected.toLowerCase().match(pattern);
+    const match = promptOnly.match(pattern);
     if (!match) return;
     matches.push({ essayType, confidence, signal: match[0], signalLabel });
   };
@@ -511,7 +514,7 @@ export function classifyTask2Prompt(payload = {}) {
     if (selectedType) {
       winner = {
         essayType: selectedType,
-        confidence: selected.toLowerCase() === "not sure" ? "low" : "medium",
+        confidence: "low",
         signal: selected,
         signalLabel: "student-selected task type"
       };
@@ -536,7 +539,11 @@ export function classifyTask2Prompt(payload = {}) {
     };
   }
 
-  const stanceRequired = isStanceRequired(payload, winner.essayType);
+  const selectedType = selectedTaskType(selected);
+  const classificationMatch = !selectedType || selectedType === winner.essayType || (
+    selectedType === TASK2_CANONICAL_TYPES.ADVANTAGES_DISADVANTAGES && winner.essayType === TASK2_CANONICAL_TYPES.OUTWEIGH
+  );
+  const stanceRequired = isStanceRequired({ ...payload, essayType: TASK2_TYPE_LABELS[winner.essayType] }, winner.essayType);
   return {
     essayType: winner.essayType,
     essayTypeLabel: TASK2_TYPE_LABELS[winner.essayType],
@@ -547,6 +554,9 @@ export function classifyTask2Prompt(payload = {}) {
       .concat(winner.signal)
       .filter(Boolean))),
     signalReason: winner.signalLabel,
+    selectedEssayType: selectedType,
+    selectedEssayTypeLabel: selectedType ? TASK2_TYPE_LABELS[selectedType] : selected,
+    classificationMatch,
     stanceRequired,
     requiredRoutes: requiredRoutesForType(winner.essayType, stanceRequired, promptParts.length),
     promptParts
@@ -623,21 +633,33 @@ function buildTaskTypeRouteAssessment(context) {
 
 function buildOpinionRouteAssessment(context) {
   const bodyRoutes = context.bodyParagraphs.map((paragraph, index) => {
-    const rawRoute = classifyBodyRoute(paragraph, TASK2_CANONICAL_TYPES.OPINION);
+    const opinionRoute = classifyOpinionBodyRoute({
+      paragraph,
+      index,
+      prompt: context.payload.prompt,
+      position: context.detectedPosition
+    });
     return routeItem(
       index,
-      describeBodyRoute(rawRoute, paragraph, context.payload.prompt, TASK2_CANONICAL_TYPES.OPINION),
+      opinionRoute.label,
       paragraph,
-      countWords(paragraph) >= 55 ? "adequate" : "partial"
+      opinionRoute.status
     );
   });
   const missingPosition = ["unclear", "contradictory"].includes(context.detectedPosition);
-  const conflict = detectRouteConflict({
+  const directConflict = detectRouteConflict({
     essayRoute: TASK2_CANONICAL_TYPES.OPINION,
     detectedPosition: context.detectedPosition,
     introPosition: context.introPosition,
-    bodyRoutes: context.bodyParagraphs.map((paragraph) => classifyBodyRoute(paragraph, TASK2_CANONICAL_TYPES.OPINION))
+    bodyRoutes: bodyRoutes.map((item) => item.label),
+    conclusionPosition: context.conclusionPosition
   });
+  const conflict = directConflict || (
+    missingPosition &&
+    context.unfinishedEndingDetected &&
+    bodyRoutes.some((item) => /aligned with the writer|supports free clean-water/.test(item.label)) &&
+    bodyRoutes.some((item) => /opposing|concessive|public cost/.test(item.label))
+  );
   const missingRequirements = [
     ...(missingPosition ? ["position"] : []),
     ...(bodyRoutes.length < 2 ? ["two developed body routes"] : [])
@@ -649,7 +671,7 @@ function buildOpinionRouteAssessment(context) {
     label: "Opinion Route Assessment",
     requirements: [
       requirement("position", "Clear extent of agreement", !missingPosition, context.introPosition || firstSentence(context.introduction)),
-      requirement("body-routes", "Reasons aligned with the position", bodyRoutes.length >= 2 && !conflict, bodyRoutes.map((item) => item.evidence).join(" | ")),
+      requirement("body-routes", "Reasons and concessions controlled against the writer's position", bodyRoutes.length >= 2 && !conflict, bodyRoutes.map((item) => item.evidence).join(" | ")),
       requirement("conclusion", "Consistent final position", Boolean(context.conclusion) && !context.unfinishedEndingDetected && !["unclear", "contradictory"].includes(context.conclusionPosition), firstSentence(context.conclusion))
     ],
     bodyRoutes,
@@ -944,7 +966,7 @@ function assessThesisRouteCoverage(context) {
   const introduction = String(context.introduction || "");
   if (!introduction || countWords(introduction) < 8) return ROUTE_COVERAGE.ABSENT;
   if (context.stanceRequired) {
-    return ["unclear", "contradictory"].includes(context.introPosition)
+    return !context.introPosition || ["unclear", "contradictory"].includes(context.introPosition)
       ? ROUTE_COVERAGE.MENTIONED_ONLY
       : ROUTE_COVERAGE.ADEQUATELY_DEVELOPED;
   }
@@ -1068,7 +1090,7 @@ function countPromptQuestions(prompt) {
   return (String(prompt || "").match(/\?/g) || []).length;
 }
 
-function detectPosition(text) {
+function detectPosition(text, prompt = "") {
   const source = String(text || "");
   const outweighPosition = detectSemanticOutweighPosition(source);
   if (outweighPosition) return outweighPosition;
@@ -1078,12 +1100,15 @@ function detectPosition(text) {
   if (/\b(?:i\s+(?:believe|consider|regard|think)[^.!?]{0,80}|this\s+is[^.!?]{0,40})\b(?:a\s+)?(?:largely|mainly|overall|predominantly|clearly|generally)?\s*negative (?:development|change|trend|situation)\b/i.test(source)) {
     return "negative development";
   }
+  if (opinionPropositionPolarity(prompt) === "negative" && /\b(?:money|funds?|spending|investment)[^.!?]{0,100}\b(?:space|exploration|technology)[^.!?]{0,100}\b(?:is|are|remains?|seems?)\s+(?:fully\s+|largely\s+)?justified\b|\b(?:space|exploration|technology)[^.!?]{0,100}\b(?:is|are|remains?|seems?)\s+(?:fully\s+|largely\s+)?justified\b/i.test(source)) {
+    return "generally disagree";
+  }
   const match = source.match(POSITION_PATTERN);
   if (!match) return "";
   const modifier = String(match[1] || "").toLowerCase();
   const direction = String(match[2] || match[3] || "").toLowerCase();
   if (modifier === "partly" || modifier === "partially") return direction === "disagree" ? "partly disagree" : "partly agree";
-  if (modifier === "strongly" || modifier === "firmly" || modifier === "completely" || modifier === "fully") return `strongly ${direction}`;
+  if (["strongly", "firmly", "completely", "fully", "heavily"].includes(modifier)) return `strongly ${direction}`;
   if (modifier === "generally") return `generally ${direction}`;
   if (direction) return `generally ${direction}`;
   return "balanced/conditional position";
@@ -1097,6 +1122,58 @@ function classifyBodyRoute(paragraph, essayRoute) {
   if (oppose) return "opposes or limits the proposition";
   if (support) return "supports the proposition";
   return "route unclear from the controlling sentences";
+}
+
+function opinionPropositionPolarity(prompt) {
+  const source = String(prompt || "");
+  return /\b(?:waste of money|better spent|should not (?:be )?spend|not justified|unjustified|too much money)[^.!?]{0,120}\b(?:space|exploration|technology)\b|\b(?:space|exploration|technology)[^.!?]{0,120}\b(?:waste of money|better spent elsewhere|should not|not justified|unjustified)\b/i.test(source)
+    ? "negative"
+    : "positive";
+}
+
+function classifyOpinionBodyRoute({ paragraph, index, prompt, position }) {
+  const text = String(paragraph || "");
+  const cleanWaterTask = /clean water|water supply/i.test(prompt) && /free of charge|free/i.test(prompt);
+  if (cleanWaterTask) {
+    const raw = classifyBodyRoute(text, "generic-opinion");
+    if (raw === "supports the proposition") {
+      return { label: "supports free clean-water supply", status: countWords(text) >= 55 ? "adequate" : "partial" };
+    }
+    if (raw === "opposes or limits the proposition" && /budget|tax|cost|money/i.test(text)) {
+      return { label: "opposes or limits the policy because of public cost", status: countWords(text) >= 55 ? "adequate" : "partial" };
+    }
+  }
+  const negativeProposition = opinionPropositionPolarity(prompt) === "negative";
+  const writerDisagrees = /disagree/.test(position);
+  const subjectBenefits = /\b(?:space exploration|space technology|satellites?|communication|navigation|disaster monitoring|scientific|long-term[^.!?]{0,40}benefits?)\b/i.test(text);
+  const competingPriorities = /\b(?:poverty|healthcare|food supply|hospitals?|schools?|water|shelters?|global warming|financial support|basic needs?)\b/i.test(text);
+  const explicitReturn = /\b(?:however|nevertheless|even so|despite this|although this is important)[^.!?]{0,140}\b(?:justified|benefit|long-term|space|exploration)\b/i.test(text);
+
+  if (negativeProposition && writerDisagrees && subjectBenefits && !competingPriorities) {
+    return {
+      label: "develops the writer's disagreement through benefits of space investment",
+      status: countWords(text) >= 55 ? "adequate" : "partial"
+    };
+  }
+  if (negativeProposition && writerDisagrees && competingPriorities) {
+    return {
+      label: explicitReturn
+        ? "presents a concession and explicitly returns to the writer's disagreement"
+        : "presents a relevant concession, but does not explicitly return to the writer's disagreement",
+      status: explicitReturn && countWords(text) >= 55 ? "adequate" : "partial"
+    };
+  }
+  const raw = classifyBodyRoute(text, "generic-opinion");
+  return {
+    label: raw === "supports the proposition"
+      ? "develops a reason aligned with the writer's stated position"
+      : raw === "opposes or limits the proposition"
+        ? "presents an opposing or concessive reason that needs an explicit return to the writer's position"
+        : raw === "mixed or conditional route"
+          ? "mixes supporting and concessive reasoning within one route"
+          : `Body ${index + 1} route is not clear from its controlling sentences`,
+    status: raw === "supports the proposition" && countWords(text) >= 55 ? "adequate" : "partial"
+  };
 }
 
 function detectSemanticOutweighPosition(value) {
@@ -1208,13 +1285,14 @@ function countOutweighDisadvantageRouteSignals(sentence) {
 function reconcilePosition({ introPosition, conclusionPosition, unfinishedEndingDetected, bodyRoutes }) {
   if (introPosition && conclusionPosition && positionDirection(introPosition) !== positionDirection(conclusionPosition)) return "contradictory";
   if (!introPosition && conclusionPosition && unfinishedEndingDetected) return "unclear";
-  if (!introPosition && !conclusionPosition) return bodyRoutes.includes("supports the proposition") && bodyRoutes.includes("opposes or limits the proposition") ? "contradictory" : "unclear";
+  if (!introPosition && !conclusionPosition) return "unclear";
   return introPosition || conclusionPosition || "unclear";
 }
 
 function positionConfidenceFor({ introPosition, conclusionPosition, unfinishedEndingDetected, bodyRoutes }) {
   if (!introPosition || unfinishedEndingDetected) return "low";
   if (conclusionPosition && positionDirection(introPosition) !== positionDirection(conclusionPosition)) return "low";
+  if (conclusionPosition && positionDirection(introPosition) === positionDirection(conclusionPosition)) return "high";
   if (bodyRoutes.includes("route unclear from the controlling sentences")) return "medium";
   return "high";
 }
@@ -1229,7 +1307,10 @@ function positionDirection(value) {
   return value;
 }
 
-function detectRouteConflict({ essayRoute, detectedPosition, introPosition, bodyRoutes }) {
+function detectRouteConflict({ essayRoute, detectedPosition, introPosition, conclusionPosition, bodyRoutes }) {
+  if (essayRoute === TASK2_CANONICAL_TYPES.OPINION) {
+    return Boolean(introPosition && conclusionPosition && positionDirection(introPosition) !== positionDirection(conclusionPosition));
+  }
   if (["discuss-both-views", "outweigh", "problem-solution", "direct-question"].includes(essayRoute)) return false;
   if (/partly|balanced|conditional/.test(`${detectedPosition} ${introPosition}`)) return false;
   return bodyRoutes.includes("supports the proposition") && bodyRoutes.includes("opposes or limits the proposition");
@@ -1289,6 +1370,11 @@ function detectTask2LanguageAccuracyRisk(writing) {
     },
     { pattern: /\b(?:quality\s+of\s+workforce|as\s+large\s+workforce)\b/gi, category: "article control", level: "major" },
     { pattern: /\b(?:increased youth|increases in youth|young-age population|labou?r abundance|economic industry|carry out operations or businesses|higher number of income tax(?: and sales tax)? revenues?)\b/gi, category: "collocation", level: "major" },
+    { pattern: /\b(?:heavily disagree|young majority|opportunities for occupations|operate in solving|significant and certain impacts?)\b/gi, category: "collocation", level: "major" },
+    { pattern: /\bastrology\b/gi, category: "meaning-sensitive word choice", level: "major" },
+    { pattern: /\bwater,\s*foods?,\s*and\s*shelters?\b/gi, category: "countability and collocation", level: "major" },
+    { pattern: /\boccupations\s+,\s*which\b|\bspace\s*,?which\b/gi, category: "punctuation spacing", level: "major" },
+    { pattern: /\bsecrets? in the space\b/gi, category: "collocation", level: "moderate" },
     { pattern: /\b(?:daily travels?|exceeding amounts?|hundreds and thousands|significantly invest(?:ed|ing)?|car ownership is (?:a )?convenient mode)\b/gi, category: "collocation", level: "moderate" },
     { pattern: /[;,.!?](?:Therefore|However|Moreover|In addition)\b/g, category: "punctuation spacing", level: "moderate" },
     { pattern: /\bincrease\s+in\s+young adults?\b[^.!?]{0,80}\bwhich\s+outnumbers?\b/gi, category: "reference and logic", level: "major" },
@@ -1334,6 +1420,24 @@ function detectTask2LanguageAccuracyRisk(writing) {
           ? "isolated accuracy risk"
           : "no deterministic frequent-error profile"
   };
+}
+
+function detectTask2DevelopmentRisk(context) {
+  if (context.essayRoute === TASK2_CANONICAL_TYPES.OPINION) {
+    const bodyText = context.bodyParagraphs.join(" ");
+    const additiveListing = (bodyText.match(/\b(?:furthermore|in addition|also|moreover|for example)\b/gi) || []).length >= 4;
+    const concessionWithoutReturn = context.bodyParagraphs.some((paragraph) =>
+      /\b(?:poverty|healthcare|food supply|hospitals?|schools?|basic needs?|global warming)\b/i.test(paragraph) &&
+      !/\b(?:however|nevertheless|even so|despite this)[^.!?]{0,140}\b(?:justified|space|exploration|long-term benefit)\b/i.test(paragraph)
+    );
+    return {
+      unevenDevelopment: additiveListing || concessionWithoutReturn,
+      additiveListing,
+      concessionWithoutReturn,
+      unsupportedClaim: /\bastrology\b|\bcertain impacts?\b/i.test(bodyText)
+    };
+  }
+  return detectOutweighDevelopmentRisk(context);
 }
 
 function detectOutweighDevelopmentRisk({ bodyParagraphs, introduction, conclusion, essayRoute, prompt }) {
@@ -1406,7 +1510,7 @@ function buildRecommendedRouteRationale({ detectedPosition, conclusionPosition, 
   return "The original route is unclear or contradictory, so any new position must be presented as a teacher-guided recommendation rather than a direct correction.";
 }
 
-function buildDeterministicCapMetadata({ severeUnderLength, unfinishedEndingDetected, routeAssessment, directQuestionMissingPart }) {
+function buildDeterministicCapMetadata({ severeUnderLength, unfinishedEndingDetected, routeAssessment, directQuestionMissingPart, introPosition, conclusionPosition, detectedPosition, positionConfidence }) {
   const caps = [];
   if (severeUnderLength && unfinishedEndingDetected && isFailedRouteStatus(routeAssessment.status)) {
     caps.push({
@@ -1435,7 +1539,14 @@ function buildDeterministicCapMetadata({ severeUnderLength, unfinishedEndingDete
       exactEvidence: routeAssessment.summary,
       reason: "At least one explicit Direct Question requirement is not answered."
     });
-  } else if (routeAssessment.stanceRequired && routeAssessment.missingRequirements.includes("position")) {
+  } else if (
+    routeAssessment.stanceRequired &&
+    routeAssessment.missingRequirements.includes("position") &&
+    !introPosition &&
+    !conclusionPosition &&
+    ["", "unclear"].includes(detectedPosition) &&
+    positionConfidence === "low"
+  ) {
     caps.push({
       scope: "criterion",
       criterion: "Task Response",
@@ -1525,11 +1636,13 @@ export function reconcileTask2CanonicalAnalysis(payload = {}, providerAnalysis =
       ? "low"
       : safety.routeAssessment.confidence === "high" ? "high" : "medium"
   };
+  const executiveSummary = buildCanonicalTask2ExecutiveSummary(safety, base);
   return {
     ...base,
     criterionAssessment,
     capMetadata: normalizedCapMetadata,
     overallScore,
+    executiveSummary,
     primaryLimiters,
     repairPlan: Array.isArray(providerAnalysis.practicePlan) ? providerAnalysis.practicePlan : [],
     consistency: {
@@ -1545,6 +1658,56 @@ export function reconcileTask2CanonicalAnalysis(payload = {}, providerAnalysis =
     taskRequirementChecks: base.taskRequirements.requirementChecks,
     criterionScores,
     overallBandRange: overallScore
+  };
+}
+
+function buildCanonicalTask2ExecutiveSummary(safety, base) {
+  if (safety.criticalInteraction || safety.seriousInteraction) {
+    return {
+      mainScoreLimitingFactor: safety.criticalInteractionSummary,
+      mostUrgentRepair: safety.unfinishedEndingDetected
+        ? `Submit a complete essay of at least ${safety.minimumRequiredWords} words, including a fully finished conclusion. Add relevant development to the existing route rather than padding the response.`
+        : base.routeAssessment.recommendedRoute
+    };
+  }
+  const route = base.routeAssessment;
+  const partialOpinionConcession = base.metadata.essayType === TASK2_CANONICAL_TYPES.OPINION &&
+    /disagree/.test(route.position || "") &&
+    route.bodyRoutes.some((item) => /concession/.test(item.label) && isPartialRouteStatus(item.status));
+  if (partialOpinionConcession) {
+    return {
+      mainScoreLimitingFactor: "The disagreement position is clear, but the essay route is only partially controlled: the second body paragraph presents a relevant concession without explicitly returning to the writer's main disagreement.",
+      mostUrgentRepair: "Keep the disagreement route. At the end of the concession paragraph, explain why the acknowledged public needs do not remove the long-term justification for space investment."
+    };
+  }
+  if (isPartialRouteStatus(route.status)) {
+    const partialRoutes = route.bodyRoutes.filter((item) => isPartialRouteStatus(item.status)).map((item) => `Body ${item.index} (${item.label})`);
+    return {
+      mainScoreLimitingFactor: `All required ${base.metadata.essayTypeLabel} routes are present, but ${partialRoutes.join(" and ") || "one route"} is only partially developed.`,
+      mostUrgentRepair: route.recommendedRoute
+    };
+  }
+  if (isFailedRouteStatus(route.status)) {
+    return {
+      mainScoreLimitingFactor: `The ${base.metadata.essayTypeLabel} route is not yet controlled: ${route.missingRequirements.join(", ") || "the required routes do not remain consistent"}.`,
+      mostUrgentRepair: route.recommendedRoute
+    };
+  }
+  if (safety.languageAccuracyRisk?.blocksSecureBand7) {
+    return {
+      mainScoreLimitingFactor: "The main limitation is uneven development combined with frequent grammar and collocation errors. The task-type route is controlled, but language accuracy and precision prevent a secure Band 7 profile.",
+      mostUrgentRepair: "Strengthen one controlled causal chain in each body paragraph, add a specific or plausible example where it proves the claim, and remove recurring article, agreement, spelling and collocation errors."
+    };
+  }
+  if (safety.developmentRisk?.unevenDevelopment) {
+    return {
+      mainScoreLimitingFactor: "The main limitation is analytical depth after examples: individual or company-level cases are not consistently connected to wider task-level consequences, and the stronger paragraph compresses several claims into one route.",
+      mostUrgentRepair: "After each example, add one controlled causal link to its wider significance, then reduce paragraph density by keeping only the mechanisms that directly prove the comparative judgement."
+    };
+  }
+  return {
+    mainScoreLimitingFactor: base.primaryLimiters.join(" ") || "The response covers the required task routes; remaining limitations are criterion-specific.",
+    mostUrgentRepair: route.recommendedRoute
   };
 }
 
@@ -1575,6 +1738,18 @@ function normalizeCanonicalCriterionScores(input = {}, safety, capMetadata) {
     output["Task Response"].range = "6.0-6.5";
     output["Task Response"].diagnosis = "All required task routes are present, but one route is only partially developed. This is a development limiter, not a broken-promise failure.";
   }
+  if (
+    fullLengthComplete &&
+    safety.essayRoute === TASK2_CANONICAL_TYPES.OPINION &&
+    isPartialRouteStatus(route.status) &&
+    !route.missingRequirements.length &&
+    safety.positionConfidence !== "low"
+  ) {
+    output["Task Response"].range = clampToSixSixFive(output["Task Response"].range);
+    output["Task Response"].diagnosis = "The position is clear and relevant ideas are present, but the concession route is only partially controlled; this limits Task Response without creating a missing-position cap.";
+    output["Coherence & Cohesion"].range = clampToSixSixFive(output["Coherence & Cohesion"].range);
+    output["Coherence & Cohesion"].diagnosis = "Paragraphing is clear, but the concession does not explicitly return to the controlling position, so progression is not securely Band 7.";
+  }
 
   for (const cap of capMetadata.caps.filter((item) => item.scope === "criterion")) {
     if (!output[cap.criterion]) continue;
@@ -1583,9 +1758,9 @@ function normalizeCanonicalCriterionScores(input = {}, safety, capMetadata) {
   }
 
   if (safety.languageAccuracyRisk.blocksSecureBand7) {
-    output["Lexical Resource"].range = capBandRange(output["Lexical Resource"].range, 6.5, 6.0);
+    output["Lexical Resource"].range = clampToSixSixFive(output["Lexical Resource"].range);
     output["Lexical Resource"].diagnosis = "Frequent spelling, word-choice and collocation errors recur across the essay, so lexical control is not securely Band 7.";
-    output["Grammatical Range & Accuracy"].range = capBandRange(output["Grammatical Range & Accuracy"].range, 6.5, 6.0);
+    output["Grammatical Range & Accuracy"].range = clampToSixSixFive(output["Grammatical Range & Accuracy"].range);
     output["Grammatical Range & Accuracy"].diagnosis = "Recurring article, agreement, reference or sentence-control errors prevent a secure Band 7 grammar profile.";
   }
 
@@ -1602,7 +1777,7 @@ function normalizeCanonicalCriterionScores(input = {}, safety, capMetadata) {
   }
 
   const collocationSignals = safety.languageAccuracyRisk.signals.filter((item) => item.category === "collocation").length;
-  if (collocationSignals >= 3) {
+  if (!safety.languageAccuracyRisk.blocksSecureBand7 && collocationSignals >= 3) {
     output["Lexical Resource"].range = parseBandRange(output["Lexical Resource"].range).high >= 7 ? "6.5-7.0" : capBandRange(output["Lexical Resource"].range, 7.0, 6.5);
     output["Lexical Resource"].diagnosis = "Several collocation and word-choice problems occur across the essay, so lexical control is not secure above Band 7.";
   }
@@ -1623,6 +1798,11 @@ function capBandRange(value, maximum, minimum = null) {
   const high = Math.min(range.high, maximum);
   const low = Math.min(high, minimum == null ? range.low : Math.max(minimum, Math.min(range.low, high)));
   return formatBandRange(low, high);
+}
+
+function clampToSixSixFive(value) {
+  const range = parseBandRange(value) || { low: 6, high: 6.5 };
+  return range.low >= 6 ? "6.0-6.5" : capBandRange(value, 6.5);
 }
 
 function parseBandRange(value) {

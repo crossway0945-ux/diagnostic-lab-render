@@ -1,0 +1,7 @@
+Root Directory: diagnostic-lab-v8-3-task2-taxonomy-final-upload
+Build Command: npm install
+Start Command: npm start
+
+This V8.3 ZIP contains one upload folder. After extracting the ZIP, upload the
+whole diagnostic-lab-v8-3-task2-taxonomy-final-upload folder to GitHub, then use
+that exact folder name as Render Root Directory.

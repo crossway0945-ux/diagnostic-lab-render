@@ -1,0 +1,20 @@
+Render Root Directory:
+diagnostic-lab-v10-final-commercial-sale-readiness-upload
+
+Build Command:
+npm install
+
+Start Command:
+npm start
+
+IMPORTANT:
+Upload the complete folder named exactly
+diagnostic-lab-v10-final-commercial-sale-readiness-upload
+to the root of the GitHub repository diagnostic-lab-render.
+
+Verify this exact GitHub path exists before deploying:
+diagnostic-lab-v10-final-commercial-sale-readiness-upload/package.json
+
+Do not leave Root Directory blank for this package.
+Do not enter the ZIP filename including .zip.
+Do not rename the uploaded folder.

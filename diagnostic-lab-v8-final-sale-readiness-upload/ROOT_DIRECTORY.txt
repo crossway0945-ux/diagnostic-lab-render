@@ -1,7 +1,0 @@
-Root Directory: LEAVE BLANK
-Build Command: npm install
-Start Command: npm start
-
-This ZIP is flat: package.json is at the archive root. After uploading the
-extracted contents to the root of diagnostic-lab-render, Render Root Directory
-must be empty. Do not enter the ZIP filename or repeat a folder name.

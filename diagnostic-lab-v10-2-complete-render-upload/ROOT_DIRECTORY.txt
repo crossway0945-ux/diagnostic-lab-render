@@ -1,0 +1,23 @@
+Render Root Directory:
+diagnostic-lab-v10-2-complete-render-upload
+
+Build Command:
+npm install
+
+Start Command:
+npm start
+
+IMPORTANT:
+Upload the complete folder named exactly
+diagnostic-lab-v10-2-complete-render-upload
+to the root of the GitHub repository diagnostic-lab-render.
+
+The package.json file must be directly inside that folder.
+There must not be another diagnostic-lab-v10-2-complete-render-upload folder nested inside it.
+
+Verify this exact GitHub path exists before deploying:
+diagnostic-lab-v10-2-complete-render-upload/package.json
+
+Do not leave Root Directory blank for this package.
+Do not enter the ZIP filename including .zip.
+Do not rename the uploaded folder.

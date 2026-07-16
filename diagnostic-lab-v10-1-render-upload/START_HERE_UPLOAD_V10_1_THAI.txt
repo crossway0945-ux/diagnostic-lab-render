@@ -1,0 +1,22 @@
+V10.1 — ไฟล์แก้โครงสร้างอัปโหลดสำหรับ GitHub และ Render
+
+ชื่อโฟลเดอร์หลังใช้ Windows > Extract All:
+diagnostic-lab-v10-1-render-upload
+
+ไฟล์ package.json ต้องอยู่ตรงนี้ทันที:
+diagnostic-lab-v10-1-render-upload/package.json
+
+ห้ามมีโฟลเดอร์ชื่อ diagnostic-lab-v10-1-render-upload ซ้อนอยู่ข้างในอีกชั้น
+
+ค่า Render:
+Root Directory: diagnostic-lab-v10-1-render-upload
+Build Command: npm install
+Start Command: npm start
+
+วิธีใช้:
+1. ลบไฟล์ ZIP V10 เดิมที่ดาวน์โหลดไว้ เพื่อไม่ให้เลือกผิด
+2. คลิกขวา ZIP V10.1 แล้วเลือก Extract All
+3. อัปโหลดโฟลเดอร์ diagnostic-lab-v10-1-render-upload ขึ้น repository diagnostic-lab-render
+4. ตรวจใน GitHub ว่าเปิด diagnostic-lab-v10-1-render-upload/package.json ได้
+5. ใส่ค่า Render ตามด้านบน
+6. กด Manual Deploy > Clear build cache & deploy

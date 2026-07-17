@@ -1,0 +1,13 @@
+Upload Package: diagnostic-lab-v11-1-final-ready-upload.zip
+Top-Level Folder: diagnostic-lab-v11-1-final-ready-upload
+Root Directory: diagnostic-lab-v11-1-final-ready-upload
+Build Command: npm install
+Start Command: npm start
+
+This ready-upload ZIP contains one top-level folder. Extract it and upload the
+folder itself to the repository root. Render will then find package.json at:
+
+diagnostic-lab-v11-1-final-ready-upload/package.json
+
+Do not enter the ZIP filename in Root Directory. Enter the top-level folder
+name exactly as shown above, using hyphens and no .zip extension.

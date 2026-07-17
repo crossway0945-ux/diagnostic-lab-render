@@ -1,7 +1,0 @@
-Root Directory: diagnostic-lab-v8-3-final-ready-upload
-Build Command: npm install
-Start Command: npm start
-
-The V8.3 ZIP is flat: package.json is at the first level inside the archive.
-After Extract All, upload the whole diagnostic-lab-v8-3-final-ready-upload
-folder to GitHub, then use that exact folder name as Render Root Directory.

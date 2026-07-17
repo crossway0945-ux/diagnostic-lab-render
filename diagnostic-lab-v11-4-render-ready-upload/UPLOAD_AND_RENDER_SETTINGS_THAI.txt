@@ -1,0 +1,41 @@
+DIAGNOSTIC LAB V11.4 — READY TO UPLOAD
+
+โครงสร้างแพ็กเกจนี้ล็อกไว้แล้ว:
+
+repository root/
+├─ render.yaml
+└─ diagnostic-lab-v11-4/
+   ├─ package.json
+   ├─ package-lock.json
+   ├─ server.js
+   └─ ไฟล์ระบบทั้งหมด
+
+วิธีอัปโหลดขึ้น GitHub
+1. แตกไฟล์ ZIP นี้
+2. อัปโหลดของทั้งหมดที่อยู่ข้างใน ZIP ไปไว้ที่ GitHub repository root
+3. หลังอัปโหลด ต้องเปิด path นี้ใน GitHub ได้จริง:
+   diagnostic-lab-v11-4/package.json
+
+ค่า Render ที่ต้องใช้กับ Existing Web Service
+Root Directory: diagnostic-lab-v11-4
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+
+ห้ามใช้ค่าเหล่านี้:
+- Root Directory เว้นว่าง
+- diagnostic-lab-v11-4-final-ready-upload
+- diagnostic-lab-v11-4-render-ready-upload
+- ชื่อ ZIP ใด ๆ
+- path ที่ลงท้ายด้วย .zip
+
+หลังแก้ค่า Render:
+1. Save Changes
+2. Manual Deploy
+3. Clear build cache & deploy
+
+Path ที่ Render ต้องหาได้คือ:
+/opt/render/project/src/diagnostic-lab-v11-4/package.json
+
+แพ็กเกจนี้เปลี่ยนเฉพาะโครงสร้างสำหรับ deploy และเอกสาร deploy
+ไม่ได้แก้ scoring, route logic, Task 1, feedback engine, auth, credits, pricing หรือ student data logic

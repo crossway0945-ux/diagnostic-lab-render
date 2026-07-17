@@ -1,0 +1,5 @@
+Root Directory: diagnostic-lab-v11-4
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+Expected Render package path: /opt/render/project/src/diagnostic-lab-v11-4/package.json

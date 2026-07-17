@@ -1,0 +1,21 @@
+{
+  "name": "ielts-writing-7-diagnostic-lab",
+  "version": "11.2.0",
+  "description": "V11.2 canonical IELTS diagnostics with report-integrity, revision-safety, and progress-version controls.",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build:static": "node scripts/build-static-preview.mjs",
+    "check": "node --check server.js && node --check script.js && node --check wordCount.js && node --check netlify/functions/api.js && node --check domain/index.js && node --check domain/task1Classification.js && node --check domain/task2Safety.js && node --check domain/canonicalAnalysis.js && node --check services/apiRouter.js && node --check services/storage.js && node --check services/analysisJobStore.js && node --check services/diagnosticReset.js && node --check services/aiAnalyzer.js && node --check services/task2Safety.js && node --check services/canonicalAnalysis.js && node --check services/analysisVersions.js && node --check services/diagnosticResponseSchema.js && node --check services/kruPomRubricReference.js && node --check services/promptBuilder.js && node --check scripts/build-static-preview.mjs && node --check scripts/reset-diagnostic-data.mjs && node --check tests/v7-production-calibration.test.mjs && node --check tests/v8-sale-readiness.test.mjs && node --check tests/v8-2-opinion-route-progress.test.mjs && node --check tests/v10-commercial-sale-readiness.test.mjs && node --check tests/v11-final-sale-readiness.test.mjs && node --check tests/v11-1-language-calibration-hotfix.test.mjs && node --check tests/v11-2-report-integrity-hotfix.test.mjs && node --check tests/v11-server-smoke.test.mjs",
+    "test": "node tests/diagnostic-api.test.mjs && node tests/v7-production-calibration.test.mjs && node tests/v8-sale-readiness.test.mjs && node tests/v8-2-opinion-route-progress.test.mjs && node tests/v10-commercial-sale-readiness.test.mjs && node tests/v11-final-sale-readiness.test.mjs && node tests/v11-1-language-calibration-hotfix.test.mjs && node tests/v11-2-report-integrity-hotfix.test.mjs && node tests/v11-server-smoke.test.mjs",
+    "reset:diagnostic-data": "node scripts/reset-diagnostic-data.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^9.1.2"
+  },
+  "license": "UNLICENSED"
+}

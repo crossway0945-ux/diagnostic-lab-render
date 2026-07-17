@@ -1,0 +1,19 @@
+V11.2 READY-UPLOAD SETTINGS
+
+ZIP file: diagnostic-lab-v11-2-final-ready-upload.zip
+Top-level folder inside ZIP: diagnostic-lab-v11-2-final-ready-upload
+
+Render settings when that folder is visible inside the GitHub repository:
+Root Directory: diagnostic-lab-v11-2-final-ready-upload
+Build Command: npm install
+Start Command: npm start
+
+Required verification before deploy:
+Open this exact path in GitHub and confirm package.json is visible:
+diagnostic-lab-v11-2-final-ready-upload/package.json
+
+If package.json is instead visible at the repository's top level, leave Render
+Root Directory blank. Never enter the ZIP filename and never include .zip.
+
+After changing the Root Directory, use:
+Manual Deploy > Clear build cache & deploy

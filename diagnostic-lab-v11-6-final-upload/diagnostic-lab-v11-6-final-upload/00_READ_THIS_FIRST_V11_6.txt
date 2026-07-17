@@ -1,0 +1,12 @@
+DIAGNOSTIC LAB V11.6 — READY TO UPLOAD
+
+1. Extract this ZIP.
+2. Upload the single folder `diagnostic-lab-v11-6-final-upload` to the GitHub repository root.
+3. Confirm GitHub contains `diagnostic-lab-v11-6-final-upload/package.json`.
+4. Render Root Directory: `diagnostic-lab-v11-6-final-upload`
+5. Build Command: `npm install`
+6. Start Command: `npm start`
+7. Health Check Path: `/api/health`
+8. Save Changes, then Clear build cache & deploy.
+
+Do not use the ZIP filename, an outer upload-wrapper folder, or a path ending in `.zip`.

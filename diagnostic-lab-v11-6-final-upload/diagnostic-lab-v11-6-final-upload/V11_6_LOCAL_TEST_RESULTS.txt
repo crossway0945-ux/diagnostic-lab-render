@@ -1,0 +1,23 @@
+DIAGNOSTIC LAB V11.6 — LOCAL VERIFICATION
+
+Passed:
+- npm install
+- npm run build:static
+- npm run check
+- npm test
+
+Regression coverage passed:
+- V7 production calibration
+- V8 sale-readiness fixtures
+- V8.2 route and prompt-mismatch controls
+- V10 commercial-readiness controls
+- V11 final sale-readiness checks
+- V11.1 language calibration
+- V11.2 report integrity
+- V11.3 report completeness
+- V11.4 PDF/traceability and progress grouping
+- V11.6 isolated student-report renderer
+- Local server health/static smoke test
+
+The package has not been deployed to the user's production Render service from this environment.
+Run the production smoke test after upload and deploy.

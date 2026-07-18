@@ -1,0 +1,17 @@
+V12.0.2 COMPLETE RENDER UPLOAD RELEASE
+
+UPLOAD THIS ENTIRE FOLDER TO THE GITHUB REPOSITORY ROOT:
+diagnostic-lab-v12-2-complete-render-upload
+
+The GitHub repository must contain this exact path:
+diagnostic-lab-v12-2-complete-render-upload/package.json
+
+RENDER SETTINGS
+- Root Directory: diagnostic-lab-v12-2-complete-render-upload
+- Build Command: npm install
+- Start Command: npm start
+- Health Check Path: /api/health
+
+Do not leave Root Directory blank.
+Do not enter the ZIP filename.
+Do not upload only selected files from inside the folder.

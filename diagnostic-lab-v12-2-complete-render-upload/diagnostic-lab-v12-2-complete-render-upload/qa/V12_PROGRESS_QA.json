@@ -1,0 +1,138 @@
+{
+  "schema": "AdminReportQAViewModel.v12",
+  "latestSubmissionGroupId": "sun-current",
+  "validVersionIds": [
+    "sun-v1",
+    "sun-v2"
+  ],
+  "excludedLegacyGroups": [
+    "legacy-other"
+  ],
+  "representativeReportVersion": "sun-v2",
+  "distinctStudentSubmissionCount": 2,
+  "previousRangeSource": "legacy-v1",
+  "latestRangeSource": "sun-v2",
+  "repeatedIssueSourceSubmissionGroups": [],
+  "duplicateCreditResult": "no-additional-credit",
+  "pdfQA": {
+    "renderer": "isolated-server-puppeteer",
+    "englishPageCount": 13,
+    "thaiPageCount": 13,
+    "englishLayout": [
+      {
+        "page": 1,
+        "utilization": 0.927
+      },
+      {
+        "page": 2,
+        "utilization": 1
+      },
+      {
+        "page": 3,
+        "utilization": 0.886
+      },
+      {
+        "page": 4,
+        "utilization": 0.981
+      },
+      {
+        "page": 5,
+        "utilization": 0.775
+      },
+      {
+        "page": 6,
+        "utilization": 0.912
+      },
+      {
+        "page": 7,
+        "utilization": 0.913
+      },
+      {
+        "page": 8,
+        "utilization": 0.963
+      },
+      {
+        "page": 9,
+        "utilization": 1
+      },
+      {
+        "page": 10,
+        "utilization": 0.984
+      },
+      {
+        "page": 11,
+        "utilization": 1
+      },
+      {
+        "page": 12,
+        "utilization": 1
+      },
+      {
+        "page": 13,
+        "utilization": 1
+      }
+    ],
+    "thaiLayout": [
+      {
+        "page": 1,
+        "utilization": 0.885
+      },
+      {
+        "page": 2,
+        "utilization": 1
+      },
+      {
+        "page": 3,
+        "utilization": 0.844
+      },
+      {
+        "page": 4,
+        "utilization": 0.961
+      },
+      {
+        "page": 5,
+        "utilization": 0.734
+      },
+      {
+        "page": 6,
+        "utilization": 0.871
+      },
+      {
+        "page": 7,
+        "utilization": 0.893
+      },
+      {
+        "page": 8,
+        "utilization": 0.9
+      },
+      {
+        "page": 9,
+        "utilization": 0.913
+      },
+      {
+        "page": 10,
+        "utilization": 0.9
+      },
+      {
+        "page": 11,
+        "utilization": 0.976
+      },
+      {
+        "page": 12,
+        "utilization": 0.996
+      },
+      {
+        "page": 13,
+        "utilization": 0.986
+      }
+    ],
+    "pdfJsUnicodeFindings": {
+      "english": [],
+      "thai": []
+    },
+    "pdftotextUnicodeFindings": {
+      "english": [],
+      "thai": []
+    }
+  }
+}

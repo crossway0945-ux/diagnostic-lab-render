@@ -1,0 +1,59 @@
+DIAGNOSTIC LAB V12.0.2 — FINAL LOCAL AND PACKAGE VERIFICATION
+
+STATUS: PASSED — COMPLETE RENDER UPLOAD PACKAGE READY
+
+Package identity
+- ZIP: diagnostic-lab-v12-2-complete-render-upload.zip
+- Single top-level folder: diagnostic-lab-v12-2-complete-render-upload
+- Render Root Directory: diagnostic-lab-v12-2-complete-render-upload
+- Required package path: diagnostic-lab-v12-2-complete-render-upload/package.json
+- Build Command: npm install
+- Start Command: npm start
+- Health Check Path: /api/health
+- Node version: 22.16.0
+
+Exact-path clean-install verification
+- Test repository path: repo/diagnostic-lab-v12-2-complete-render-upload
+- PUPPETEER_SKIP_DOWNLOAD=true npm install: PASSED
+- npm audit: 0 vulnerabilities
+- npm run build:static: PASSED
+- npm run check: PASSED
+- npm test: PASSED
+- npm start: PASSED
+- GET /api/health: PASSED
+
+Regression suite
+- V7 production calibration: PASSED
+- V8 sale-readiness: PASSED
+- V8.2 route/progress correction: PASSED
+- V10 commercial sale-readiness: PASSED
+- V11 consolidated regression checks: PASSED
+- V11.1/V11.2/V11.3 integrity checks: PASSED
+- V12 PDF/traceability proof: PASSED
+- Server smoke test: PASSED
+- V12 renderer architecture: PASSED
+- V12 bilingual report: PASSED
+- Focused V12 renderer rebuild: PASSED
+
+Report QA
+- npm run qa:report: PASSED
+- English Student PDF: 13 A4 pages
+- Thai Student PDF: 13 A4 pages
+- pdftotext: available and passed
+- Searchable Thai-English text: PASSED
+- Protected card pagination: PASSED
+- Student/Admin data boundary: PASSED
+- Same-submission-group version integrity: PASSED
+
+Packaging QA
+- All 87 files from V12.0.1 preserved: PASSED
+- All 86 files from the original V12 architecture preserved: PASSED
+- Five deployment-verification files added: PASSED
+- Final package file count: 92 files
+- No node_modules, .cache, .env, production data or generated QA PDFs included
+- Root Directory instructions are consistent across package documents
+- No stale blank-Root-Directory instruction remains as an active setting
+
+Deployment note
+- This verification confirms the ZIP structure and local execution path.
+- Production login, provider connectivity, persistent disk, saved-report access and live PDF download must still be smoke-tested after Render deploys.

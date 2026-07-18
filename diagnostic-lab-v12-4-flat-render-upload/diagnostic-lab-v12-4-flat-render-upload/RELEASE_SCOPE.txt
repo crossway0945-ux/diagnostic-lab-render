@@ -1,0 +1,2 @@
+V12.0.4 changes only deployment packaging and release metadata.
+The diagnostic application source, report architecture, tests, and runtime behavior are carried forward from V12.0.3.

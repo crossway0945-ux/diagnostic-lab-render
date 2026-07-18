@@ -1,0 +1,15 @@
+1. แตกไฟล์ ZIP
+2. ลากโฟลเดอร์ diagnostic-lab-v12-4-flat-render-upload ทั้งโฟลเดอร์ขึ้น GitHub
+3. ก่อน Commit เปิดโฟลเดอร์นั้นใน GitHub และตรวจว่ามี package.json อยู่ทันที
+4. ตั้ง Render Root Directory เป็น diagnostic-lab-v12-4-flat-render-upload
+5. Build Command ใช้ npm install
+6. Start Command ใช้ npm start
+7. กด Clear build cache & deploy
+
+โครงสร้างที่ถูกต้อง:
+diagnostic-lab-v12-4-flat-render-upload/package.json
+
+โครงสร้างที่ผิด:
+diagnostic-lab-v12-4-flat-render-upload/app/package.json
+หรือ
+diagnostic-lab-v12-4-flat-render-upload/diagnostic-lab-v12-4-flat-render-upload/package.json

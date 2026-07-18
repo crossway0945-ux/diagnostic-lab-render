@@ -1,0 +1,2 @@
+package-lock.json tarball URLs use https://registry.npmjs.org/.
+No OpenAI-internal package registry hostname is present in the release lockfile.

@@ -1,0 +1,8 @@
+Root Directory: diagnostic-lab-v12-4-flat-render-upload
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+NODE_VERSION: 22.16.0
+
+Mandatory repository path:
+diagnostic-lab-v12-4-flat-render-upload/package.json

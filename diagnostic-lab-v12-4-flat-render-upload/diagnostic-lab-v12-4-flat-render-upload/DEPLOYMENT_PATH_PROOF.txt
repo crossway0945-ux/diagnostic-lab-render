@@ -1,0 +1,7 @@
+Configured root:
+/opt/render/project/src/diagnostic-lab-v12-4-flat-render-upload
+
+Required file:
+/opt/render/project/src/diagnostic-lab-v12-4-flat-render-upload/package.json
+
+Because package.json is physically at the project root, both `npm install` and `npm start` execute from the correct directory.

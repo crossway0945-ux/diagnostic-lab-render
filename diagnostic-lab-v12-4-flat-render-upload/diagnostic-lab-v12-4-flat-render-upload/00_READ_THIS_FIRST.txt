@@ -1,0 +1,19 @@
+DIAGNOSTIC LAB V12.0.4 — FLAT RENDER UPLOAD
+
+This package intentionally contains package.json directly at the project-folder root.
+There is no app/ wrapper folder and no second nested project folder.
+
+UPLOAD THE WHOLE FOLDER:
+  diagnostic-lab-v12-4-flat-render-upload
+
+RENDER SETTINGS:
+  Root Directory: diagnostic-lab-v12-4-flat-render-upload
+  Build Command: npm install
+  Start Command: npm start
+  Health Check Path: /api/health
+
+Required GitHub path before deployment:
+  diagnostic-lab-v12-4-flat-render-upload/package.json
+
+Render must therefore read:
+  /opt/render/project/src/diagnostic-lab-v12-4-flat-render-upload/package.json

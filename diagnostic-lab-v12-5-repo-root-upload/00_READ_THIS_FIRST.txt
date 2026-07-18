@@ -1,0 +1,14 @@
+V12.0.5 REPOSITORY-ROOT UPLOAD
+
+1. Extract this ZIP.
+2. Open the extracted folder.
+3. Upload ALL files and folders INSIDE it directly to the GitHub repository root.
+4. On GitHub, package.json must appear at the repository top level.
+5. In Render, CLEAR the Root Directory field so it is empty.
+6. Build Command: npm ci
+7. Start Command: npm start
+8. Health Check Path: /api/health
+9. Clear build cache and deploy.
+
+Do not upload the outer extracted folder as a subfolder.
+Do not type the ZIP name into Render Root Directory.

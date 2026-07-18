@@ -1,3 +1,0 @@
-From the configured Render Root Directory, this file must exist:
-app/package.json
-The build script exits before npm if that path is missing.

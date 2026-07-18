@@ -1,7 +1,0 @@
-Expected repository path:
-diagnostic-lab-v12-3-render-safe-upload/app/package.json
-
-Render Root Directory:
-diagnostic-lab-v12-3-render-safe-upload
-
-Build and start are handled by scripts in the outer directory.

@@ -1,2 +1,0 @@
-Puppeteer uses app/puppeteer.config.cjs.
-The visible filename prevents browser-based GitHub folder upload from omitting the configuration.

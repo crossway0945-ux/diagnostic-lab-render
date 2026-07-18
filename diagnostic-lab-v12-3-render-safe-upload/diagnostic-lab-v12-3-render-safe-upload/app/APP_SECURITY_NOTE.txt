@@ -1,2 +1,0 @@
-Do not upload a real .env file, node_modules, cache directories, local data, or production reports.
-Set secrets in the Render dashboard only.

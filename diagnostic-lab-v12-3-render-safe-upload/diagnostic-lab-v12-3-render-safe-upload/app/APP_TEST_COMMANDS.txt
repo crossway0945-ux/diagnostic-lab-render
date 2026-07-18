@@ -1,0 +1,5 @@
+npm ci
+npm run build:static
+npm run check
+npm test
+npm run qa:report

@@ -1,0 +1,18 @@
+ROOT DIRECTORY
+diagnostic-lab-v12-3-render-safe-upload
+
+BUILD COMMAND
+bash render-build.sh
+
+START COMMAND
+bash render-start.sh
+
+HEALTH CHECK PATH
+/api/health
+
+NODE_VERSION ENVIRONMENT VARIABLE
+22.16.0
+
+IMPORTANT
+Do not use npm install or npm start directly in the outer Root Directory.
+The scripts explicitly enter app/, where package.json is stored.

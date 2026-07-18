@@ -1,0 +1,2 @@
+This release changes deployment packaging and upload reliability only.
+The V12 diagnostic and report architecture remains the application source.

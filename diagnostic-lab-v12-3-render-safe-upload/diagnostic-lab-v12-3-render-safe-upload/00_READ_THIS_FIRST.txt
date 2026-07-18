@@ -1,0 +1,17 @@
+DIAGNOSTIC LAB V12.0.3 — RENDER-SAFE COMPLETE UPLOAD
+
+1. Extract diagnostic-lab-v12-3-render-safe-upload.zip.
+2. Upload the entire folder named diagnostic-lab-v12-3-render-safe-upload to the GitHub repository root.
+3. GitHub should show exactly 100 files from this package. There are no hidden files.
+4. Confirm this path exists on GitHub:
+   diagnostic-lab-v12-3-render-safe-upload/app/package.json
+5. Set Render exactly as follows:
+   Root Directory: diagnostic-lab-v12-3-render-safe-upload
+   Build Command: bash render-build.sh
+   Start Command: bash render-start.sh
+   Health Check Path: /api/health
+   Environment NODE_VERSION: 22.16.0
+6. Use Manual Deploy > Clear build cache & deploy.
+
+This package intentionally does not require package.json at the Render Root Directory.
+The build and start scripts explicitly enter app/, eliminating the previous ENOENT failure mode.

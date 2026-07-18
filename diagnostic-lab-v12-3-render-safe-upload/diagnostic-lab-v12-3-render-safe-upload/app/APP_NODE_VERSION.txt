@@ -1,0 +1,2 @@
+Required Node version: 22.16.0
+The version is pinned in app/package.json and in the outer Render configuration.

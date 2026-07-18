@@ -1,0 +1,8 @@
+Expected actual files in this extracted upload folder: 100
+Expected hidden files: 0
+Expected application files under app/: 92
+Expected outer deployment/control files: 8
+Expected top-level directories inside the upload folder: 1 (app)
+
+The previous 92-file claim did not match the 87 files visible after GitHub browser upload because five dotfiles were omitted.
+V12.0.3 contains no dotfiles, so the extracted count and browser-upload count are identical.

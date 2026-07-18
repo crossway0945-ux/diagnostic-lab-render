@@ -1,0 +1,13 @@
+node_modules/
+npm-cache/
+pnpm-cache/
+pnpm/
+data/
+coverage/
+dist/
+work/
+tmp/
+*.log
+.cache/
+qa/generated-v12/
+.tmp-*

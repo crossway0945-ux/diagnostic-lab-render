@@ -1,0 +1,2 @@
+All release files are intentionally visible. There are no dotfiles in this upload package.
+This prevents the five-file loss observed during browser-based GitHub folder upload.

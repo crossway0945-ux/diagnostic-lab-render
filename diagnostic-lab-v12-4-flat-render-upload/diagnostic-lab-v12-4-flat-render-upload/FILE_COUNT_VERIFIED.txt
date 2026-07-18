@@ -1,5 +1,0 @@
-Expected regular files in this folder: 92
-Expected hidden/dot files: 0
-Expected nested app folder: 0
-Expected package.json location: ./package.json
-Expected package-lock.json location: ./package-lock.json

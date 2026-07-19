@@ -1,0 +1,14 @@
+วิธีอัปโหลด GitHub สำหรับ V12.2.3
+
+1. แตกไฟล์ diagnostic-lab-v12-2-3-full-system-upgrade.zip
+2. กลับไปที่หน้าแรกของ repository ก่อนอัปโหลด
+3. ลากโฟลเดอร์ diagnostic-lab-v12-2-3-full-system-upgrade ทั้งโฟลเดอร์เข้า GitHub
+4. ห้ามเปิดโฟลเดอร์ชื่อเดียวกันใน GitHub ก่อนลาก เพราะจะทำให้เกิดโฟลเดอร์ซ้อนชื่อเดียวกันสองชั้น
+5. หลัง Commit ต้องเปิดไฟล์นี้ได้ทันที:
+   diagnostic-lab-v12-2-3-full-system-upgrade/package.json
+6. ตั้ง Render Root Directory เป็น:
+   diagnostic-lab-v12-2-3-full-system-upgrade
+7. Build Command: npm install
+8. Start Command: npm start
+9. Health Check Path: /api/health
+10. กด Clear build cache & deploy

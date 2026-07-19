@@ -1,0 +1,33 @@
+DIAGNOSTIC LAB V12.2.3 - FINAL PACKAGE VERIFICATION
+
+Release identity
+- ZIP: diagnostic-lab-v12-2-3-full-system-upgrade.zip
+- Top-level folder: diagnostic-lab-v12-2-3-full-system-upgrade
+- package.json version: 12.2.3
+- Render rootDir in render.yaml: diagnostic-lab-v12-2-3-full-system-upgrade
+- Build command: npm install
+- Start command: npm start
+- Health check: /api/health
+
+Checks completed from a clean extraction of the final ZIP
+- ZIP integrity: PASS
+- Single top-level folder: PASS
+- Direct package path diagnostic-lab-v12-2-3-full-system-upgrade/package.json: PASS
+- Duplicate nested project folder: NONE
+- Actual project files: 101
+- Hidden files: 0
+- node_modules/.cache included in ZIP: NO
+- npm install: PASS (67 packages; 0 vulnerabilities)
+- Root/version verifier: PASS
+- JavaScript syntax check: PASS
+- Local server /api/health and canonical browser modules smoke: PASS
+- Full-engine provider transport with structured mock: PASS
+- V12.2 full-system diagnostic regression: PASS
+- Yuki partial-position/personalised-report regression: PASS
+- Yuki login -> analysis -> saved report -> server PDF API smoke: PASS
+- Yuki PDF: 6 pages, 614683 bytes, application/pdf
+- Puppeteer install flow: package install skips duplicate browser download; postinstall accepts a system browser or installs Puppeteer Chrome when absent
+
+Important limitation
+- The live OpenAI production call cannot be verified without the user's real OPENAI_API_KEY and live Render environment.
+- The complete historical screenshot-heavy test chain is not claimed as a clean pass in this verification. A local system-Chromium screenshot stage closed the browser target after the core diagnostic and bilingual renderer tests had already passed. The actual server PDF API smoke completed successfully.

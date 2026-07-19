@@ -1,0 +1,23 @@
+RENDER ROOT DIRECTORY - EXACT VALUE
+
+Release: Diagnostic Lab V12.2.3 Full-System Upgrade
+ZIP filename: diagnostic-lab-v12-2-3-full-system-upgrade.zip
+Top-level folder after extraction: diagnostic-lab-v12-2-3-full-system-upgrade
+
+Root Directory:
+diagnostic-lab-v12-2-3-full-system-upgrade
+
+Build Command:
+npm install
+
+Start Command:
+npm start
+
+Health Check Path:
+/api/health
+
+Required environment:
+NODE_VERSION=22.16.0
+
+The package.json file is directly inside this exact Root Directory.
+Do not upload this folder inside another folder with the same name.

@@ -1,0 +1,4 @@
+Release: 12.2.3
+Regular files in upload folder: 89
+GitHub browser upload limit: under 100 files
+Generated netlify-static-preview files are intentionally excluded and can be recreated with npm run build:static.

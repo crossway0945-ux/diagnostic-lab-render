@@ -1,0 +1,17 @@
+UPLOAD THIS FOLDER TO THE GITHUB REPOSITORY ROOT
+
+Folder name:
+diagnostic-lab-v12-2-3-full-system-upgrade
+
+After upload, GitHub must contain this exact file path:
+diagnostic-lab-v12-2-3-full-system-upgrade/package.json
+
+Render settings:
+Root Directory: diagnostic-lab-v12-2-3-full-system-upgrade
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+NODE_VERSION: 22.16.0
+
+Do not upload this folder inside another folder with the same name.
+Do not upload only the ZIP file. Extract it first, then drag the single folder above to the repository root.

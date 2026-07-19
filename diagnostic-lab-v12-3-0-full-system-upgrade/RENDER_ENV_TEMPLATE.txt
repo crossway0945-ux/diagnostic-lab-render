@@ -1,0 +1,16 @@
+NODE_ENV=production
+NODE_VERSION=22.16.0
+HOST=0.0.0.0
+DIAGNOSTIC_STORAGE_ADAPTER=local-json
+DIAGNOSTIC_DATA_DIR=/var/data
+DIAGNOSTIC_REQUIRE_FULL_ENGINE=true
+DIAGNOSTIC_ANALYSIS_MODE=sync
+DIAGNOSTIC_ENABLE_NETLIFY_BLOBS=false
+OPENAI_BASE_URL=https://api.openai.com/v1/responses
+OPENAI_TIMEOUT_MS=180000
+OPENAI_MAX_OUTPUT_TOKENS=6000
+OPENAI_REASONING_EFFORT=low
+SESSION_SECRET=<generate-a-long-random-secret>
+ADMIN_SECRET=<generate-a-long-random-secret>
+OPENAI_API_KEY=<paste-a-new-secret-key-in-render-only>
+OPENAI_MODEL=<paste-the-model-name-enabled-for-your-account>

@@ -1,0 +1,35 @@
+KRU POM IELTS WRITING 7+ DIAGNOSTIC LAB V12.2.1
+FINAL PACKAGE VERIFICATION
+
+EXACT DEPLOYMENT
+ZIP: diagnostic-lab-v12-2-1-full-system-upgrade.zip
+Top-level folder: diagnostic-lab-v12-2-1-full-system-upgrade
+Render Root Directory: diagnostic-lab-v12-2-1-full-system-upgrade
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+Node: 22.16.0
+
+STRUCTURE
+- package.json is directly inside the exact Render Root Directory.
+- No nested V11.7 deployment folder.
+- No blank Root Directory instruction.
+- No node_modules, cache, environment secret or production user data in the ZIP.
+
+VERIFIED
+- clean dependency installation: PASS
+- npm audit: 0 vulnerabilities
+- exact root/version/render configuration verifier: PASS
+- syntax check: PASS
+- full regression suite: PASS
+- production full-engine transport path with mocked structured provider response: PASS
+- Yuki partial-disagreement route and paragraph matching: PASS
+- Yuki authenticated API PDF export: PASS, 6 pages
+- Sun English/Thai renderer QA: PASS, 12 pages each
+- searchable PDF text: PASS
+- protected card splitting: 0 in renderer QA
+- student PDF internal identifier leakage: 0
+- Ctrl+M/browser overlay: 0
+
+IMPORTANT LIMIT
+The owner's real OPENAI_API_KEY is not available in this environment. Therefore a live provider call is not claimed as passed. After deployment, verify the real key/model with `npm run qa:provider-live` or the protected `/api/debug-analyze-health` endpoint before selling access.

@@ -1,7 +1,0 @@
-Production runtime scan targets:
-- localizeUrbanZoningCard: absent
-- isZoningOpinion: absent
-- exact Sun sentence "clusterization of a specific place could lead to the difficulty of traveling": absent
-- exact fixture revision "if all major shopping malls were concentrated in one district": absent
-
-These strings may appear in regression tests only when used as submitted fixture evidence.

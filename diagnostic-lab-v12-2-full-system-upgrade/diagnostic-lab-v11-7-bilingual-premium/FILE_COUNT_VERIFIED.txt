@@ -1,0 +1,7 @@
+Actual release files: 98
+Application/source files and release documentation are complete.
+The six release-qa files are generated proof artifacts: English/Thai PDFs, extracted text, and page contact sheets.
+Top-level deployment folder: diagnostic-lab-v11-7-bilingual-premium
+Hidden files: 0
+package.json path: diagnostic-lab-v11-7-bilingual-premium/package.json
+render.yaml path: diagnostic-lab-v11-7-bilingual-premium/render.yaml

@@ -1,0 +1,17 @@
+ROOT DIRECTORY
+ diagnostic-lab-v11-7-bilingual-premium
+
+BUILD COMMAND
+ npm install
+
+START COMMAND
+ npm start
+
+HEALTH CHECK PATH
+ /api/health
+
+ENVIRONMENT VARIABLE
+ NODE_VERSION=22.16.0
+
+EXPECTED PACKAGE PATH ON RENDER
+ /opt/render/project/src/diagnostic-lab-v11-7-bilingual-premium/package.json

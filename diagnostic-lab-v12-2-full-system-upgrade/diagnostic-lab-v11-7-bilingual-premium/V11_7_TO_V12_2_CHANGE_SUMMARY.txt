@@ -1,0 +1,101 @@
+V11.7 TO V12.2 SOURCE CHANGE SUMMARY
+
+Original V11.7 source files compared: 72
+V12.2 production source files compared: 78
+Added source files: 13
+Changed source files: 65
+Preserved identical source files: 0
+Removed source files: 7
+
+ADDED
+- assets/README.txt
+- domain/task2DiagnosticIntegrity.js
+- puppeteer.config.cjs
+- reports/adminReportQAViewModel.js
+- reports/pdfRenderer.js
+- reports/reportFonts.js
+- reports/revisionValidation.js
+- reports/studentReportTemplate.js
+- reports/studentReportViewModel.js
+- reports/textSanitization.js
+- scripts/qa-v12-student-report.mjs
+- tests/v11-6-student-report-renderer-rebuild.test.mjs
+- tests/v12-2-full-system-upgrade.test.mjs
+
+CHANGED
+- SECURITY_CHECKLIST_THAI.md
+- TASK1_FEEDBACK_QUALITY_GUARDRAILS.md
+- TASK2_LOW_BAND_CALIBRATION_AND_SAFETY.md
+- admin.html
+- admin.js
+- assets/fonts/Noto-Sans-Thai-LICENSE.txt
+- domain/canonicalAnalysis.js
+- domain/index.js
+- domain/task1Classification.js
+- domain/task2Safety.js
+- index.html
+- netlify-static-preview/assets/fonts/Noto-Sans-Thai-LICENSE.txt
+- netlify-static-preview/domain/canonicalAnalysis.js
+- netlify-static-preview/domain/index.js
+- netlify-static-preview/domain/task1Classification.js
+- netlify-static-preview/domain/task2Safety.js
+- netlify-static-preview/index.html
+- netlify-static-preview/script.js
+- netlify-static-preview/services/analysisVersions.js
+- netlify-static-preview/services/canonicalAnalysis.js
+- netlify-static-preview/services/task2Safety.js
+- netlify-static-preview/styles.css
+- netlify-static-preview/wordCount.js
+- netlify.toml
+- netlify/functions/analyze-worker-background.js
+- netlify/functions/api.js
+- package-lock.json
+- package.json
+- render.yaml
+- reports/reportGenerator.js
+- samples/README.md
+- schemas/task1Schema.js
+- schemas/task2Schema.js
+- script.js
+- scripts/build-static-preview.mjs
+- scripts/generate-v11-4-proof.mjs
+- scripts/reset-diagnostic-data.mjs
+- server.js
+- services/aiAnalyzer.js
+- services/analysisJobStore.js
+- services/analysisVersions.js
+- services/apiRouter.js
+- services/canonicalAnalysis.js
+- services/diagnosticReset.js
+- services/diagnosticResponseSchema.js
+- services/kruPomRubricReference.js
+- services/promptBuilder.js
+- services/storage.js
+- services/task2Safety.js
+- styles.css
+- tests/diagnostic-api.test.mjs
+- tests/fixtures/task1-sun-combination-accepted.json
+- tests/v10-commercial-sale-readiness.test.mjs
+- tests/v11-1-language-calibration-hotfix.test.mjs
+- tests/v11-2-report-integrity-hotfix.test.mjs
+- tests/v11-3-report-completeness-hotfix.test.mjs
+- tests/v11-4-pdf-traceability-progress-proof.test.mjs
+- tests/v11-6-student-report-renderer.test.mjs
+- tests/v11-7-bilingual-premium-report.test.mjs
+- tests/v11-final-sale-readiness.test.mjs
+- tests/v11-server-smoke.test.mjs
+- tests/v7-production-calibration.test.mjs
+- tests/v8-2-opinion-route-progress.test.mjs
+- tests/v8-sale-readiness.test.mjs
+- wordCount.js
+
+REMOVED
+- .env.example
+- .gitignore
+- 00_READ_THIS_FIRST_V11_7.txt
+- ROOT_DIRECTORY.txt
+- UPLOAD_AND_RENDER_SETTINGS_THAI.txt
+- V11_7_LOCAL_TEST_RESULTS.txt
+- assets/.gitkeep
+
+This comparison proves that V12.2 is not a folder rename. It adds and modifies diagnostic, renderer, API, versioning, QA and deployment source files while preserving unrelated systems where hashes remain identical.

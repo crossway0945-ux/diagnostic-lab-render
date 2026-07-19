@@ -1,0 +1,17 @@
+KRU POM IELTS WRITING 7+ DIAGNOSTIC LAB — V12.2 FULL-SYSTEM UPGRADE
+
+THIS IS THE COMPLETE UPGRADE, NOT A V11.7 FOLDER RENAME.
+
+The deployment folder name is intentionally unchanged because Render already points to it:
+  diagnostic-lab-v11-7-bilingual-premium
+
+The application inside is Version 12.2.0. It upgrades the diagnostic integrity layer, paragraph/evidence matching, scoring calibration, revision-fidelity protection, bilingual premium report renderer, server-side PDF generation, Progress grouping, and regression QA.
+
+RENDER SETTINGS
+Root Directory: diagnostic-lab-v11-7-bilingual-premium
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+Node: 22.16.0
+
+Upload the complete folder diagnostic-lab-v11-7-bilingual-premium to the repository root. Do not rename it. Do not leave Root Directory blank. Do not type npm ci or npm cpi.

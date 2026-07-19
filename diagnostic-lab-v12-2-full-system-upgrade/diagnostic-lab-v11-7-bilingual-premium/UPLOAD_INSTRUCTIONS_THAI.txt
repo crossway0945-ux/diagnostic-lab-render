@@ -1,0 +1,19 @@
+วิธีอัปโหลดชุด V12.2 แบบใช้ Root เดิม
+
+1. แตกไฟล์ ZIP
+2. จะเห็นโฟลเดอร์ชื่อ diagnostic-lab-v11-7-bilingual-premium เพียงโฟลเดอร์เดียว
+3. อัปโหลดโฟลเดอร์นี้ทั้งโฟลเดอร์ไว้ที่หน้าแรกของ GitHub repository
+4. หลัง Commit ต้องเปิด path นี้ได้ทันที:
+   diagnostic-lab-v11-7-bilingual-premium/package.json
+5. ใน Render ใช้ค่าต่อไปนี้เท่านั้น:
+   Root Directory: diagnostic-lab-v11-7-bilingual-premium
+   Build Command: npm install
+   Start Command: npm start
+   Health Check Path: /api/health
+   NODE_VERSION: 22.16.0
+6. กด Manual Deploy > Clear build cache & deploy
+
+ห้ามเว้น Root Directory ว่าง
+ห้ามเปลี่ยนเป็น npm ci
+ห้ามพิมพ์ npm cpi
+ห้ามอัปโหลด ZIP ตรง ๆ โดยไม่แตกไฟล์

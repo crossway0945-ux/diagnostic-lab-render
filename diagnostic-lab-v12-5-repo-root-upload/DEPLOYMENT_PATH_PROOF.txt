@@ -1,8 +1,0 @@
-EXPECTED GITHUB PATH
-<repository-root>/package.json
-
-EXPECTED RENDER BUILD PATH
-/opt/render/project/src/package.json
-
-RENDER ROOT DIRECTORY
-Not set (repository root)

@@ -1,5 +1,0 @@
-Root Directory: [EMPTY]
-Build Command: npm ci
-Start Command: npm start
-Health Check Path: /api/health
-Environment variable: NODE_VERSION=22.16.0

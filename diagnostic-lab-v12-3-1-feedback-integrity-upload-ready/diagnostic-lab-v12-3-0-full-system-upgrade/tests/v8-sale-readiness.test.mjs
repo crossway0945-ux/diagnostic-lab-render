@@ -304,7 +304,7 @@ async function testCanonicalRendererAndPdfSerializationPath() {
   assert.match(script, /studentProfileSelect\.required = canManageStudents/);
   assert.match(index, /Permanently delete archived student/);
   assert.doesNotMatch(index, /Structural Diagram|Advantages Outweigh Disadvantages/);
-  assert.match(index, /script\.js\?v=diagnostic-v12-3-1-feedback-integrity/);
+  assert.match(index, /script\.js\?v=diagnostic-v12-3-2-taxonomy-integrity/);
   assert.match(server, /services\/canonicalAnalysis\.js/);
   assert.match(server, /services\/task2Safety\.js/);
   assert.equal(previewScript, script, "Netlify frontend uses the canonical renderer");

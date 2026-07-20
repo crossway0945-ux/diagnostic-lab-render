@@ -19,7 +19,7 @@ import {
   validateCanonicalAnalysis
 } from "./canonicalAnalysis.js";
 import { buildSentenceCoverageAudit } from "../domain/paragraphEvidence.js";
-import { buildFeedbackIntegrityModel, validateFeedbackIntegrity } from "../domain/feedbackIntegrity.js";
+import { buildFeedbackIntegrityModel, projectRouteAlignmentDisplay, validateFeedbackIntegrity } from "../domain/feedbackIntegrity.js";
 import { assertUnicodeIntegrity, normalizeVisibleTree } from "../domain/textIntegrity.js";
 export {
   classifyTask1Visual,
@@ -2292,10 +2292,10 @@ function reconcileCanonicalTask2FrameworkScores(input = {}, canonical) {
             ? `The thesis mentions the required ${canonical.essayTypeLabel} route but does not map every function clearly.`
             : `The thesis does not yet map all required ${canonical.essayTypeLabel} routes clearly.`
       };
-  output["Body Paragraph Route Alignment"] = {
+  output["Body Paragraph Route Alignment"] = projectRouteAlignmentDisplay({
     status: routeStatus,
     diagnosis: route.bodyRoutes.map((item) => `Body ${item.index}: ${item.label} (${item.status})`).join(" | ")
-  };
+  });
   output["Explanation Depth"] = {
     status: canonical.frameworkAssessment.explanationDepth.status,
     diagnosis: moderate ? "At least one required route is relevant but only partially extended." : "The main body routes are developed consistently."
@@ -2379,7 +2379,9 @@ function applyTask2RevisionSafety(cards, safety) {
         fidelity = assessTask2RevisionFidelity({
           exactSentence: card.exactSentence,
           targetedRevision: safeRevision,
-          revisionType: card.severity === "High-Band Refinement" ? "High-Band Refinement" : "Route-Preserving Revision"
+          revisionType: ["Teacher-Guided Expansion", "Model Paragraph"].includes(revisionType)
+            ? revisionType
+            : card.severity === "High-Band Refinement" ? "High-Band Refinement" : "Route-Preserving Revision"
         });
         revisionType = fidelity.revisionType;
         integrity = validateTask2RevisionIntegrity({
@@ -2430,9 +2432,17 @@ function projectTask2IssueConsistency(card = {}, safety = {}) {
 }
 
 function buildSafeTask2TargetedRevision(sentence, card = {}) {
+  const cardRevision = String(card.targetedRevision || "");
+  if (cardRevision) {
+    const repairedRevision = repairDeterministicLanguageSentence(cardRevision);
+    if (normalizeEvidenceText(repairedRevision) !== normalizeEvidenceText(cardRevision) &&
+      normalizeEvidenceText(repairedRevision) !== normalizeEvidenceText(sentence)) {
+      return repairedRevision;
+    }
+  }
   const repaired = repairDeterministicLanguageSentence(sentence);
   return normalizeEvidenceText(repaired) === normalizeEvidenceText(sentence)
-    ? String(card.targetedRevision || "")
+    ? cardRevision
     : repaired;
 }
 

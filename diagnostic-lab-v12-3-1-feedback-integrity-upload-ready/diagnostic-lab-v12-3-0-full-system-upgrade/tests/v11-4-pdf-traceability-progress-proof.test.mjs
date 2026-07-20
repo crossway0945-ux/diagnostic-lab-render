@@ -39,7 +39,7 @@ assert.equal(report.criteriaScores["Grammatical Range & Accuracy"].range, "6.0")
 assert.equal(report.detectedPosition, "strongly disagree");
 assert.equal(report.positionConfidence, "high");
 assert.equal(report.kruPomScores["Thesis Route Clarity"].status, "Strong");
-assert.equal(report.kruPomScores["Body Paragraph Route Alignment"].status, "Strong");
+assert.equal(report.kruPomScores["Body Paragraph Route Alignment"].status, "Aligned");
 
 const body2Sentence2 = report.sentenceCoverageAudit.sentences.find((item) => item.location === "Body Paragraph 2, Sentence 2");
 assert.ok(body2Sentence2);
@@ -118,14 +118,14 @@ assert.deepEqual(progress.reportVersions.map((version) => version.progressEligib
 assert.notEqual(progress.repeatedIssue, "Same-work rerun marker");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.3.1",
-  engineVersion: "ielts-diagnostic-engine-v12.3.1",
+  appVersion: "12.3.2",
+  engineVersion: "ielts-diagnostic-engine-v12.3.2",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.3.1",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.3.1",
-  feedbackSchemaVersion: "feedback-integrity-v12.3.1",
-  issueTaxonomyVersion: "issue-taxonomy-v12.3.1",
-  revisionValidatorVersion: "revision-alignment-v12.3.1"
+  reportSchemaVersion: "ielts-diagnostic-report-v12.3.2",
+  feedbackSchemaVersion: "feedback-integrity-v12.3.2",
+  issueTaxonomyVersion: "issue-taxonomy-v12.3.2",
+  revisionValidatorVersion: "revision-alignment-v12.3.2"
 });
 
 const [script, css] = await Promise.all([

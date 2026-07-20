@@ -18,7 +18,7 @@ FORBIDDEN = (
     "providerBodyPreview",
 )
 CASES = (
-    ("sun-thai-v12-3-1.pdf", ("Sun V12.3.1 Final QA", "Countability", "Body Paragraph 2, Sentence 3")),
+    ("sun-thai-v12-3-1.pdf", ("Sun V12.3.1 Final QA", "Causal Mechanism", "Body Paragraph 2, Sentence 3")),
     ("yuki-english-v12-3-1.pdf", ("Yuki V12.3.1 Final QA", "Paragraph Coverage Summary", "Disclaimer")),
 )
 

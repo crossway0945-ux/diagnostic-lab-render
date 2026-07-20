@@ -1,0 +1,10 @@
+RENDER ROOT DIRECTORY — V11.7
+
+diagnostic-lab-v11-7-bilingual-premium
+
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+
+GitHub ต้องมีไฟล์นี้จริง:
+diagnostic-lab-v11-7-bilingual-premium/package.json

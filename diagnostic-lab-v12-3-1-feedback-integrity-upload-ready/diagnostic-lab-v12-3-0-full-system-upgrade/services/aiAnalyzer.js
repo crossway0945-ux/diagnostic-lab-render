@@ -2590,9 +2590,9 @@ function addModerateBodyDevelopmentCard(output, used, payload, safety) {
     whyItLimitsBand: "The example is broadly relevant, but the causal mechanism and wider consequence are not precise enough to make the second reason fully convincing.",
     kruPomDiagnosis: "Body Paragraph 2 is aligned with the thesis, but its development is Moderate rather than only an optional high-band refinement.",
     targetedRevision: buildTeacherGuidedBody2Revision(evidence.sentence, payload.prompt),
-    revisionType: "Teacher-Guided Expansion",
-    whyRevisionIsStronger: "The revision preserves the second thesis route but adds an explanatory premise that was not explicit in the student's sentence, so it is labelled as teacher guidance.",
-    studentAction: "Keep the current second reason, then explain how the example creates a concentrated effect on the wider group or system named in the prompt."
+    revisionType: "Route-Preserving Revision",
+    whyRevisionIsStronger: "The revision repairs the language that can be corrected safely inside the quoted sentence and keeps the second thesis route unchanged.",
+    studentAction: "Keep the current second reason, then add one sentence naming who is affected, at what time or under what condition, and what measurable result follows."
   });
   used.add(normalizeEvidenceText(evidence.sentence));
 }
@@ -2636,9 +2636,12 @@ function hasOverlappingEvidence(cards, evidence) {
   });
 }
 
+// The deterministic path cannot invent the specific actor, timing and consequence a real expansion
+// needs, and a generic sentence such as "this affects the wider group named in the prompt" is
+// AI meta-language that a student must never be asked to study. Repair only what is verifiable and
+// let the revision-alignment disclosure state honestly what the student still has to write.
 function buildTeacherGuidedBody2Revision(sentence) {
-  const source = String(sentence || "").replace(/[.!?]+$/g, "").trim();
-  return `${source}. This affects the wider group named in the prompt because the same mechanism operates beyond the single example.`;
+  return repairDeterministicLanguageSentence(sentence);
 }
 
 function repairDeterministicLanguageSentence(sentence) {
@@ -2682,7 +2685,9 @@ function repairDeterministicLanguageSentence(sentence) {
     .replace(/\bpopulation(\s+of\s+[^.!?]{0,45})\s+continue\s+to\b/gi, "population$1 continues to")
     .replace(/\boccupations\s+,\s*which\b/gi, "occupations, which")
     .replace(/\bspace\s*,?\s*which\b/gi, "space, which")
-    .replace(/,\s*thus\s+facilities of the same type are in one area,\s*since\s+/gi, " because grouping facilities of the same type in one area ")
+    // Removed: a rewrite that spliced "…in one area this could contribute…" produced a broken clause
+    // and shifted the policy subject away from the task. Meaning-level repairs must come from the
+    // analysis engine and pass the revision-quality validator, not from a blind regex substitution.
     .replace(/\s+([,.;!?])/g, "$1")
     .replace(/([,;:])(?=\S)/g, "$1 ")
     .replace(/([.!?])(?=[A-Z])/g, "$1 ")
@@ -3390,6 +3395,7 @@ function normalizeAnalysis(analysis, payload) {
     taskType: payload.taskType,
     visualType: payload.publicVisualType || guardedAnalysis.visualType || payload.visualType,
     reportLanguage: normalizeReportLanguage(payload.reportLanguage),
+    prompt: payload.prompt,
     feedbackCards: studentFeedbackCards,
     topIssues: studentTopIssues,
     paragraphFeedback: studentParagraphFeedback,

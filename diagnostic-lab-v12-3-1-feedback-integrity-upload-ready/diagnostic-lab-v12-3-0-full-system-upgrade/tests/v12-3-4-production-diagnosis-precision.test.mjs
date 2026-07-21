@@ -18,7 +18,7 @@ import { normalizeStudentFacingText } from "../domain/canonicalAnalysis.js";
 import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.4");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.5");
 
 const norm = (value) => String(value).normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}%]+/gu, " ").trim();
 const primaryOf = (text) => detectDevelopmentSignal(norm(text)) || detectLanguageSignal(norm(text)) || "";
@@ -273,4 +273,4 @@ assert.match(renderConfig, /rootDir:\s*diagnostic-lab-v12-3-1-feedback-integrity
 assert.match(renderConfig, /buildCommand:\s*npm install/);
 assert.match(renderConfig, /startCommand:\s*npm start/);
 
-console.log("V12.3.4 production-diagnosis precision: verbatim provider prose classified correctly, expansion fidelity, executive top-issue coverage, dimensional paragraph status, report copy and Render root verified.");
+console.log("V12.3.5 production-diagnosis precision: verbatim provider prose classified correctly, expansion fidelity, executive top-issue coverage, dimensional paragraph status, report copy and Render root verified.");

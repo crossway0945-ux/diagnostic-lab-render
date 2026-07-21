@@ -1809,6 +1809,8 @@ function sanitizePrintText(value) {
     .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
     .replace(/\u2192/g, "->")
     .replace(/\bLFC[\s\u00a0]+CPC\b/g, "LFC-CPC")
+    .replace(/\bTESL\b/g, "TEEL")
+    .replace(/([\u201d"\u2019'\w]),(?=[\u201c"\u2018'\w])/g, "$1, ")
     .replace(/([.,;:!?])[ \t]+(["'\u201d\u2019])/g, "$1$2")
     .replace(/[ \t]+([\u201d\u2019])/g, "$1")
     .replace(/([\u201c\u2018])[ \t]+/g, "$1")

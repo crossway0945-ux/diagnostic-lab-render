@@ -1,4 +1,5 @@
 import { segmentStudentResponse } from "./paragraphEvidence.js";
+import { checkRevisionTypeFidelity, validateRevisionQuality } from "./revisionQuality.js";
 
 export const SENTENCE_ROLES = Object.freeze([
   "introduction_background",
@@ -23,7 +24,8 @@ export const SENTENCE_ROLES = Object.freeze([
 
 export const ISSUE_TAXONOMY = Object.freeze([
   "Position Clarity", "Thesis Route Clarity", "Prompt Coverage", "Body Route Alignment",
-  "Topic Sentence Strength", "Explanation Depth", "Causal Mechanism", "Example Development",
+  "Topic Sentence Strength", "Topic Sentence Precision", "Policy Mechanism Accuracy",
+  "Explanation Depth", "Causal Mechanism", "Example Development",
   "SAR Example Quality", "Link Back Control", "Paragraph Closure",
   "Paragraph Unity", "Conclusion Closure", "Meaning Control", "Visual Understanding",
   "Introduction Precision", "Mixed-Visual Coverage",
@@ -33,6 +35,21 @@ export const ISSUE_TAXONOMY = Object.freeze([
   "Reference Control", "Pronoun Control", "Countability", "Article Control", "Preposition Control",
   "Tense Control", "Subject–Verb Agreement", "Modal + Base Verb",
   "Grammar and Sentence Control", "Punctuation", "Sentence Completion", "Academic Tone", "Concision"
+]);
+
+// Logic categories are task-specific. A Task 1 data/spatial category must never head a Task 2 card,
+// and a Task 2 argument category must never head a Task 1 card.
+export const TASK1_ONLY_CATEGORIES = Object.freeze([
+  "Visual Understanding", "Introduction Precision", "Mixed-Visual Coverage", "Overview Quality",
+  "Overview Accuracy", "Data Selection", "Data Accuracy", "Grouping Logic", "Comparison Precision",
+  "Objective Reporting", "Process Sequence", "Process Endpoint", "Map Change Accuracy", "Magnitude Precision"
+]);
+
+export const TASK2_ONLY_CATEGORIES = Object.freeze([
+  "Position Clarity", "Thesis Route Clarity", "Body Route Alignment", "Topic Sentence Strength",
+  "Topic Sentence Precision", "Policy Mechanism Accuracy", "Explanation Depth", "Causal Mechanism",
+  "Example Development", "SAR Example Quality", "Link Back Control", "Paragraph Closure",
+  "Paragraph Unity", "Conclusion Closure"
 ]);
 
 export const DEVELOPMENT_ISSUE_CATEGORIES = Object.freeze([
@@ -93,6 +110,7 @@ export function buildFeedbackIntegrityModel({
   taskType = "Task 2",
   visualType = "",
   reportLanguage = "",
+  prompt = "",
   feedbackCards = [],
   topIssues = [],
   paragraphFeedback = [],
@@ -111,7 +129,7 @@ export function buildFeedbackIntegrityModel({
     nextSentence: paragraph.sentences[sentenceIndex + 1]?.exactText || ""
   })));
   const canonicalIssues = (Array.isArray(feedbackCards) ? feedbackCards : [])
-    .map((card, index) => canonicalizeIssue(card, index, { writing, taskType, visualType, reportLanguage, paragraphs, records }))
+    .map((card, index) => canonicalizeIssue(card, index, { writing, taskType, visualType, reportLanguage, prompt, paragraphs, records }))
     .filter(Boolean);
   const topIssueIds = selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType, `${mainScoreLimitingFactor} ${mostUrgentRepair}`);
   const canonicalTopIssues = topIssueIds
@@ -221,7 +239,7 @@ export function assessConclusionFunction(paragraphs = [], taskType = "Task 2") {
 }
 
 export function inferRepairTargets(issue = {}) {
-  const category = normalizeIssueCategory(issue.issueCategory || issue.issueType, issue);
+  const category = normalizeIssueCategory(issue.issueCategory || issue.issueType, issue, issue.taskType);
   const text = normalizeText([
     issue.issueType, issue.issueSubtype, issue.diagnosis, issue.whyItLimitsBand,
     issue.kruPomDiagnosis, issue.studentAction
@@ -418,7 +436,7 @@ function canonicalizeIssue(card, index, context) {
     previousSentence: record.previousSentence
   });
   const repairs = [];
-  const originalIssueCategory = normalizeIssueCategory(card.issueCategory || card.issueType, card);
+  const originalIssueCategory = normalizeIssueCategory(card.issueCategory || card.issueType, card, context.taskType);
   let issueCategory = correctIssueCategoryForRole(originalIssueCategory, sentenceRole, card);
   const originalPunctuationClaimValid = validatePunctuationClaim(card, canonicalEvidence);
   const roleConflictCorrected = originalIssueCategory !== issueCategory;
@@ -488,10 +506,18 @@ function canonicalizeIssue(card, index, context) {
     visualType: context.visualType,
     sentenceRole
   });
-  // Only call a revision "Teacher-Guided Expansion" when it actually introduces analytical content.
-  // Relabelling a word-swap as teacher guidance would claim work the revision never did.
-  if (!preliminaryAlignment.pass && preliminaryAlignment.contentAdded &&
-    repairTargets.some((target) => ["mechanism", "explanation depth", "example specificity", "SAR completeness", "scope", "affected group", "consequence"].includes(target))) {
+  // Label by what the revision actually did, not by whether validation happened to pass.
+  // The same discriminator is used everywhere: a revision is teacher guidance only when it supplies
+  // an analytical element (an affected group, a condition or timing) the original never had.
+  // A rewording that merely swaps synonyms stays a Minimal Correction.
+  const developmentRepair = repairTargets.some((target) =>
+    ["mechanism", "explanation depth", "example specificity", "SAR completeness", "scope", "affected group", "consequence"].includes(target));
+  const expansionCheck = checkRevisionTypeFidelity({
+    original: canonicalEvidence,
+    revision: card.targetedRevision,
+    revisionType
+  });
+  if (expansionCheck.substantialAddition && developmentRepair && revisionType !== "Model Paragraph") {
     revisionType = "Teacher-Guided Expansion";
   }
   let alignment = evaluateRevisionAlignment({
@@ -520,6 +546,24 @@ function canonicalizeIssue(card, index, context) {
   }
   // Self-repair: when the revision does not reach every diagnosed repair target we disclose the gap
   // honestly instead of discarding the report or claiming a repair that did not happen.
+  // A Targeted Revision is the one thing a student may copy, so it is validated on its own terms.
+  // Every finding is repairable: the diagnosis, evidence and score are preserved regardless.
+  const revisionQuality = validateRevisionQuality({
+    original: canonicalEvidence,
+    revision: card.targetedRevision,
+    prompt: context.prompt,
+    revisionType,
+    taskType: context.taskType
+  });
+  if (revisionQuality.revisionTypeValidationStatus === "fail" && revisionQuality.substantialAddition && revisionType !== "Model Paragraph") {
+    repairs.push({ code: "REVISION_TYPE_FIDELITY", from: revisionType || "(unset)", to: "Teacher-Guided Expansion", paragraphLocation: record.location });
+    revisionType = "Teacher-Guided Expansion";
+  }
+  for (const problem of revisionQuality.problems) {
+    if (problem.code === "REVISION_TYPE_FIDELITY") continue;
+    repairs.push({ code: problem.code, message: problem.message, paragraphLocation: record.location });
+  }
+
   let revisionAlignmentStatus = alignment.revisionAlignmentStatus;
   let revisionLimitationNote = "";
   if (revisionAlignmentStatus === "requires-regeneration") {
@@ -577,6 +621,12 @@ function canonicalizeIssue(card, index, context) {
     unresolvedTargets: alignment.unresolvedTargets,
     revisionAlignmentStatus,
     revisionAlignmentPass: alignment.pass,
+    grammarValidationStatus: revisionQuality.grammarValidationStatus,
+    semanticValidationStatus: revisionQuality.semanticValidationStatus,
+    taskFidelityStatus: revisionQuality.taskFidelityStatus,
+    languageSafetyStatus: revisionQuality.languageSafetyStatus,
+    revisionTypeValidationStatus: revisionQuality.revisionTypeValidationStatus,
+    revisionQualityProblems: revisionQuality.problems,
     revisionLimitationNote,
     whyRevisionIsStronger: revisionLimitationNote
       ? appendLimitationNote(card.whyRevisionIsStronger, revisionLimitationNote)
@@ -745,7 +795,9 @@ function normalizeEvidenceLocations(card, primary, records) {
 // not against category names, because a provider rarely names the category it is describing.
 const LANGUAGE_SIGNAL_RULES = [
   // A sentence that stops mid-clause is a completion defect, never a collocation defect.
-  [/ends? (?:with|in) (?:a )?comma|unfinished|incomplete sentence|sentence fragment|\bfragment\b|needs? (?:a )?(?:grammatical|proper|full) closure|does not (?:close|finish|complete)|missing (?:a )?(?:full stop|period)|feels unfinished/, "Sentence Completion"],
+  // Written every way real feedback phrases it, including "the comma ending makes the sentence
+  // incomplete" where the noun and the adjective are separated.
+  [/ends? (?:with|in) (?:a )?comma|comma ending|ending comma|unfinished|incomplete sentence|sentence[^.]{0,30}\bincomplete\b|\bincomplete\b[^.]{0,20}sentence|not a complete sentence|does not form a complete|sentence fragment|\bfragment\b|needs? (?:a )?(?:grammatical|proper|full|complete) closure|does not (?:close|finish|complete)|missing (?:a )?(?:full stop|period)|feels unfinished|no full stop/, "Sentence Completion"],
   [/\b(?:progressive|continuous)\b|\b(?:past|present|future) (?:simple|perfect|continuous|tense)\b|\bverb tense\b|\btenses?\b|\bverb form\b/, "Tense Control"],
   [/subject verb agreement|\bagreement\b.{0,30}\b(?:subject|verb)\b|\b(?:subject|verb)\b.{0,30}\bagreement\b/, "Subject–Verb Agreement"],
   [/\bmodal\b.{0,30}\bbase\b|\bafter a modal\b/, "Modal + Base Verb"],
@@ -791,7 +843,10 @@ export function detectDevelopmentSignal(text) {
   if (/\bsar\b|situation action result/.test(value) &&
     /incomplete|missing|weak|partial|undeveloped|underdeveloped|not (?:complete|shown|clear|full)|does not|should (?:specify|show|move|include)|needs? to (?:move|show|specify|include)|more accurately/.test(value)) return "SAR Example Quality";
   if (/weak bridge|bridge to the (?:policy|claim|argument|thesis) is (?:weak|missing|unclear)|does not (?:connect|link|bridge) (?:back )?to the (?:policy|thesis|claim|argument)/.test(value)) return "SAR Example Quality";
-  if (/(?:missing|incomplete|unclear|weak|vague|broken|absent|no|without) (?:causal )?(?:mechanism|chain)|mechanism.{0,60}(?:missing|incomplete|unclear|weak|vague|absent|broken|not )|causal (?:chain|link).{0,40}(?:incomplete|missing|unclear|broken)|does not (?:show|explain|complete).{0,40}(?:mechanism|chain|how )/.test(value)) return "Causal Mechanism";
+  // "the mechanism is not expressed naturally" is a wording problem, not a missing mechanism.
+  // Only treat it as a development defect when the mechanism itself is absent or incomplete.
+  const mechanismWordingOnly = /mechanism (?:is |was )?not (?:expressed|worded|phrased|stated|described|written|conveyed)/.test(value);
+  if (!mechanismWordingOnly && (/(?:missing|incomplete|unclear|weak|vague|broken|absent|no|without) (?:causal )?(?:mechanism|chain)|mechanism.{0,60}(?:missing|incomplete|unclear|weak|vague|absent|broken|not (?:complete|shown|explained|developed))|causal (?:chain|link).{0,40}(?:incomplete|missing|unclear|broken)|does not (?:show|explain|complete).{0,40}(?:mechanism|chain|how )/.test(value))) return "Causal Mechanism";
   // Scope escalation: the result stays on one case and must reach a wider group or wider consequence.
   if (/(?:result|example|case|evidence).{0,80}(?:needs? to move|should move|move from|stays? (?:mostly )?(?:at|on)|does not fully connect|only one|single|one student|one person|one family|personal result).{0,80}(?:wider|broader|many|more|general|city|urban|pattern)|(?:wider|broader) (?:pattern|consequence|impact|group|urban)/.test(value)) return "Example Development";
   if (/example.{0,70}(?:too narrow|narrow|vague|generic|undeveloped|underdeveloped|not (?:fully )?developed|does not (?:prove|support|fully connect)|incomplete|needs? (?:a )?wider)|(?:narrow|vague|generic|undeveloped|underdeveloped) example|(?:affected group|consequence|wider impact).{0,50}(?:unclear|missing|vague|not (?:clear|shown|stated|identified))|does not (?:show|state|identify).{0,30}(?:affected group|consequence|wider impact)/.test(value)) return "Example Development";
@@ -802,6 +857,27 @@ export function detectDevelopmentSignal(text) {
 export function detectLanguageSignal(text) {
   const value = String(text || "");
   return LANGUAGE_SIGNAL_RULES.find(([pattern]) => pattern.test(value))?.[1] || "";
+}
+
+// Task 2 argument-structure defects that are neither development gaps nor pure language slips:
+// the controlling sentence misstates the policy, or states it too vaguely to control the paragraph.
+export function detectTask2StructureSignal(text) {
+  const value = String(text || "");
+  if (/(?:does not|doesn t|fails? to) accurately describe the (?:prompt|policy|proposal|task)|policy (?:mechanism|action|description) (?:is )?(?:inaccurate|not accurate|misstated|described inaccurately)|misdescribes the (?:policy|prompt|proposal)|keep the (?:original )?policy mechanism accurate|not (?:the )?(?:policy|proposal) (?:in|from) the prompt/.test(value)) {
+    return "Policy Mechanism Accuracy";
+  }
+  if (/(?:topic|controlling) sentence.{0,80}(?:needs?|requires?|lacks?|is)\s*(?:more )?(?:precise|precision|accurate|clearer|clarity|specific|vague|imprecise|unclear|natural)|needs? (?:more )?precise (?:cause |policy |facility |zoning )?wording|policy mechanism is not expressed (?:naturally|clearly)/.test(value)) {
+    return "Topic Sentence Precision";
+  }
+  return "";
+}
+
+// A category may only head a card whose task type owns it.
+export function categoryAllowedForTask(category, taskType) {
+  const name = String(category || "");
+  if (!name) return false;
+  if (String(taskType || "") === "Task 1") return !TASK2_ONLY_CATEGORIES.includes(name);
+  return !TASK1_ONLY_CATEGORIES.includes(name);
 }
 
 function stripCategoryEchoes(text, card = {}) {
@@ -841,12 +917,15 @@ function diagnosisSignals(card = {}) {
   return {
     stripped,
     developmentSignal: detectDevelopmentSignal(stripped),
-    languageSignal: detectLanguageSignal(stripped)
+    languageSignal: detectLanguageSignal(stripped),
+    structureSignal: detectTask2StructureSignal(stripped)
   };
 }
 
-function normalizeIssueCategory(value, card = {}) {
-  const { stripped, developmentSignal, languageSignal } = diagnosisSignals(card);
+function normalizeIssueCategory(value, card = {}, taskType = "") {
+  const { stripped, developmentSignal, languageSignal, structureSignal } = diagnosisSignals(card);
+  const task2 = String(taskType || "") !== "Task 1";
+  const usableStructureSignal = task2 ? structureSignal : "";
   const diagnosedLanguageCategory = detectDiagnosedLanguageCategory(card);
   if (diagnosedLanguageCategory && !developmentSignal) {
     if (languageSignal && languageSignal !== diagnosedLanguageCategory && !(CATEGORY_KEYWORDS[diagnosedLanguageCategory]?.test(stripped))) {
@@ -856,8 +935,13 @@ function normalizeIssueCategory(value, card = {}) {
   }
   const explicitCategory = String(value || "").trim();
   if (ISSUE_TAXONOMY.includes(explicitCategory)) {
+    // A category owned by the other task type can never be right for this card.
+    if (taskType && !categoryAllowedForTask(explicitCategory, taskType)) {
+      return usableStructureSignal || developmentSignal || languageSignal || (task2 ? "Topic Sentence Precision" : "Data Selection");
+    }
     if (LANGUAGE_ISSUE_CATEGORIES.includes(explicitCategory)) {
       if (developmentSignal) return developmentSignal;
+      if (usableStructureSignal) return usableStructureSignal;
       if (languageSignal && languageSignal !== explicitCategory && !(CATEGORY_KEYWORDS[explicitCategory]?.test(stripped))) {
         return languageSignal;
       }
@@ -865,6 +949,7 @@ function normalizeIssueCategory(value, card = {}) {
     return explicitCategory;
   }
   if (developmentSignal) return developmentSignal;
+  if (usableStructureSignal) return usableStructureSignal;
   const text = normalizeText([value, card.issueType, card.issueCategory, card.criteria, card.framework, card.whyItLimitsBand, card.kruPomDiagnosis].flat().filter(Boolean).join(" "));
   const rules = [
     [/\bmeaning (?:control|change|changing|reversal)|meaning[- ]revers|reverses? (?:the )?meaning|contradictory meaning/, "Meaning Control"],

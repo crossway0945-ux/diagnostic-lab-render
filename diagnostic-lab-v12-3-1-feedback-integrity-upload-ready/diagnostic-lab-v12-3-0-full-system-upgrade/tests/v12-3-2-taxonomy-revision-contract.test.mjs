@@ -19,10 +19,10 @@ import { projectCanonicalTask2Framework } from "../domain/canonicalAnalysis.js";
 import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.4");
-assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.4");
-assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.3.4");
-assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.3.4");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.5");
+assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.5");
+assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.3.5");
+assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.3.5");
 
 // --- Single authoritative taxonomy contract ---
 for (const category of ["Tense Control", "Causal Mechanism", "Word Choice", "Subject–Verb Agreement", "Modal + Base Verb", "Pronoun Control", "Topic Sentence Strength", "Paragraph Closure", "Introduction Precision", "Mixed-Visual Coverage"]) {

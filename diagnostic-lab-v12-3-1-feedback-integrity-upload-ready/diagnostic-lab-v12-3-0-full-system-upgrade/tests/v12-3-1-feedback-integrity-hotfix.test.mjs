@@ -11,11 +11,11 @@ import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { isTransientPdfError, runWithSingleTransientPdfRetry } from "../domain/pdfRetry.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.4");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.5");
 assert.equal(ANALYSIS_VERSIONS.rubricVersion, "kru-pom-ielts-writing-v12.3.0");
-assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.3.4");
-assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.4");
-assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.3.4");
+assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.3.5");
+assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.5");
+assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.3.5");
 
 const task2Writing = [
   "Urban zoning is often presented as an efficient planning policy. However, I strongly disagree because it creates longer journeys and concentrated traffic.",

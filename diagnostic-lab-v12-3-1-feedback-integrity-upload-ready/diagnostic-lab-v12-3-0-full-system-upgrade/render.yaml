@@ -4,7 +4,9 @@ services:
     runtime: node
     plan: starter
     region: singapore
-    rootDir: diagnostic-lab-v12-3-0-full-system-upgrade
+    # Must match the Root Directory configured in the Render dashboard exactly.
+    # Verified live value: the app lives inside the upload-ready wrapper folder.
+    rootDir: diagnostic-lab-v12-3-1-feedback-integrity-upload-ready/diagnostic-lab-v12-3-0-full-system-upgrade
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health

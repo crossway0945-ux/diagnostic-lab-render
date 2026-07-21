@@ -140,14 +140,14 @@ assert.equal(progress.changeIndicator, "new");
 assert.equal(progress.repeatedIssue, "");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.3.3",
-  engineVersion: "ielts-diagnostic-engine-v12.3.3",
+  appVersion: "12.3.4",
+  engineVersion: "ielts-diagnostic-engine-v12.3.4",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.3.1",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.3.3",
-  feedbackSchemaVersion: "feedback-integrity-v12.3.3",
-  issueTaxonomyVersion: "issue-taxonomy-v12.3.3",
-  revisionValidatorVersion: "revision-alignment-v12.3.3"
+  reportSchemaVersion: "ielts-diagnostic-report-v12.3.4",
+  feedbackSchemaVersion: "feedback-integrity-v12.3.4",
+  issueTaxonomyVersion: "issue-taxonomy-v12.3.4",
+  revisionValidatorVersion: "revision-alignment-v12.3.4"
 });
 
 const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");

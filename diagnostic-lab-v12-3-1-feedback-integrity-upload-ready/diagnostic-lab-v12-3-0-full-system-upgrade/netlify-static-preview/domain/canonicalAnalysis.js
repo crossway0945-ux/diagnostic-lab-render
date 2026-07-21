@@ -325,6 +325,14 @@ export function normalizeStudentFacingText(value) {
     .replace(/[\uFFFD\uFFFE\uFFFF\uE000-\uF8FF]+/gu, " ")
     .replace(/[‐‑‒–—−]/gu, "-")
     .replace(/\btwo\s+-\s+body\b/gi, "two-body")
+    // Kru Pom's framework is written LFC-CPC; provider text and legacy keys use a bare space.
+    .replace(/\bLFC[\s ]+CPC\b/g, "LFC-CPC")
+    // Provider text often leaves a space before a closing quote ("traffic jam. ”) or punctuation.
+    // Only close-quote positions are touched, so an opening quote keeps its preceding space.
+    .replace(/([.,;:!?])[ \t]+(["'”’])/g, "$1$2")
+    .replace(/[ \t]+([”’])/g, "$1")
+    .replace(/([“‘])[ \t]+/g, "$1")
+    .replace(/[ \t]+([,.;:!?])/g, "$1")
     .replace(/ {2,}/g, " ")
     .trim();
 }

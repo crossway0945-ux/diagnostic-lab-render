@@ -53,9 +53,14 @@ export function projectRouteAlignmentDisplay({ status = "", diagnosis = "", thai
   const aligned = /^(?:strong|controlled|aligned)$/i.test(String(status || "").trim());
   const note = thai ? ROUTE_ALIGNMENT_SCOPE_NOTE_TH : ROUTE_ALIGNMENT_SCOPE_NOTE;
   const base = String(diagnosis || "").trim();
+  if (!base) return { status: aligned ? "Aligned" : String(status || ""), diagnosis: note };
+  if (base.includes(note)) return { status: aligned ? "Aligned" : String(status || ""), diagnosis: base };
+  // The route summary is a pipe-joined list with no terminal punctuation, so close it before the
+  // scope note or the two sentences run together ("...disagreement This rating assesses...").
+  const closed = /[.!?]["')\]]*$/u.test(base) ? base : `${base}.`;
   return {
     status: aligned ? "Aligned" : String(status || ""),
-    diagnosis: base && !base.includes(note) ? `${base} ${note}` : base || note
+    diagnosis: `${closed} ${note}`
   };
 }
 
@@ -76,6 +81,12 @@ const COMPARISON_MARKER = /\b(?:whereas|while|compared with|in contrast|by contr
 const DATA_MARKER = /(?:\b\d+(?:[.,]\d+)?%?\b|\b(?:percent|percentage|million|billion|tonnes?|kilograms?|years?|minutes?)\b)/i;
 const PROCESS_MARKER = /\b(?:first|next|then|subsequently|afterwards|finally|stage|step|is (?:heated|mixed|transported|processed|collected|stored|converted))\b/i;
 const MAP_MARKER = /\b(?:built|constructed|demolished|removed|replaced|converted|expanded|relocated|redeveloped|unchanged)\b/i;
+// Causation expressed either by a connective or by a participial clause ("leaving them tired",
+// "forcing parents to adjust"), which is how natural academic English usually carries a mechanism.
+const CAUSAL_LINK_MARKER = /\b(?:because|since|as a result of|due to|thereby|through|when|if|whenever)\b|\b(?:leading|leaving|forcing|causing|making|putting|creating|pushing|driving|preventing|allowing|enabling)\b|\b(?:so|therefore|thus|hence|consequently|resulting in|leads? to|results? in|which (?:means|causes|leads|forces))\b/i;
+const GROUP_MARKER = /\b(?:people|families|parents|students|residents|workers|commuters|shoppers|drivers|households|communities|citizens|customers|passengers|employees|businesses|neighbourhoods|neighborhoods|districts|countries|cities|the public|a wider)\b/i;
+const CONSEQUENCE_MARKER = /\b(?:so|therefore|thus|hence|as a result|consequently|resulting in|leads? to|results? in|leaving|forcing|causing|creating|putting)\b|\b(?:increase|reduce|worsen|delay|pressure|congestion|overload|shortage|spend|lose|loss|tired|harder|difficult|unable)\w*/i;
+const STOP_WORDS = new Set("a an the and or but of to in on at for with by from is are was were be been being it its this that these those their his her they them he she we you i as into over under more most very much many some any".split(" "));
 
 export function buildFeedbackIntegrityModel({
   writing = "",
@@ -102,7 +113,7 @@ export function buildFeedbackIntegrityModel({
   const canonicalIssues = (Array.isArray(feedbackCards) ? feedbackCards : [])
     .map((card, index) => canonicalizeIssue(card, index, { writing, taskType, visualType, reportLanguage, paragraphs, records }))
     .filter(Boolean);
-  const topIssueIds = selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType);
+  const topIssueIds = selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType, `${mainScoreLimitingFactor} ${mostUrgentRepair}`);
   const canonicalTopIssues = topIssueIds
     .map((issueId) => canonicalIssues.find((issue) => issue.issueId === issueId))
     .filter(Boolean)
@@ -267,6 +278,14 @@ export function evaluateRevisionAlignment({ exactSentence = "", targetedRevision
   const changed = Boolean(revisionNorm && revisionNorm !== originalNorm);
   const surfaceChanged = Boolean(revision && revision.normalize("NFKC").replace(/\s+/g, " ").trim() !== original.normalize("NFKC").replace(/\s+/g, " ").trim());
   const addedWords = Math.max(0, wordCount(revision) - wordCount(original));
+  // Development repair is judged from the content the revision actually introduces, never from net
+  // length growth: replacing a narrow example with a broader one of the same length is still a repair.
+  const originalContent = new Set(contentWords(original));
+  const introducedContent = contentWords(revision).filter((word) => !originalContent.has(word));
+  const contentAdded = new Set(introducedContent).size >= 3;
+  const addsGroup = GROUP_MARKER.test(revision) && (contentAdded || !GROUP_MARKER.test(original));
+  const addsCause = CAUSAL_LINK_MARKER.test(revision) && (contentAdded || !CAUSAL_LINK_MARKER.test(original));
+  const addsConsequence = CONSEQUENCE_MARKER.test(revision) && (contentAdded || !CONSEQUENCE_MARKER.test(original));
   const checks = {
     grammar: surfaceChanged,
     punctuation: surfaceChanged && SENTENCE_COMPLETE.test(revision),
@@ -283,13 +302,13 @@ export function evaluateRevisionAlignment({ exactSentence = "", targetedRevision
     "data accuracy": changed && (taskType === "Task 1" ? (/map|plan/i.test(visualType) ? MAP_MARKER.test(revision) : true) : DATA_MARKER.test(revision)),
     "comparison accuracy": changed && COMPARISON_MARKER.test(revision),
     "overview accuracy": changed && (taskType === "Task 1" || sentenceRole === "overview" ? true : /\boverall\b/i.test(revision)),
-    mechanism: changed && (CAUSE_MARKER.test(revision) || RESULT_MARKER.test(revision)) && addedWords >= 4,
-    "explanation depth": changed && addedWords >= 5 && (CAUSE_MARKER.test(revision) || RESULT_MARKER.test(revision)),
-    "example specificity": changed && (EXAMPLE_MARKER.test(revision) || /\b(?:a |an |the )?[a-z]+(?:s|ers|people|students|residents|workers|families|countries|cities)\b/i.test(revision)) && addedWords >= 3,
-    "SAR completeness": changed && addedWords >= 6 && (CAUSE_MARKER.test(revision) || RESULT_MARKER.test(revision)),
-    scope: changed && /\b(?:people|families|students|residents|workers|commuters|communities|countries|cities|the public|a wider)\b/i.test(revision),
-    "affected group": changed && /\b(?:people|families|students|residents|workers|commuters|communities|countries|cities|the public)\b/i.test(revision),
-    consequence: changed && RESULT_MARKER.test(revision),
+    mechanism: changed && addsCause && contentAdded,
+    "explanation depth": changed && addsCause && contentAdded,
+    "example specificity": changed && contentAdded && (EXAMPLE_MARKER.test(revision) || addsGroup || addsConsequence),
+    "SAR completeness": changed && contentAdded && addsCause && (addsGroup || addsConsequence),
+    scope: changed && addsGroup,
+    "affected group": changed && addsGroup,
+    consequence: changed && addsConsequence,
     "link-back": changed && RESULT_MARKER.test(revision),
     "conclusion closure": surfaceChanged && SENTENCE_COMPLETE.test(revision) && !/[,;:]\s*$/u.test(revision),
     "paragraph unity": changed,
@@ -305,6 +324,7 @@ export function evaluateRevisionAlignment({ exactSentence = "", targetedRevision
     repairTargets,
     repairedTargets,
     unresolvedTargets,
+    contentAdded,
     revisionAlignmentStatus: !revision ? "missing-revision" : unresolvedTargets.length ? "requires-regeneration" : revisionTypeAligned ? "aligned" : "revision-type-mismatch",
     revisionTypeAligned,
     pass: Boolean(revision && unresolvedTargets.length === 0 && revisionTypeAligned)
@@ -448,7 +468,13 @@ function canonicalizeIssue(card, index, context) {
   const deterministicallySupportedRefinement = unchangedSurface && card.revisionIntegrity?.pass === true;
   const unchangedRefinement = (["Pass / Strong", "High-Band Refinement"].includes(String(card.severity || "")) || deterministicallySupportedRefinement) &&
     normalizeText(card.targetedRevision) === normalizeText(canonicalEvidence);
-  const severity = deterministicallySupportedRefinement ? "High-Band Refinement" : card.severity;
+  let severity = deterministicallySupportedRefinement ? "High-Band Refinement" : card.severity;
+  // A development, mechanism or SAR gap is never an optional high-band refinement: it is the kind of
+  // problem the Executive Summary names as a score limiter, so it must stay rankable as a Top Issue.
+  if (DEVELOPMENT_ISSUE_CATEGORIES.includes(issueCategory) && ["High-Band Refinement", "Pass / Strong", "Minor Repair"].includes(String(severity))) {
+    repairs.push({ code: "DEVELOPMENT_SEVERITY_FLOOR", from: String(severity), to: "Moderate", paragraphLocation: record.location });
+    severity = "Moderate";
+  }
   const repairTargets = unchangedRefinement
     ? []
     : inferRepairTargets({ taskType: context.taskType, issueCategory, diagnosis, whyItLimitsBand, studentAction: card.studentAction });
@@ -462,7 +488,10 @@ function canonicalizeIssue(card, index, context) {
     visualType: context.visualType,
     sentenceRole
   });
-  if (!preliminaryAlignment.pass && repairTargets.some((target) => ["mechanism", "explanation depth", "example specificity", "SAR completeness", "scope", "affected group", "consequence"].includes(target))) {
+  // Only call a revision "Teacher-Guided Expansion" when it actually introduces analytical content.
+  // Relabelling a word-swap as teacher guidance would claim work the revision never did.
+  if (!preliminaryAlignment.pass && preliminaryAlignment.contentAdded &&
+    repairTargets.some((target) => ["mechanism", "explanation depth", "example specificity", "SAR completeness", "scope", "affected group", "consequence"].includes(target))) {
     revisionType = "Teacher-Guided Expansion";
   }
   let alignment = evaluateRevisionAlignment({
@@ -495,12 +524,17 @@ function canonicalizeIssue(card, index, context) {
   let revisionLimitationNote = "";
   if (revisionAlignmentStatus === "requires-regeneration") {
     revisionAlignmentStatus = "partial-repair";
-    revisionLimitationNote = buildRevisionLimitationNote(alignment.unresolvedTargets, context.reportLanguage);
+    // The disclosure is only truthful for a correction that deliberately stayed inside the quoted
+    // sentence. A Teacher-Guided Expansion or Model Paragraph already adds analytical content, so
+    // attaching it there would contradict the revision the student is reading.
+    const expansionRevision = ["Teacher-Guided Expansion", "Model Paragraph"].includes(revisionType);
+    revisionLimitationNote = expansionRevision ? "" : buildRevisionLimitationNote(alignment.unresolvedTargets, context.reportLanguage);
     repairs.push({
       code: "REVISION_TARGETS_UNRESOLVED",
       unresolvedTargets: alignment.unresolvedTargets,
       paragraphLocation: record.location,
-      disclosed: true
+      revisionType,
+      disclosed: Boolean(revisionLimitationNote)
     });
   }
   return {
@@ -586,7 +620,7 @@ function projectTopIssue(issue) {
   };
 }
 
-function selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType) {
+function selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType, executiveText = "") {
   const limit = taskType === "Task 2" ? 5 : 3;
   const selected = [];
   for (const top of Array.isArray(topIssues) ? topIssues : []) {
@@ -603,7 +637,55 @@ function selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType) {
     if (!selected.includes(issue.issueId)) selected.push(issue.issueId);
     if (selected.length >= limit) break;
   }
+
+  // Coverage guarantee: a paragraph the Executive Summary names as a score limiter must appear in
+  // Top Issues. When the list is already full, the lowest-severity entry gives up its slot rather
+  // than a minor repair displacing the paragraph the summary told the student to fix.
+  const requiredLabels = executiveParagraphLabels(executiveText);
+  const issueById = new Map(canonicalIssues.map((issue) => [issue.issueId, issue]));
+  const covered = () => new Set(selected.map((id) => normalizeText(issueById.get(id)?.paragraphLabel)));
+  for (const label of requiredLabels) {
+    if (covered().has(normalizeText(label))) continue;
+    const candidate = ranked.find((issue) => !selected.includes(issue.issueId) && normalizeText(issue.paragraphLabel) === normalizeText(label));
+    if (!candidate) continue;
+    if (selected.length < limit) {
+      selected.push(candidate.issueId);
+      continue;
+    }
+    let weakestIndex = -1;
+    let weakestRank = Infinity;
+    for (const [index, id] of selected.entries()) {
+      const issue = issueById.get(id);
+      const label2 = normalizeText(issue?.paragraphLabel);
+      // Never evict an entry that is itself the only representative of a required paragraph.
+      const soleCoverage = requiredLabels.some((required) =>
+        normalizeText(required) === label2 &&
+        selected.filter((other) => normalizeText(issueById.get(other)?.paragraphLabel) === label2).length === 1
+      );
+      if (soleCoverage) continue;
+      const rank = severityRank(issue?.severity);
+      if (rank < weakestRank) {
+        weakestRank = rank;
+        weakestIndex = index;
+      }
+    }
+    if (weakestIndex >= 0 && weakestRank <= severityRank(candidate.severity)) selected[weakestIndex] = candidate.issueId;
+  }
   return selected;
+}
+
+export function executiveParagraphLabels(text) {
+  const value = String(text || "");
+  const labels = [];
+  const bodyMatches = value.match(/Body Paragraph\s*(\d+)/gi) || [];
+  for (const match of bodyMatches) {
+    const index = match.match(/(\d+)/)?.[1];
+    if (index) labels.push(`Body Paragraph ${index}`);
+  }
+  for (const [pattern, label] of [[/\bintroduction\b/i, "Introduction"], [/\boverview\b/i, "Overview"], [/\bconclusion\b/i, "Conclusion"]]) {
+    if (pattern.test(value)) labels.push(label);
+  }
+  return [...new Set(labels)];
 }
 
 function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType }) {
@@ -612,7 +694,13 @@ function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback
     const issues = canonicalIssues.filter((issue) => issue.paragraphLabel === paragraph.role);
     const primary = [...issues].sort((left, right) => severityRank(right.severity) - severityRank(left.severity))[0];
     const legacy = guidance.find((item) => normalizeText(item.paragraphLocation).startsWith(normalizeText(paragraph.role)));
-    const status = paragraphStatus(primary?.severity);
+    // Status must reflect the weakest dimension in the paragraph. A paragraph carrying an unrepaired
+    // development gap cannot be presented as "Mostly Controlled" while the summary calls it vague.
+    const developmentGap = issues.some((issue) =>
+      DEVELOPMENT_ISSUE_CATEGORIES.includes(issue.issueCategory) ||
+      (Array.isArray(issue.unresolvedTargets) && issue.unresolvedTargets.length > 0)
+    );
+    const status = capParagraphStatus(paragraphStatus(primary?.severity), developmentGap);
     return {
       paragraphId: `paragraph-${paragraph.paragraphNumber}`,
       paragraphLabel: paragraph.role,
@@ -652,19 +740,28 @@ function normalizeEvidenceLocations(card, primary, records) {
   return output.length ? output : [{ paragraphLocation: primary.location, exactEvidence: primary.exactText }];
 }
 
+// Ordered highest-precedence first. Patterns are written against the way real diagnostic prose is
+// phrased ("it ends with a comma", "needs grammatical closure", "needs precise ... language"),
+// not against category names, because a provider rarely names the category it is describing.
 const LANGUAGE_SIGNAL_RULES = [
-  [/\b(?:progressive|continuous)\b|\b(?:past|present|future) (?:simple|perfect|continuous|tense)\b|\bverb tense\b|\btenses?\b/, "Tense Control"],
+  // A sentence that stops mid-clause is a completion defect, never a collocation defect.
+  [/ends? (?:with|in) (?:a )?comma|unfinished|incomplete sentence|sentence fragment|\bfragment\b|needs? (?:a )?(?:grammatical|proper|full) closure|does not (?:close|finish|complete)|missing (?:a )?(?:full stop|period)|feels unfinished/, "Sentence Completion"],
+  [/\b(?:progressive|continuous)\b|\b(?:past|present|future) (?:simple|perfect|continuous|tense)\b|\bverb tense\b|\btenses?\b|\bverb form\b/, "Tense Control"],
   [/subject verb agreement|\bagreement\b.{0,30}\b(?:subject|verb)\b|\b(?:subject|verb)\b.{0,30}\bagreement\b/, "Subject–Verb Agreement"],
   [/\bmodal\b.{0,30}\bbase\b|\bafter a modal\b/, "Modal + Base Verb"],
-  [/collocat|combination is unnatural|unnatural combination|unnatural pairing/, "Collocation"],
+  // "the combination is unnatural" describes a collocation, even when it names the parts of speech
+  // involved, so it must outrank the bare word-class patterns below it.
+  [/collocat|combination is unnatural|unnatural combination|unnatural pairing|does not collocate/, "Collocation"],
+  [/word form|word formation|derivation|derived form|wrong form of the word/, "Word Form"],
+  // Article outranks countability: "the article is missing before the singular countable noun"
+  // is an article defect that merely mentions a countable noun.
   [/\barticles?\b|\bdefinite article\b|\bindefinite article\b/, "Article Control"],
+  [/countab|uncountable|plural form|singular form/, "Countability"],
   [/\bprepositions?\b/, "Preposition Control"],
-  [/countab|uncountable/, "Countability"],
-  [/word form|word formation|derivation/, "Word Form"],
-  [/collocat/, "Collocation"],
-  [/\bpronouns?\b|\breferents?\b|reference (?:control|chain|word)/, "Reference Control"],
+  [/\bpronouns?\b|\breferents?\b|reference (?:control|chain|word)|unclear reference/, "Reference Control"],
   [/punctuation|comma splice|run on sentence/, "Punctuation"],
-  [/word choice|invented word|non standard word|imprecise (?:word|noun|phrase)|vague (?:noun|phrase|wording)|lexical precision|unnatural (?:word|phrase|wording)/, "Lexical Precision"]
+  // Broadest language bucket last: imprecise, invented, vague or unnatural wording and terminology.
+  [/word choice|invented word|non standard word|imprecise|unclear for|unnatural|vague (?:noun|phrase|wording|term)|vague|lexical precision|needs? (?:more )?(?:precise|cleaner|accurate)\b|cleaner terminology|terminology|examiner has to infer|distort/, "Lexical Precision"]
 ];
 
 const CATEGORY_KEYWORDS = {
@@ -690,11 +787,14 @@ const CATEGORY_KEYWORDS = {
 
 export function detectDevelopmentSignal(text) {
   const value = String(text || "");
+  // An explicit SAR reference that asks for more always outranks the language wording around it.
   if (/\bsar\b|situation action result/.test(value) &&
-    /incomplete|missing|weak|partial|undeveloped|underdeveloped|not (?:complete|shown|clear|full)|does not/.test(value)) return "SAR Example Quality";
+    /incomplete|missing|weak|partial|undeveloped|underdeveloped|not (?:complete|shown|clear|full)|does not|should (?:specify|show|move|include)|needs? to (?:move|show|specify|include)|more accurately/.test(value)) return "SAR Example Quality";
   if (/weak bridge|bridge to the (?:policy|claim|argument|thesis) is (?:weak|missing|unclear)|does not (?:connect|link|bridge) (?:back )?to the (?:policy|thesis|claim|argument)/.test(value)) return "SAR Example Quality";
   if (/(?:missing|incomplete|unclear|weak|vague|broken|absent|no|without) (?:causal )?(?:mechanism|chain)|mechanism.{0,60}(?:missing|incomplete|unclear|weak|vague|absent|broken|not )|causal (?:chain|link).{0,40}(?:incomplete|missing|unclear|broken)|does not (?:show|explain|complete).{0,40}(?:mechanism|chain|how )/.test(value)) return "Causal Mechanism";
-  if (/example.{0,70}(?:too narrow|narrow|vague|generic|undeveloped|underdeveloped|not (?:fully )?developed|does not (?:prove|support)|incomplete|needs? (?:a )?wider)|(?:narrow|vague|generic|undeveloped|underdeveloped) example|(?:affected group|consequence|wider impact).{0,50}(?:unclear|missing|vague|not (?:clear|shown|stated|identified))|does not (?:show|state|identify).{0,30}(?:affected group|consequence|wider impact)/.test(value)) return "Example Development";
+  // Scope escalation: the result stays on one case and must reach a wider group or wider consequence.
+  if (/(?:result|example|case|evidence).{0,80}(?:needs? to move|should move|move from|stays? (?:mostly )?(?:at|on)|does not fully connect|only one|single|one student|one person|one family|personal result).{0,80}(?:wider|broader|many|more|general|city|urban|pattern)|(?:wider|broader) (?:pattern|consequence|impact|group|urban)/.test(value)) return "Example Development";
+  if (/example.{0,70}(?:too narrow|narrow|vague|generic|undeveloped|underdeveloped|not (?:fully )?developed|does not (?:prove|support|fully connect)|incomplete|needs? (?:a )?wider)|(?:narrow|vague|generic|undeveloped|underdeveloped) example|(?:affected group|consequence|wider impact).{0,50}(?:unclear|missing|vague|not (?:clear|shown|stated|identified))|does not (?:show|state|identify).{0,30}(?:affected group|consequence|wider impact)/.test(value)) return "Example Development";
   if (/explanation.{0,60}(?:missing|thin|shallow|insufficient|not (?:fully )?developed|too general|underdeveloped)|underdeveloped (?:reason|idea|argument)|reason is not (?:fully )?developed/.test(value)) return "Explanation Depth";
   return "";
 }
@@ -949,6 +1049,11 @@ function paragraphStatus(severity = "") {
   return "Strong";
 }
 
+function capParagraphStatus(status, developmentGap) {
+  if (!developmentGap) return status;
+  return ["Strong", "Mostly Controlled"].includes(status) ? "Moderate" : status;
+}
+
 function introducesConclusionNewIdea(text) {
   return /^(?:moreover|furthermore|in addition|another|a further)\b/i.test(String(text || "")) || /\b(?:a new reason|another argument|should also)\b/i.test(String(text || ""));
 }
@@ -987,4 +1092,8 @@ function normalizeText(value) {
 
 function wordCount(value) {
   return String(value || "").match(/[\p{L}\p{N}]+(?:['-][\p{L}\p{N}]+)*/gu)?.length || 0;
+}
+
+function contentWords(value) {
+  return (normalizeText(value).match(/[\p{L}\p{N}]+/gu) || []).filter((word) => word.length > 2 && !STOP_WORDS.has(word));
 }

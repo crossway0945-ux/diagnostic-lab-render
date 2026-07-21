@@ -1,11 +1,26 @@
-RENDER ROOT DIRECTORY — V12.3.1
+RENDER ROOT DIRECTORY — V12.3.4
 
-diagnostic-lab-v12-3-0-full-system-upgrade
+Root Directory (paste exactly into Render -> Settings -> Build -> Root Directory):
+
+diagnostic-lab-v12-3-1-feedback-integrity-upload-ready/diagnostic-lab-v12-3-0-full-system-upgrade
 
 Build Command: npm install
 Start Command: npm start
 Health Check Path: /api/health
 NODE_VERSION: 22.16.0
+Persistent disk: DIAGNOSTIC_DATA_DIR = /var/data
 
-GitHub must contain:
-diagnostic-lab-v12-3-0-full-system-upgrade/package.json
+GitHub must contain, at that exact path:
+  diagnostic-lab-v12-3-1-feedback-integrity-upload-ready/
+    diagnostic-lab-v12-3-0-full-system-upgrade/
+      package.json      <- must sit directly here
+      server.js
+      script.js
+      index.html
+      domain/  services/  schemas/  scripts/  reports/  tests/  assets/
+
+Do NOT create another folder level inside diagnostic-lab-v12-3-0-full-system-upgrade/.
+Do NOT rename either folder: Render builds from this literal path.
+
+Verify after deploy:
+  https://diagnostic.wonderbloom.co/api/health  ->  "appVersion":"12.3.4"

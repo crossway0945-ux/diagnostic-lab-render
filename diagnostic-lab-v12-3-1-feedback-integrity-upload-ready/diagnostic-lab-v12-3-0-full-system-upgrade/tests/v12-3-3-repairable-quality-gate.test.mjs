@@ -8,7 +8,7 @@ import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { analyzeWriting } from "../services/aiAnalyzer.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.3");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.4");
 
 const zoningPrompt = [
   "Towns and cities should be divided into zones so that all the schools are in one area, all the shopping malls are located together and all the industrial sites are situated close to each other.",
@@ -191,4 +191,4 @@ const thaiModel = buildFeedbackIntegrityModel({
 assert.match(thaiModel.issues[0].revisionLimitationNote, /ยังต้องให้นักเรียนเขียนขยายเอง/);
 assert.deepEqual(validateFeedbackIntegrity(thaiModel, zoningWriting), []);
 
-console.log("V12.3.3 repairable quality gate: self-repairing canonical issues, honest revision disclosure, fatal-only blocking and end-to-end report delivery passed.");
+console.log("V12.3.4 repairable quality gate: self-repairing canonical issues, honest revision disclosure, fatal-only blocking and end-to-end report delivery passed.");

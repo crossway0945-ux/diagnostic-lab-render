@@ -78,7 +78,7 @@ const REPORT_COPY = Object.freeze({
     reportTitle: "IELTS Writing 7+ Diagnostic Report",
     student: "Student", date: "Date", taskType: "Task Type", essayType: "Essay Type", visualType: "Visual Type", wordCount: "Word Count", reportLanguage: "Report Language", estimatedBandRange: "Estimated Band Range",
     executiveSummary: "Executive Summary", mainLimiter: "Main Score-Limiting Factor", urgentRepair: "Most Urgent Repair", completionStatus: "Completion Status", wordCountStatus: "Word Count Status", taskAchievementCap: "Task Achievement Cap", overviewAccuracy: "Overview Accuracy Status", estimatedNote: "Estimated range, not official IELTS score.",
-    positionAndRoute: "Position and Route", route: "Route", criteriaBreakdown: "IELTS Criteria Breakdown", frameworkBreakdown: "Kru Pom Framework Breakdown", topIssues: "Top Evidence-Based Issues", detailedFeedback: "Detailed Paragraph Feedback", repairPlan: "Personalized 7-Day Repair Plan", progressSummary: "Progress Summary", disclaimer: "Disclaimer",
+    positionAndRoute: "Position and Route", route: "Route", detectedRouteLabel: "Detected Route", criteriaBreakdown: "IELTS Criteria Breakdown", frameworkBreakdown: "Kru Pom Framework Breakdown", topIssues: "Top Evidence-Based Issues", detailedFeedback: "Detailed Paragraph Feedback", repairPlan: "Personalized 7-Day Repair Plan", progressSummary: "Progress Summary", disclaimer: "Disclaimer",
     framework: "Kru Pom Framework", evidenceScope: "Evidence Scope", paragraphLocations: "Paragraph Locations", diagnosis: "Diagnosis", studentAction: "Student Action", representativeEvidence: "Representative Evidence", exactSentence: "Exact Sentence Found", sentenceFunction: "What This Sentence Is Trying To Do", whyLimits: "Why This Limits the Band", kruPomDiagnosis: "Kru Pom Diagnosis", revisionType: "Revision Type", targetedRevision: "Targeted Revision", whyStronger: "Why This Revision Is Stronger", paragraphLocation: "Paragraph Location",
     previousSubmissions: "Previous submissions", previousRange: "Previous estimated range", latestRange: "Latest estimated range", currentRepair: "Current main repair", repeatedIssue: "Repeated issue", reportVersions: "Report versions for latest essay", noPrevious: "No previous submission", noRepeated: "No repeated issue identified yet",
     noIssues: "No evidence-based issues found yet.", noFeedback: "No detailed feedback cards available.", day: "Day", footer: "Kru Pom IELTS | IELTS Writing 7+ Diagnostic Lab | Diagnostic estimate only",
@@ -90,7 +90,7 @@ const REPORT_COPY = Object.freeze({
     reportTitle: "IELTS Writing 7+ Diagnostic Report",
     student: "นักเรียน", date: "วันที่", taskType: "ประเภทงาน", essayType: "ประเภท Essay", visualType: "ประเภท Visual", wordCount: "จำนวนคำ", reportLanguage: "ภาษารายงาน", estimatedBandRange: "ช่วงคะแนนประเมิน",
     executiveSummary: "สรุปผลการวินิจฉัย", mainLimiter: "ปัจจัยหลักที่จำกัดคะแนน", urgentRepair: "จุดที่ต้องซ่อมเร่งด่วนที่สุด", completionStatus: "สถานะความครบถ้วน", wordCountStatus: "สถานะจำนวนคำ", taskAchievementCap: "เหตุผลที่จำกัด Task Achievement", overviewAccuracy: "ความแม่นยำของ Overview", estimatedNote: "เป็นช่วงคะแนนประเมิน ไม่ใช่คะแนน IELTS ทางการ",
-    positionAndRoute: "จุดยืนและเส้นทางงานเขียน", route: "เส้นทางงานเขียน", criteriaBreakdown: "คะแนนแยกตาม IELTS Criteria", frameworkBreakdown: "ผลวิเคราะห์ตาม Kru Pom Framework", topIssues: "ปัญหาหลักที่มีหลักฐานรองรับ", detailedFeedback: "Feedback รายย่อหน้า", repairPlan: "แผนซ่อมงานเขียน 7 วัน", progressSummary: "สรุปพัฒนาการ", disclaimer: "ข้อชี้แจง",
+    positionAndRoute: "จุดยืนและเส้นทางงานเขียน", route: "เส้นทางงานเขียน", detectedRouteLabel: "เส้นทางที่ตรวจพบ", criteriaBreakdown: "คะแนนแยกตาม IELTS Criteria", frameworkBreakdown: "ผลวิเคราะห์ตาม Kru Pom Framework", topIssues: "ปัญหาหลักที่มีหลักฐานรองรับ", detailedFeedback: "Feedback รายย่อหน้า", repairPlan: "แผนซ่อมงานเขียน 7 วัน", progressSummary: "สรุปพัฒนาการ", disclaimer: "ข้อชี้แจง",
     framework: "Kru Pom Framework", evidenceScope: "ขอบเขตหลักฐาน", paragraphLocations: "ตำแหน่งในงาน", diagnosis: "คำวินิจฉัย", studentAction: "สิ่งที่นักเรียนต้องทำ", representativeEvidence: "ตัวอย่างหลักฐาน", exactSentence: "ประโยคจริงจากงานนักเรียน", sentenceFunction: "ประโยคนี้กำลังพยายามทำหน้าที่อะไร", whyLimits: "เหตุใดจุดนี้จึงจำกัดคะแนน", kruPomDiagnosis: "คำวินิจฉัยของครูปอม", revisionType: "ประเภทการปรับแก้", targetedRevision: "เวอร์ชันปรับแก้", whyStronger: "เหตุใดเวอร์ชันนี้จึงแข็งแรงกว่า", paragraphLocation: "ตำแหน่งย่อหน้า",
     previousSubmissions: "จำนวนงานก่อนหน้า", previousRange: "ช่วงคะแนนก่อนหน้า", latestRange: "ช่วงคะแนนล่าสุด", currentRepair: "จุดซ่อมหลักในปัจจุบัน", repeatedIssue: "ปัญหาที่เกิดซ้ำ", reportVersions: "จำนวนเวอร์ชันของงานล่าสุด", noPrevious: "ยังไม่มีงานก่อนหน้า", noRepeated: "ยังไม่พบปัญหาที่เกิดซ้ำ",
     noIssues: "ยังไม่พบปัญหาที่มีหลักฐานรองรับ", noFeedback: "ยังไม่มี Feedback รายละเอียด", day: "วันที่", footer: "Kru Pom IELTS | IELTS Writing 7+ Diagnostic Lab | ผลประเมินเชิง Diagnostic เท่านั้น",
@@ -1656,7 +1656,7 @@ function renderPrintReport(analysis) {
     <article class="print-page">
       ${taskType === "Task 2" && normalized.bodyRouteSummary ? `<section class="print-section print-section-panel print-route-section">
         <h2>${escapePrintHtml(task2RouteLabel)}</h2>
-        ${renderPrintCallout(task2RouteLabel, task2RouteText)}
+        ${renderPrintCallout(copy.detectedRouteLabel, task2RouteText)}
       </section>` : ""}
       <section class="print-section print-section-panel">
         <h2>${escapePrintHtml(copy.criteriaBreakdown)}</h2>
@@ -1807,7 +1807,13 @@ function sanitizePrintText(value) {
     .normalize("NFC")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u00AD\u200B\u2060\uFFFD\uFFFE\uFFFF]/g, "")
     .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
-    .replace(/\u2192/g, "->");
+    .replace(/\u2192/g, "->")
+    .replace(/\bLFC[\s\u00a0]+CPC\b/g, "LFC-CPC")
+    .replace(/([.,;:!?])[ \t]+(["'\u201d\u2019])/g, "$1$2")
+    .replace(/[ \t]+([\u201d\u2019])/g, "$1")
+    .replace(/([\u201c\u2018])[ \t]+/g, "$1")
+    .replace(/[ \t]+([,.;:!?])/g, "$1")
+    .replace(/ {2,}/g, " ");
 }
 
 function escapePrintHtml(value) {

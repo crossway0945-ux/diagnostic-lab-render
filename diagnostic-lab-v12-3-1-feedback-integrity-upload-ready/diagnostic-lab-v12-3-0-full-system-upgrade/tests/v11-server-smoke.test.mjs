@@ -18,10 +18,10 @@ try {
   ]);
   assert.equal(health.status, 200);
   const healthJson = await health.json();
-  assert.equal(healthJson.appVersion, "12.3.2");
+  assert.equal(healthJson.appVersion, "12.3.3");
   assert.equal(home.status, 200);
   const html = await home.text();
-  assert.match(html, /script\.js\?v=diagnostic-v12-3-2-taxonomy-integrity/);
+  assert.match(html, /script\.js\?v=diagnostic-v12-3-3-repairable-gate/);
   assert.equal(task2Domain.status, 200);
   assert.match(await task2Domain.text(), /export function analyzeTask2Safety/);
   assert.equal(canonicalDomain.status, 200);

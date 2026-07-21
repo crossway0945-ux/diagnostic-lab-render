@@ -19,7 +19,7 @@ import {
   validateCanonicalAnalysis
 } from "./canonicalAnalysis.js";
 import { buildSentenceCoverageAudit } from "../domain/paragraphEvidence.js";
-import { buildFeedbackIntegrityModel, projectRouteAlignmentDisplay, validateFeedbackIntegrity } from "../domain/feedbackIntegrity.js";
+import { auditFeedbackIntegrity, buildFeedbackIntegrityModel, projectRouteAlignmentDisplay, validateFeedbackIntegrity } from "../domain/feedbackIntegrity.js";
 import { assertUnicodeIntegrity, normalizeVisibleTree } from "../domain/textIntegrity.js";
 export {
   classifyTask1Visual,
@@ -3389,13 +3389,23 @@ function normalizeAnalysis(analysis, payload) {
     writing: payload.writing,
     taskType: payload.taskType,
     visualType: payload.publicVisualType || guardedAnalysis.visualType || payload.visualType,
+    reportLanguage: normalizeReportLanguage(payload.reportLanguage),
     feedbackCards: studentFeedbackCards,
     topIssues: studentTopIssues,
     paragraphFeedback: studentParagraphFeedback,
     mainScoreLimitingFactor: localizedExecutive.mainScoreLimitingFactor,
     mostUrgentRepair: localizedExecutive.mostUrgentRepair
   });
-  const feedbackIntegrityValidationIssues = validateFeedbackIntegrity(feedbackIntegrity, payload.writing);
+  const feedbackIntegrityAudit = auditFeedbackIntegrity(feedbackIntegrity, payload.writing);
+  const feedbackIntegrityValidationIssues = feedbackIntegrityAudit
+    .filter((finding) => finding.severity === "fatal")
+    .map((finding) => finding.message);
+  const feedbackIntegrityRepairs = [
+    ...(feedbackIntegrity.repairs || []),
+    ...feedbackIntegrityAudit
+      .filter((finding) => finding.severity === "repairable")
+      .map((finding) => ({ code: finding.code, message: finding.message, disclosed: false }))
+  ];
 
   const normalized = {
     taskType: payload.taskType,
@@ -3503,6 +3513,7 @@ function normalizeAnalysis(analysis, payload) {
     paragraphCoverage: feedbackIntegrity.paragraphCoverage,
     feedbackIntegrity,
     feedbackIntegrityValidationIssues,
+    feedbackIntegrityRepairs,
     sentenceCoverageAudit,
     revisedThesis: guardedAnalysis.revisedThesis || "",
     revisedParagraphSuggestions: guardedAnalysis.revisedParagraphSuggestions || [],

@@ -81,6 +81,7 @@ export function buildFeedbackIntegrityModel({
   writing = "",
   taskType = "Task 2",
   visualType = "",
+  reportLanguage = "",
   feedbackCards = [],
   topIssues = [],
   paragraphFeedback = [],
@@ -99,7 +100,7 @@ export function buildFeedbackIntegrityModel({
     nextSentence: paragraph.sentences[sentenceIndex + 1]?.exactText || ""
   })));
   const canonicalIssues = (Array.isArray(feedbackCards) ? feedbackCards : [])
-    .map((card, index) => canonicalizeIssue(card, index, { writing, taskType, visualType, paragraphs, records }))
+    .map((card, index) => canonicalizeIssue(card, index, { writing, taskType, visualType, reportLanguage, paragraphs, records }))
     .filter(Boolean);
   const topIssueIds = selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType);
   const canonicalTopIssues = topIssueIds
@@ -118,6 +119,7 @@ export function buildFeedbackIntegrityModel({
     topIssues: canonicalTopIssues,
     paragraphCoverage,
     conclusionFunction,
+    repairs: canonicalIssues.flatMap((issue) => (issue.integrityRepairs || []).map((repair) => ({ ...repair, issueId: issue.issueId }))),
     linkage: {
       summaryIssueIds,
       urgentRepairIssueIds,
@@ -309,40 +311,53 @@ export function evaluateRevisionAlignment({ exactSentence = "", targetedRevision
   };
 }
 
-export function validateFeedbackIntegrity(model = {}, writing = "") {
-  const issues = [];
+export function auditFeedbackIntegrity(model = {}, writing = "") {
+  const findings = [];
   const source = normalizeText(writing);
   const detailedById = new Map((model.issues || []).map((issue) => [issue.issueId, issue]));
+  const add = (severity, code, message) => findings.push({ severity, code, message });
   for (const [index, issue] of (model.issues || []).entries()) {
-    if (!SENTENCE_ROLES.includes(issue.sentenceRole)) issues.push(`Issue ${index + 1} uses an invalid sentence role.`);
-    if (!ISSUE_TAXONOMY.includes(issue.issueCategory)) issues.push(`Issue ${index + 1} uses an invalid issue category.`);
-    if (!source.includes(normalizeText(issue.exactEvidence))) issues.push(`Issue ${index + 1} exact evidence is not present in the writing.`);
-    if (issue.evidenceCount !== issue.evidenceLocations.length) issues.push(`Issue ${index + 1} evidence count does not match its evidence locations.`);
-    if (issue.evidenceScope === "single-location" && issue.evidenceCount !== 1) issues.push(`Issue ${index + 1} single-location evidence is not count 1.`);
-    if (issue.evidenceScope === "multi-location" && issue.evidenceCount < 2) issues.push(`Issue ${index + 1} multi-location evidence has fewer than two locations.`);
+    // Fatal: the report would mislead the student about their own writing or break the schema contract.
+    if (!source.includes(normalizeText(issue.exactEvidence))) add("fatal", "EVIDENCE_NOT_IN_WRITING", `Issue ${index + 1} exact evidence is not present in the writing.`);
+    if (!SENTENCE_ROLES.includes(issue.sentenceRole)) add("fatal", "INVALID_SENTENCE_ROLE", `Issue ${index + 1} uses an invalid sentence role.`);
+    if (!ISSUE_TAXONOMY.includes(issue.issueCategory)) add("fatal", "INVALID_ISSUE_CATEGORY", `Issue ${index + 1} uses an invalid issue category.`);
+
+    // Repairable: internal presentation defects that the canonical builder repairs in place.
+    if (issue.evidenceCount !== issue.evidenceLocations.length) add("repairable", "EVIDENCE_COUNT_METADATA", `Issue ${index + 1} evidence count does not match its evidence locations.`);
+    if (issue.evidenceScope === "single-location" && issue.evidenceCount !== 1) add("repairable", "EVIDENCE_SCOPE_METADATA", `Issue ${index + 1} single-location evidence is not count 1.`);
+    if (issue.evidenceScope === "multi-location" && issue.evidenceCount < 2) add("repairable", "EVIDENCE_SCOPE_METADATA", `Issue ${index + 1} multi-location evidence has fewer than two locations.`);
     if (issue.sentenceRole === "body_topic_sentence" && ["Link Back Control", "Conclusion Closure"].includes(issue.issueCategory)) {
-      issues.push(`Issue ${index + 1} describes a body opening as a closure issue.`);
+      add("repairable", "ROLE_CATEGORY_CONFLICT", `Issue ${index + 1} describes a body opening as a closure issue.`);
     }
-    if (!issue.punctuationClaimValid) issues.push(`Issue ${index + 1} contains a punctuation claim that conflicts with the quoted evidence.`);
-    if (issue.revisionAlignmentStatus === "requires-regeneration") issues.push(`Issue ${index + 1} (${issue.issueCategory} at ${issue.paragraphLocation}) targeted revision leaves diagnosed repair targets unresolved: ${issue.unresolvedTargets.join(", ")}.`);
-    if (issue.revisionAlignmentStatus === "revision-type-mismatch") issues.push(`Issue ${index + 1} (${issue.issueCategory} at ${issue.paragraphLocation}) revision type does not match the scale of its targeted revision.`);
+    if (!issue.punctuationClaimValid) add("repairable", "PUNCTUATION_CLAIM", `Issue ${index + 1} contains a punctuation claim that conflicts with the quoted evidence.`);
+    // "partial-repair" is the disclosed form of "requires-regeneration": the canonical builder has
+    // already told the student which diagnosed point the revision does not reach. Both stay visible
+    // to QA so the rate can be monitored, and neither blocks the report.
+    if (["requires-regeneration", "partial-repair"].includes(issue.revisionAlignmentStatus)) {
+      add("repairable", "REVISION_TARGETS_UNRESOLVED", `Issue ${index + 1} (${issue.issueCategory} at ${issue.paragraphLocation}) targeted revision leaves diagnosed repair targets unresolved: ${(issue.unresolvedTargets || []).join(", ")}.`);
+    }
+    if (issue.revisionAlignmentStatus === "revision-type-mismatch") {
+      add("repairable", "REVISION_TYPE_MISMATCH", `Issue ${index + 1} (${issue.issueCategory} at ${issue.paragraphLocation}) revision type does not match the scale of its targeted revision.`);
+    }
     const contractCorpus = stripCategoryEchoes(normalizeText([issue.diagnosis, issue.whyItLimitsBand].filter(Boolean).join(" ")), issue);
     const contractDevelopmentSignal = detectDevelopmentSignal(contractCorpus);
     if (contractDevelopmentSignal && LANGUAGE_ISSUE_CATEGORIES.includes(issue.issueCategory)) {
-      issues.push(`Issue ${index + 1} uses the language category ${issue.issueCategory} while its diagnosis describes a development problem (${contractDevelopmentSignal}).`);
+      add("repairable", "CATEGORY_DIAGNOSIS_CONFLICT", `Issue ${index + 1} uses the language category ${issue.issueCategory} while its diagnosis describes a development problem (${contractDevelopmentSignal}).`);
     }
     if (Array.isArray(issue.secondaryIssueCategories) && issue.secondaryIssueCategories.includes(issue.issueCategory)) {
-      issues.push(`Issue ${index + 1} lists its primary category as a secondary issue.`);
+      add("repairable", "PRIMARY_SECONDARY_DUPLICATE", `Issue ${index + 1} lists its primary category as a secondary issue.`);
     }
   }
   for (const topIssue of model.topIssues || []) {
     const detailed = detailedById.get(topIssue.issueId);
     if (!detailed) {
-      issues.push(`Top issue ${topIssue.issueId} has no detailed canonical issue.`);
+      add("repairable", "TOP_ISSUE_UNLINKED", `Top issue ${topIssue.issueId} has no detailed canonical issue.`);
       continue;
     }
     for (const key of ["issueCategory", "severity", "paragraphLocation", "exactEvidence", "diagnosis", "targetedRevision"]) {
-      if (normalizeText(topIssue[key]) !== normalizeText(detailed[key])) issues.push(`Top issue ${topIssue.issueId} does not match detailed feedback field ${key}.`);
+      if (normalizeText(topIssue[key]) !== normalizeText(detailed[key])) {
+        add("repairable", "TOP_ISSUE_FIELD_MISMATCH", `Top issue ${topIssue.issueId} does not match detailed feedback field ${key}.`);
+      }
     }
   }
   for (const issueId of [
@@ -350,9 +365,20 @@ export function validateFeedbackIntegrity(model = {}, writing = "") {
     ...(model.linkage?.urgentRepairIssueIds || []),
     ...(model.linkage?.topIssueIds || [])
   ]) {
-    if (!detailedById.has(issueId)) issues.push(`Linked issue ${issueId} is missing from detailed feedback.`);
+    if (!detailedById.has(issueId)) add("repairable", "LINKED_ISSUE_MISSING", `Linked issue ${issueId} is missing from detailed feedback.`);
   }
-  return [...new Set(issues)];
+  const seen = new Set();
+  return findings.filter((finding) => {
+    if (seen.has(finding.message)) return false;
+    seen.add(finding.message);
+    return true;
+  });
+}
+
+export function validateFeedbackIntegrity(model = {}, writing = "") {
+  return auditFeedbackIntegrity(model, writing)
+    .filter((finding) => finding.severity === "fatal")
+    .map((finding) => finding.message);
 }
 
 function canonicalizeIssue(card, index, context) {
@@ -371,29 +397,47 @@ function canonicalizeIssue(card, index, context) {
     sentence: record.exactText,
     previousSentence: record.previousSentence
   });
+  const repairs = [];
   const originalIssueCategory = normalizeIssueCategory(card.issueCategory || card.issueType, card);
   let issueCategory = correctIssueCategoryForRole(originalIssueCategory, sentenceRole, card);
-  const secondaryIssueCategories = DEVELOPMENT_ISSUE_CATEGORIES.includes(issueCategory)
-    ? [...new Set([
-        String(card.issueCategory || "").trim(),
-        String(card.issueType || "").trim(),
-        detectDiagnosedLanguageCategory(card)
-      ].filter((label) => LANGUAGE_ISSUE_CATEGORIES.includes(label) && label !== issueCategory))]
-    : [];
   const originalPunctuationClaimValid = validatePunctuationClaim(card, canonicalEvidence);
   const roleConflictCorrected = originalIssueCategory !== issueCategory;
   const roleSafeDiagnosis = roleConflictCorrected
     ? String(card.whyItLimitsBand || card.diagnosis || card.kruPomDiagnosis || "")
     : String(card.diagnosis || card.kruPomDiagnosis || card.whyItLimitsBand || "");
-  const diagnosis = sanitizeLocationClaims(
-    alignIssueCategoryClaims(sanitizeRoleConflictClaims(sanitizePunctuationClaims(roleSafeDiagnosis, canonicalEvidence), sentenceRole, issueCategory), card, issueCategory, secondaryIssueCategories),
-    record.location
+  const buildSecondary = (category) => DEVELOPMENT_ISSUE_CATEGORIES.includes(category)
+    ? [...new Set([
+        String(card.issueCategory || "").trim(),
+        String(card.issueType || "").trim(),
+        detectDiagnosedLanguageCategory(card)
+      ].filter((label) => LANGUAGE_ISSUE_CATEGORIES.includes(label) && label !== category))]
+    : [];
+  const renderIssueTexts = (category, secondary) => ({
+    diagnosis: sanitizeLocationClaims(
+      alignIssueCategoryClaims(sanitizeRoleConflictClaims(sanitizePunctuationClaims(roleSafeDiagnosis, canonicalEvidence), sentenceRole, category), card, category, secondary),
+      record.location
+    ),
+    whyItLimitsBand: sanitizeLocationClaims(
+      alignIssueCategoryClaims(sanitizeRoleConflictClaims(sanitizePunctuationClaims(String(card.whyItLimitsBand || roleSafeDiagnosis), canonicalEvidence), sentenceRole, category), card, category, secondary),
+      record.location
+    ),
+    studentAction: sanitizeLocationClaims(alignIssueCategoryClaims(String(card.studentAction || ""), card, category, secondary), record.location)
+  });
+  let secondaryIssueCategories = buildSecondary(issueCategory);
+  let texts = renderIssueTexts(issueCategory, secondaryIssueCategories);
+  // Self-repair: the rendered diagnosis is the text the student reads, so the category must match it.
+  const renderedDevelopmentSignal = detectDevelopmentSignal(
+    stripCategoryEchoes(normalizeText([texts.diagnosis, texts.whyItLimitsBand].filter(Boolean).join(" ")), { issueCategory, issueType: card.issueType })
   );
-  const whyItLimitsBand = sanitizeLocationClaims(
-    alignIssueCategoryClaims(sanitizeRoleConflictClaims(sanitizePunctuationClaims(String(card.whyItLimitsBand || diagnosis), canonicalEvidence), sentenceRole, issueCategory), card, issueCategory, secondaryIssueCategories),
-    record.location
-  );
-  const studentAction = sanitizeLocationClaims(alignIssueCategoryClaims(String(card.studentAction || ""), card, issueCategory, secondaryIssueCategories), record.location);
+  if (renderedDevelopmentSignal && LANGUAGE_ISSUE_CATEGORIES.includes(issueCategory)) {
+    repairs.push({ code: "CATEGORY_DIAGNOSIS_CONFLICT", from: issueCategory, to: renderedDevelopmentSignal, paragraphLocation: record.location });
+    const demoted = issueCategory;
+    issueCategory = renderedDevelopmentSignal;
+    secondaryIssueCategories = [...new Set([demoted, ...buildSecondary(issueCategory)])].filter((label) => label !== issueCategory);
+    texts = renderIssueTexts(issueCategory, secondaryIssueCategories);
+  }
+  secondaryIssueCategories = secondaryIssueCategories.filter((label) => label !== issueCategory);
+  const { diagnosis, whyItLimitsBand, studentAction } = texts;
   const revisionSurfaceChanged = String(card.targetedRevision || "").normalize("NFKC").replace(/\s+/g, " ").trim() !== canonicalEvidence.normalize("NFKC").replace(/\s+/g, " ").trim();
   if (issueCategory === "Punctuation" && !revisionSurfaceChanged && originalPunctuationClaimValid) return null;
   const evidenceLocations = normalizeEvidenceLocations(card, record, context.records);
@@ -421,7 +465,7 @@ function canonicalizeIssue(card, index, context) {
   if (!preliminaryAlignment.pass && repairTargets.some((target) => ["mechanism", "explanation depth", "example specificity", "SAR completeness", "scope", "affected group", "consequence"].includes(target))) {
     revisionType = "Teacher-Guided Expansion";
   }
-  const alignment = evaluateRevisionAlignment({
+  let alignment = evaluateRevisionAlignment({
     exactSentence: canonicalEvidence,
     targetedRevision: card.targetedRevision,
     revisionType,
@@ -430,6 +474,35 @@ function canonicalizeIssue(card, index, context) {
     visualType: context.visualType,
     sentenceRole
   });
+  // Self-repair: a revision that carries analytical expansion must be labelled as teacher guidance,
+  // never rejected. Relabelling is metadata-only and never rewrites the student-facing revision.
+  if (alignment.revisionAlignmentStatus === "revision-type-mismatch") {
+    repairs.push({ code: "REVISION_TYPE_MISMATCH", from: revisionType || "(unset)", to: "Teacher-Guided Expansion", paragraphLocation: record.location });
+    revisionType = "Teacher-Guided Expansion";
+    alignment = evaluateRevisionAlignment({
+      exactSentence: canonicalEvidence,
+      targetedRevision: card.targetedRevision,
+      revisionType,
+      repairTargets,
+      taskType: context.taskType,
+      visualType: context.visualType,
+      sentenceRole
+    });
+  }
+  // Self-repair: when the revision does not reach every diagnosed repair target we disclose the gap
+  // honestly instead of discarding the report or claiming a repair that did not happen.
+  let revisionAlignmentStatus = alignment.revisionAlignmentStatus;
+  let revisionLimitationNote = "";
+  if (revisionAlignmentStatus === "requires-regeneration") {
+    revisionAlignmentStatus = "partial-repair";
+    revisionLimitationNote = buildRevisionLimitationNote(alignment.unresolvedTargets, context.reportLanguage);
+    repairs.push({
+      code: "REVISION_TARGETS_UNRESOLVED",
+      unresolvedTargets: alignment.unresolvedTargets,
+      paragraphLocation: record.location,
+      disclosed: true
+    });
+  }
   return {
     ...card,
     issueId,
@@ -468,10 +541,32 @@ function canonicalizeIssue(card, index, context) {
     repairTargets,
     repairedTargets: alignment.repairedTargets,
     unresolvedTargets: alignment.unresolvedTargets,
-    revisionAlignmentStatus: alignment.revisionAlignmentStatus,
+    revisionAlignmentStatus,
     revisionAlignmentPass: alignment.pass,
+    revisionLimitationNote,
+    whyRevisionIsStronger: revisionLimitationNote
+      ? appendLimitationNote(card.whyRevisionIsStronger, revisionLimitationNote)
+      : card.whyRevisionIsStronger,
+    integrityRepairs: repairs,
     feedbackCardId: `card-${index + 1}`
   };
+}
+
+function buildRevisionLimitationNote(unresolvedTargets = [], reportLanguage = "") {
+  const targets = [...new Set((unresolvedTargets || []).map((target) => String(target || "").trim()).filter(Boolean))];
+  if (!targets.length) return "";
+  const thai = String(reportLanguage || "").toLowerCase() === "th";
+  const list = targets.join(", ");
+  return thai
+    ? `ฉบับแก้ไขนี้ซ่อมเฉพาะจุดที่แก้ได้อย่างปลอดภัยในประโยคที่ยกมา ส่วนประเด็นที่วินิจฉัยไว้ (${list}) ยังต้องให้นักเรียนเขียนขยายเอง ระบบจะไม่เขียนเนื้อหาส่วนนี้แทน`
+    : `This revision repairs only what can be corrected safely inside the quoted sentence. The diagnosed point(s) (${list}) still require your own rewrite; the system does not write that content for you.`;
+}
+
+function appendLimitationNote(value, note) {
+  const text = String(value || "").trim();
+  if (!note) return text;
+  if (text.includes(note)) return text;
+  return text ? `${text} ${note}` : note;
 }
 
 function projectTopIssue(issue) {

@@ -7,6 +7,7 @@ import {
   ROUTE_ALIGNMENT_SCOPE_NOTE,
   ROUTE_ALIGNMENT_SCOPE_NOTE_TH,
   assessConclusionFunction,
+  auditFeedbackIntegrity,
   buildFeedbackIntegrityModel,
   detectDevelopmentSignal,
   detectLanguageSignal,
@@ -18,10 +19,10 @@ import { projectCanonicalTask2Framework } from "../domain/canonicalAnalysis.js";
 import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.2");
-assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.2");
-assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.3.2");
-assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.3.2");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.3");
+assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.3");
+assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.3.3");
+assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.3.3");
 
 // --- Single authoritative taxonomy contract ---
 for (const category of ["Tense Control", "Causal Mechanism", "Word Choice", "Subject–Verb Agreement", "Modal + Base Verb", "Pronoun Control", "Topic Sentence Strength", "Paragraph Closure", "Introduction Precision", "Mixed-Visual Coverage"]) {
@@ -201,21 +202,27 @@ assert.equal(sarIssue.revisionAlignmentStatus, "aligned");
 // The complete model must satisfy the validation contract.
 assert.deepEqual(validateFeedbackIntegrity(model, task2Writing), []);
 
-// --- Development diagnosis must reject a language-only revision ---
+// --- A development diagnosis must never be reported as repaired by a language-only revision ---
+// The card is repaired and disclosed (see v12-3-3), never silently accepted and never fatal.
 const languageOnlyRevisionForDevelopment = {
   ...mechanismUnderCountabilityHeading,
   targetedRevision: body2[2].replace("delays spread", "the delays spread"),
   revisionType: "Minimal Correction"
 };
-const failingModel = buildFeedbackIntegrityModel({
+const partialModel = buildFeedbackIntegrityModel({
   writing: task2Writing,
   taskType: "Task 2",
   feedbackCards: [languageOnlyRevisionForDevelopment],
   topIssues: []
 });
-assert.equal(failingModel.issues[0].revisionAlignmentStatus, "requires-regeneration");
-const failingFlags = validateFeedbackIntegrity(failingModel, task2Writing);
-assert.ok(failingFlags.some((flag) => /unresolved/.test(flag)), "a development diagnosis with a language-only revision must be rejected");
+const partialIssue = partialModel.issues[0];
+assert.equal(partialIssue.revisionAlignmentStatus, "partial-repair");
+assert.equal(partialIssue.revisionAlignmentPass, false);
+assert.ok(partialIssue.unresolvedTargets.includes("mechanism"));
+assert.match(partialIssue.revisionLimitationNote, /still require your own rewrite/i);
+const partialAudit = auditFeedbackIntegrity(partialModel, task2Writing);
+assert.ok(partialAudit.some((finding) => finding.code === "REVISION_TARGETS_UNRESOLVED" && finding.severity === "repairable"));
+assert.deepEqual(validateFeedbackIntegrity(partialModel, task2Writing), [], "a repairable revision gap must not block the report");
 
 // --- evaluateRevisionAlignment contract ---
 const wordSwapOnly = evaluateRevisionAlignment({
@@ -265,8 +272,14 @@ const storedContractModel = {
   topIssues: [],
   linkage: {}
 };
-const storedFlags = validateFeedbackIntegrity(storedContractModel, task2Writing);
-assert.ok(storedFlags.some((flag) => /development problem/.test(flag)), "a language category with a development diagnosis must be rejected by the contract");
+// The contract still detects the conflict, but classifies it as repairable rather than fatal so a
+// stored report is never discarded over a heading defect.
+const storedAudit = auditFeedbackIntegrity(storedContractModel, task2Writing);
+assert.ok(
+  storedAudit.some((finding) => finding.code === "CATEGORY_DIAGNOSIS_CONFLICT" && finding.severity === "repairable"),
+  "a language category with a development diagnosis must be detected by the contract"
+);
+assert.deepEqual(validateFeedbackIntegrity(storedContractModel, task2Writing), []);
 
 const typeMismatchModel = {
   issues: [{
@@ -277,7 +290,9 @@ const typeMismatchModel = {
   topIssues: [],
   linkage: {}
 };
-assert.ok(validateFeedbackIntegrity(typeMismatchModel, task2Writing).some((flag) => /revision type does not match/.test(flag)));
+const typeMismatchAudit = auditFeedbackIntegrity(typeMismatchModel, task2Writing);
+assert.ok(typeMismatchAudit.some((finding) => finding.code === "REVISION_TYPE_MISMATCH" && finding.severity === "repairable"));
+assert.deepEqual(validateFeedbackIntegrity(typeMismatchModel, task2Writing), []);
 
 // --- Body Paragraph Route Alignment display contract ---
 const alignedDisplay = projectRouteAlignmentDisplay({

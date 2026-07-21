@@ -1,12 +1,12 @@
 export const ANALYSIS_VERSIONS = Object.freeze({
-  appVersion: "12.3.2",
-  engineVersion: "ielts-diagnostic-engine-v12.3.2",
+  appVersion: "12.3.3",
+  engineVersion: "ielts-diagnostic-engine-v12.3.3",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.3.1",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.3.2",
-  feedbackSchemaVersion: "feedback-integrity-v12.3.2",
-  issueTaxonomyVersion: "issue-taxonomy-v12.3.2",
-  revisionValidatorVersion: "revision-alignment-v12.3.2"
+  reportSchemaVersion: "ielts-diagnostic-report-v12.3.3",
+  feedbackSchemaVersion: "feedback-integrity-v12.3.3",
+  issueTaxonomyVersion: "issue-taxonomy-v12.3.3",
+  revisionValidatorVersion: "revision-alignment-v12.3.3"
 });
 
 export function attachAnalysisVersions(payload = {}) {

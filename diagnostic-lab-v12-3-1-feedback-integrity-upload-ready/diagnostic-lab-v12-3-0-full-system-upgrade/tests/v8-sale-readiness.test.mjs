@@ -304,9 +304,12 @@ async function testCanonicalRendererAndPdfSerializationPath() {
   assert.match(script, /studentProfileSelect\.required = canManageStudents/);
   assert.match(index, /Permanently delete archived student/);
   assert.doesNotMatch(index, /Structural Diagram|Advantages Outweigh Disadvantages/);
-  assert.match(index, /script\.js\?v=diagnostic-v12-3-5-revision-safety/);
-  assert.match(server, /services\/canonicalAnalysis\.js/);
-  assert.match(server, /services\/task2Safety\.js/);
+  assert.match(index, /script\.js\?v=diagnostic-v12-3-6-frontend-bootstrap/);
+  // The server no longer hand-lists public files; it resolves the browser module graph from a shared
+  // source of truth (which includes services/canonicalAnalysis.js and services/task2Safety.js).
+  // The actual HTTP serving of every module is proven end-to-end in v12-3-6-frontend-bootstrap.
+  assert.match(server, /resolvePublicFilePaths/);
+  assert.match(server, /validatePublicAssetGraph/);
   assert.equal(previewScript, script, "Netlify frontend uses the canonical renderer");
   assert.equal(previewIndex, index, "Netlify frontend exposes the same V8 task and lifecycle controls");
   assert.equal(previewCanonical.trim(), 'export * from "../domain/canonicalAnalysis.js";');

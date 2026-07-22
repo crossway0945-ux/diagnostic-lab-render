@@ -3,6 +3,8 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApiHandler } from "./services/apiRouter.js";
+import { resolvePublicFilePaths, validatePublicAssetGraph } from "./services/publicAssetGraph.js";
+import { ANALYSIS_VERSIONS } from "./services/analysisVersions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,6 +12,12 @@ const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const PORT = Number(process.env.PORT || 4174);
 const HOST = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 const handleApiRequest = createApiHandler({ rootDir: __dirname });
+const FRONTEND_ASSET_MANIFEST_VERSION = "frontend-bootstrap-v12.3.6";
+
+// The public file set is resolved once at startup from the browser module graph (single source of
+// truth shared with the static-preview build). A new browser module becomes servable automatically.
+const frontendPreflight = await validatePublicAssetGraph(__dirname);
+const allowedPublicFiles = new Set(frontendPreflight.ok ? await resolvePublicFilePaths(__dirname) : []);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -26,6 +34,20 @@ const mimeTypes = {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+
+    // Frontend readiness: a lightweight, non-scoring, non-authenticated liveness probe. Never calls
+    // OpenAI and never inspects student data. Returns 503 when the public module graph is incomplete.
+    if (url.pathname === "/api/readiness" && req.method === "GET") {
+      sendJson(res, frontendPreflight.ok ? 200 : 503, {
+        ok: frontendPreflight.ok,
+        appVersion: ANALYSIS_VERSIONS.appVersion,
+        frontendAssetManifestVersion: FRONTEND_ASSET_MANIFEST_VERSION,
+        publicModuleCount: frontendPreflight.moduleCount,
+        frontendPreflightPassed: frontendPreflight.ok,
+        frontendEntrypoints: frontendPreflight.entrypoints
+      });
+      return;
+    }
 
     if (url.pathname.startsWith("/api/")) {
       const body = await readRawBody(req);
@@ -58,6 +80,25 @@ const server = createServer(async (req, res) => {
       : error.message;
     sendJson(res, status, { ok: false, error: message, errorCode });
   }
+});
+
+// Startup preflight: refuse to accept traffic with an incomplete public module graph, so the outage
+// where the page could only render a blank background can never reach a user again.
+if (!frontendPreflight.ok) {
+  console.error("[diagnostic-lab] FRONTEND PREFLIGHT FAILED — refusing to start.", {
+    appVersion: ANALYSIS_VERSIONS.appVersion,
+    missing: frontendPreflight.missing,
+    escaped: frontendPreflight.escaped,
+    exposedSecrets: frontendPreflight.exposedSecrets,
+    error: frontendPreflight.error
+  });
+  process.exit(1);
+}
+
+console.log("[diagnostic-lab] frontend preflight passed.", {
+  appVersion: ANALYSIS_VERSIONS.appVersion,
+  publicModuleCount: frontendPreflight.moduleCount,
+  frontendEntrypoints: frontendPreflight.entrypoints
 });
 
 server.listen(PORT, HOST, () => {
@@ -93,26 +134,6 @@ async function serveStatic(urlPath, res) {
     return;
   }
 
-  const allowedPublicFiles = new Set([
-    path.resolve(__dirname, "index.html"),
-    path.resolve(__dirname, "admin.html"),
-    path.resolve(__dirname, "styles.css"),
-    path.resolve(__dirname, "script.js"),
-    path.resolve(__dirname, "wordCount.js"),
-    path.resolve(__dirname, "admin.js"),
-    path.resolve(__dirname, "domain/index.js"),
-    path.resolve(__dirname, "domain/task1Classification.js"),
-    path.resolve(__dirname, "domain/task2Safety.js"),
-    path.resolve(__dirname, "domain/canonicalAnalysis.js"),
-    path.resolve(__dirname, "domain/feedbackIntegrity.js"),
-    path.resolve(__dirname, "domain/paragraphEvidence.js"),
-    path.resolve(__dirname, "domain/pdfRetry.js"),
-    path.resolve(__dirname, "domain/reportViewModels.js"),
-    path.resolve(__dirname, "domain/textIntegrity.js"),
-    path.resolve(__dirname, "services/canonicalAnalysis.js"),
-    path.resolve(__dirname, "services/task2Safety.js"),
-    path.resolve(__dirname, "services/analysisVersions.js")
-  ]);
   const assetsRoot = path.resolve(__dirname, "assets");
   const isAsset = filePath.startsWith(`${assetsRoot}${path.sep}`);
 
@@ -129,7 +150,15 @@ async function serveStatic(urlPath, res) {
 
   const ext = path.extname(filePath).toLowerCase();
   const bytes = await readFile(filePath);
-  res.writeHead(200, { "content-type": mimeTypes[ext] || "application/octet-stream" });
+  res.writeHead(200, {
+    "content-type": mimeTypes[ext] || "application/octet-stream",
+    // Never let a browser sniff a served module into a different type.
+    "x-content-type-options": "nosniff",
+    // During private early access, avoid mixed-version frontends: an old HTML must not load a new,
+    // incomplete module graph and a new HTML must not run against stale modules. Assets in /assets
+    // (fonts) are safe to cache. HTML/JS/CSS always revalidate.
+    "cache-control": isAsset ? "public, max-age=86400" : "no-cache, must-revalidate"
+  });
   res.end(bytes);
 }
 

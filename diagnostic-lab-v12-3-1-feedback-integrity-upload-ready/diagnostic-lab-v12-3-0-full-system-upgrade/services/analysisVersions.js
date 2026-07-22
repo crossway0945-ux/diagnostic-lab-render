@@ -1,5 +1,8 @@
 export const ANALYSIS_VERSIONS = Object.freeze({
-  appVersion: "12.3.5",
+  // V12.3.6 is a frontend-bootstrap/asset-delivery hotfix only. The scoring engine, rubric, prompt,
+  // report schema, feedback schema, taxonomy and revision validator logic are unchanged, so their
+  // versions stay at 12.3.5 by design.
+  appVersion: "12.3.6",
   engineVersion: "ielts-diagnostic-engine-v12.3.5",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.3.1",

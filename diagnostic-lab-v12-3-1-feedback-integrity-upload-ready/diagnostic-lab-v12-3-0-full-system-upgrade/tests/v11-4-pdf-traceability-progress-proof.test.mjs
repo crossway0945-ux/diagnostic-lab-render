@@ -118,7 +118,7 @@ assert.deepEqual(progress.reportVersions.map((version) => version.progressEligib
 assert.notEqual(progress.repeatedIssue, "Same-work rerun marker");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.3.5",
+  appVersion: "12.3.6",
   engineVersion: "ielts-diagnostic-engine-v12.3.5",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.3.1",

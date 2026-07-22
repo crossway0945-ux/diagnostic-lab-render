@@ -8,7 +8,7 @@ import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { analyzeWriting } from "../services/aiAnalyzer.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.5");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.3.6");
 
 const zoningPrompt = [
   "Towns and cities should be divided into zones so that all the schools are in one area, all the shopping malls are located together and all the industrial sites are situated close to each other.",

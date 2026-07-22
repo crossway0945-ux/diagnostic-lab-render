@@ -134,7 +134,10 @@ let latestDuplicateRecord = null;
 
 renderAnalysis(currentAnalysis);
 checkBackendHealth();
-checkSession();
+// Signal the startup watchdog only after session bootstrap settles. checkSession always resolves to
+// either the app shell or the login screen (both remove auth-loading), so the page can never be left
+// on a blank background once the module graph has loaded and executed this far.
+checkSession().finally(markApplicationBooted);
 updateWordCountPreviews();
 
 task1Writing.addEventListener("input", updateWordCountPreviews);
@@ -462,6 +465,12 @@ function handleCompletedAnalysis(result, payload) {
 
 function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function markApplicationBooted() {
+  // Tells the classic startup watchdog in index.html that the module graph loaded and the app
+  // reached a safe, rendered state, so no startup-error fallback is needed.
+  window.__DIAGNOSTIC_APP_BOOTED__ = true;
 }
 
 async function checkSession() {

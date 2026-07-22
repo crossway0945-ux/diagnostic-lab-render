@@ -8,8 +8,64 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // Startup watchdog (classic script, runs before the ES module entrypoint).
+    // If the module graph fails to load — e.g. a browser module returns 404 — the module code that
+    // normally removes the loading state never runs, and the page would stay a blank background
+    // forever. This watchdog guarantees a controlled, safe fallback instead. It exposes no file
+    // paths or stack traces to the user.
+    (function () {
+      "use strict";
+      window.__DIAGNOSTIC_APP_BOOTED__ = false;
+      var shown = false;
+
+      function showStartupError() {
+        if (shown || window.__DIAGNOSTIC_APP_BOOTED__) return;
+        shown = true;
+        try { document.body.classList.remove("auth-loading"); } catch (e) {}
+        var existing = document.getElementById("startup-error-panel");
+        if (existing) { existing.style.display = "flex"; return; }
+        var overlay = document.createElement("div");
+        overlay.id = "startup-error-panel";
+        overlay.setAttribute("role", "alert");
+        overlay.style.cssText = "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:#0f2d29;font-family:Inter,'Noto Sans Thai',system-ui,-apple-system,Segoe UI,Arial,sans-serif;";
+        overlay.innerHTML =
+          '<div style="max-width:32rem;width:100%;background:#fbf7ee;color:#26302b;border-radius:16px;padding:2rem 2.25rem;box-shadow:0 24px 60px rgba(0,0,0,0.35);text-align:center;">' +
+            '<div style="font-size:0.8rem;letter-spacing:0.14em;text-transform:uppercase;color:#8a7b52;margin-bottom:0.75rem;">Kru Pom IELTS</div>' +
+            '<h1 style="font-size:1.4rem;margin:0 0 0.75rem;">Diagnostic Lab could not start correctly</h1>' +
+            '<p style="margin:0 0 1.5rem;line-height:1.6;">Please reload the page. If the problem continues, contact Kru Pom IELTS.</p>' +
+            '<div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;">' +
+              '<button type="button" id="startup-error-reload" style="border:0;border-radius:999px;padding:0.7rem 1.6rem;font-size:1rem;font-weight:600;cursor:pointer;background:#14433d;color:#fff;">Reload Page</button>' +
+              '<a href="https://line.me/R/ti/p/@krupomielts" target="_blank" rel="noopener" style="border-radius:999px;padding:0.7rem 1.6rem;font-size:1rem;font-weight:600;text-decoration:none;background:#e8d3a2;color:#26302b;">Contact Kru Pom IELTS</a>' +
+            '</div>' +
+          '</div>';
+        document.body.appendChild(overlay);
+        var reload = document.getElementById("startup-error-reload");
+        if (reload) reload.addEventListener("click", function () { window.location.reload(); });
+      }
+
+      // A module or stylesheet that fails to load fires a resource error in the capture phase.
+      window.addEventListener("error", function (event) {
+        var target = event && event.target;
+        if (target && (target.tagName === "SCRIPT" || target.tagName === "LINK")) showStartupError();
+      }, true);
+
+      // If the app has not signalled a successful boot in time, show the fallback.
+      window.setTimeout(function () {
+        if (!window.__DIAGNOSTIC_APP_BOOTED__) showStartupError();
+      }, 10000);
+    })();
+  </script>
 </head>
 <body class="auth-loading">
+  <noscript>
+    <div style="position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:#0f2d29;color:#fbf7ee;font-family:system-ui,Arial,sans-serif;text-align:center;">
+      <div style="max-width:30rem;">
+        <h1 style="font-size:1.3rem;">JavaScript is required</h1>
+        <p>Please enable JavaScript in your browser to use the IELTS Writing 7+ Diagnostic Lab, then reload the page.</p>
+      </div>
+    </div>
+  </noscript>
   <!--
     DEVELOPER NOTE FOR MVP AND FUTURE DIAGNOSTIC OUTPUT
     Every diagnostic comment must be evidence-anchored.
@@ -582,6 +638,6 @@ Business was popular in 2010 and still popular in 2020. Science increased a lot,
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="script.js?v=diagnostic-v12-3-5-revision-safety"></script>
+  <script type="module" src="script.js?v=diagnostic-v12-3-6-frontend-bootstrap"></script>
 </body>
 </html>

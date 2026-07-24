@@ -7,6 +7,15 @@ const credentialBox = document.querySelector("#credential-box");
 const credentialText = document.querySelector("#credential-text");
 const copyCredentials = document.querySelector("#copy-credentials");
 const refreshUsers = document.querySelector("#refresh-users");
+const diagnosticsOutput = document.querySelector("#diagnostics-output");
+const diagnosticsButtons = {
+  system: document.querySelector("#diagnostics-system"),
+  provider: document.querySelector("#diagnostics-provider"),
+  contract: document.querySelector("#diagnostics-contract"),
+  storage: document.querySelector("#diagnostics-storage"),
+  failures: document.querySelector("#diagnostics-failures"),
+  clearFailures: document.querySelector("#diagnostics-clear-failures")
+};
 
 let latestCredentialText = "";
 
@@ -59,6 +68,40 @@ copyCredentials.addEventListener("click", async () => {
   await navigator.clipboard.writeText(latestCredentialText);
   showToast("Credentials copied.");
 });
+
+// System Diagnostics: always render the raw result (even when ok:false) — the whole point is to show
+// exactly which stage failed. These endpoints require an admin session and return only safe data.
+function renderDiagnostics(label, result) {
+  const status = result?.ok === true ? "OK" : (result?.ran === false ? "NOT RUN" : "ATTENTION");
+  diagnosticsOutput.textContent = `${label} — ${status}\n\n${JSON.stringify(result, null, 2)}`;
+}
+
+async function runDiagnostic(label, url, method = "POST") {
+  if (!diagnosticsOutput) return;
+  clearError();
+  diagnosticsOutput.textContent = `${label}: running...`;
+  try {
+    const options = method === "POST"
+      ? { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }
+      : {};
+    const response = await fetch(url, options);
+    if (response.status === 403) {
+      diagnosticsOutput.textContent = `${label}: admin login is required.`;
+      return;
+    }
+    const data = await response.json().catch(() => ({ ok: false, error: "Non-JSON response." }));
+    renderDiagnostics(label, data);
+  } catch (error) {
+    diagnosticsOutput.textContent = `${label}: request failed. ${error?.message || ""}`.trim();
+  }
+}
+
+diagnosticsButtons.system?.addEventListener("click", () => runDiagnostic("System status", "/api/admin/diagnostics/system", "GET"));
+diagnosticsButtons.provider?.addEventListener("click", () => runDiagnostic("Provider connectivity", "/api/admin/diagnostics/provider-connectivity"));
+diagnosticsButtons.contract?.addEventListener("click", () => runDiagnostic("Production output contract", "/api/admin/diagnostics/production-contract"));
+diagnosticsButtons.storage?.addEventListener("click", () => runDiagnostic("Storage self-test", "/api/admin/diagnostics/storage"));
+diagnosticsButtons.failures?.addEventListener("click", () => runDiagnostic("Recent analysis failures", "/api/admin/diagnostics/analysis-failures", "GET"));
+diagnosticsButtons.clearFailures?.addEventListener("click", () => runDiagnostic("Clear failure history", "/api/admin/diagnostics/clear-failures"));
 
 usersBody.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");

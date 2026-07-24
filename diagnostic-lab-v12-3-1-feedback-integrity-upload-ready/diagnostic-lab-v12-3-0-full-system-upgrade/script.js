@@ -396,6 +396,8 @@ form.addEventListener("submit", async (event) => {
       error.status = response.status;
       error.errorCode = result.errorCode;
       error.debugHint = result.debugHint;
+      error.requestId = result.requestId;
+      error.failureStage = result.failureStage;
       throw error;
     }
 
@@ -405,7 +407,11 @@ form.addEventListener("submit", async (event) => {
       showLoginScreen();
       return;
     }
-    showError(studentMessageForError(error.errorCode, error.message));
+    showError(studentMessageForError(error.errorCode, error.message), {
+      requestId: error.requestId,
+      errorCode: error.errorCode,
+      failureStage: error.failureStage
+    });
   } finally {
     setLoading(false);
   }
@@ -2641,8 +2647,41 @@ function setLoading(isLoading) {
   loadingState.classList.toggle("visible", isLoading);
 }
 
-function showError(message) {
-  formError.textContent = message || "Analysis could not be completed. Please check your prompt and writing, then try again.";
+function showError(message, details = {}) {
+  // Build with DOM nodes and textContent only (never innerHTML) so no field can inject markup.
+  formError.textContent = "";
+  const messageLine = document.createElement("div");
+  messageLine.textContent = message || "Analysis could not be completed. Please check your prompt and writing, then try again.";
+  formError.appendChild(messageLine);
+
+  const privileged = currentUser && ["teacher", "admin"].includes(String(currentUser.role || "").toLowerCase());
+  const parts = [];
+  if (details.requestId) parts.push(`Reference ID: ${details.requestId}`);
+  if (privileged && details.errorCode) parts.push(`Error code: ${details.errorCode}`);
+  if (privileged && details.failureStage) parts.push(`Stage: ${details.failureStage}`);
+
+  if (parts.length) {
+    const reference = document.createElement("div");
+    reference.className = "error-reference";
+    reference.textContent = parts.join("  •  ");
+    formError.appendChild(reference);
+
+    if (details.requestId) {
+      const copyButton = document.createElement("button");
+      copyButton.type = "button";
+      copyButton.className = "error-copy";
+      copyButton.textContent = "Copy diagnostic reference";
+      copyButton.addEventListener("click", () => {
+        const text = privileged
+          ? [details.requestId, details.errorCode, details.failureStage].filter(Boolean).join(" ")
+          : String(details.requestId);
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(text).then(() => showToast("Diagnostic reference copied.")).catch(() => {});
+        }
+      });
+      formError.appendChild(copyButton);
+    }
+  }
   formError.classList.add("visible");
 }
 

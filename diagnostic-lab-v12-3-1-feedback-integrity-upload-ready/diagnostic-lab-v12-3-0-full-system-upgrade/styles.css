@@ -1094,6 +1094,26 @@ input[type="checkbox"] {
   display: block;
 }
 
+.form-error .error-reference {
+  margin-top: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  opacity: 0.9;
+}
+
+.form-error .error-copy {
+  margin-top: 8px;
+  padding: 5px 10px;
+  border: 1px solid rgba(185, 74, 72, 0.35);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--critical-red);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .analysis-warning {
   margin: 12px 0;
   padding: 12px 14px;
@@ -2263,6 +2283,32 @@ blockquote {
   border-radius: 8px;
   background: #FFFDF8;
   box-shadow: 0 16px 38px rgba(18, 60, 53, 0.08);
+}
+
+.admin-hint {
+  margin: 4px 0 12px;
+  font-size: 0.9rem;
+}
+
+.diagnostics-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.diagnostics-output {
+  margin-top: 14px;
+  padding: 14px;
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid #E2D8C8;
+  border-radius: 8px;
+  background: #F7F3EA;
+  color: #123C35;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .admin-form {

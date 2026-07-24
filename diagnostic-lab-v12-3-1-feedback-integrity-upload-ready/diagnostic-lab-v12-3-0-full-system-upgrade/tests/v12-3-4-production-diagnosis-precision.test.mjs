@@ -18,7 +18,7 @@ import { normalizeStudentFacingText } from "../domain/canonicalAnalysis.js";
 import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.4.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.4.1");
 
 const norm = (value) => String(value).normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}%]+/gu, " ").trim();
 const primaryOf = (text) => detectDevelopmentSignal(norm(text)) || detectLanguageSignal(norm(text)) || "";

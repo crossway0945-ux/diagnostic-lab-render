@@ -16,7 +16,7 @@ import { buildStudentReportViewModel } from "../domain/reportViewModels.js";
 import { analyzeWriting, getAnalyzerHealth } from "../services/aiAnalyzer.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.4.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.4.1");
 assert.equal(ANALYSIS_VERSIONS.engineVersion, "ielts-diagnostic-engine-v12.4.0");
 assert.equal(ANALYSIS_VERSIONS.rubricVersion, "kru-pom-ielts-writing-v12.3.0", "rubric must not change in this release");
 assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.5", "taxonomy is unchanged in this release");

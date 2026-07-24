@@ -80,6 +80,22 @@
       </div>
     </section>
 
+    <section class="admin-card">
+      <div class="admin-section-header">
+        <h2>System Diagnostics</h2>
+        <button class="ghost-button compact" type="button" id="diagnostics-system">Refresh status</button>
+      </div>
+      <p class="admin-hint">Run real checks to see exactly why analysis is or is not working. No student credit is used and no report is saved.</p>
+      <div class="diagnostics-actions">
+        <button class="ghost-button compact" type="button" id="diagnostics-provider">Test Provider Connectivity</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-contract">Test Production Output Contract</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-storage">Test Storage</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-failures">View Recent Analysis Failures</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-clear-failures">Clear Failure History</button>
+      </div>
+      <pre id="diagnostics-output" class="diagnostics-output" aria-live="polite"></pre>
+    </section>
+
     <p class="form-error" id="admin-error" role="alert"></p>
   </main>
   <div class="toast" id="admin-toast"></div>

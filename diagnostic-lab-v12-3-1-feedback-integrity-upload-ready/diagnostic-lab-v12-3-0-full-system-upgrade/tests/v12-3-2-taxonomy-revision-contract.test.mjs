@@ -19,7 +19,7 @@ import { projectCanonicalTask2Framework } from "../domain/canonicalAnalysis.js";
 import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.4.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.4.1");
 assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.5");
 assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.4.0");
 assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.4.0");

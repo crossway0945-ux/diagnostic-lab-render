@@ -393,7 +393,7 @@ async function testTeacherStudentSelectionReenablesAnalyzeButton() {
   const rootHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
   const previewHtml = await readFile(new URL("../netlify-static-preview/index.html", import.meta.url), "utf8");
   const selectionAvailabilitySync = /studentProfileSelect\.addEventListener\("change",[\s\S]*?updateSelectedStudentDisplay\(\);\s*updateAnalyzeAvailability\(\);\s*loadProgressHistory\(\);/;
-  const cacheBustedScript = "script.js?v=diagnostic-v12-4-0-engine-stabilisation";
+  const cacheBustedScript = "script.js?v=diagnostic-v12-4-1-analysis-reliability";
 
   for (const source of [rootScript, previewScript]) {
     assert.match(source, selectionAvailabilitySync);

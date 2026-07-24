@@ -19,6 +19,7 @@ import {
   validateCanonicalAnalysis
 } from "./canonicalAnalysis.js";
 import { buildSentenceCoverageAudit } from "../domain/paragraphEvidence.js";
+import { buildStudentReportViewModel } from "../domain/reportViewModels.js";
 import { auditFeedbackIntegrity, buildFeedbackIntegrityModel, projectRouteAlignmentDisplay, validateFeedbackIntegrity } from "../domain/feedbackIntegrity.js";
 import { assertUnicodeIntegrity, normalizeVisibleTree } from "../domain/textIntegrity.js";
 export {
@@ -41,6 +42,10 @@ const TASK1_CRITERIA_NAMES = ["Task Achievement", "Coherence & Cohesion", "Lexic
 const DEFAULT_OPENAI_ENDPOINT = "https://api.openai.com/v1/responses";
 const DEFAULT_OPENAI_TIMEOUT_MS = 55000;
 const DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 6000;
+// A truncated first attempt (reasoning consumed the budget before the JSON finished) needs a
+// materially larger ceiling on the single retry, not the same limit again. Configurable so the
+// owner can raise it after real gpt-5.6-sol evidence without a code change.
+const DEFAULT_OPENAI_RETRY_MAX_OUTPUT_TOKENS = 24000;
 const DEFAULT_SERVERLESS_PROVIDER_TIMEOUT_CAP_MS = 55000;
 const DEFAULT_SERVERLESS_MAX_OUTPUT_TOKENS = 6000;
 const DEFAULT_SERVERLESS_REASONING_EFFORT = "low";
@@ -49,12 +54,23 @@ const REPORT_OUTPUT_VALIDATION_MESSAGE = "The report could not be finalised beca
 const TASK1_PROMPT_LEAKAGE_PATTERN = /\b(?:below\s+(?:shows?|show|provides?|provide|presents?|present|illustrates?|illustrate)|the\s+(?:chart|charts|graph|graphs|map|maps|diagram|diagrams|table)\s+below\s+(?:shows?|show)|summari[sz]e\s+the\s+information|selecting\s+and\s+reporting\s+the\s+main\s+features|make\s+comparisons\s+where\s+relevant|write\s+at\s+least\s+150\s+words)\b/i;
 const TASK1_VISUAL_NOUN_PATTERN = /\b(line graph|line graphs|bar chart|bar charts|pie chart|pie charts|map|maps|plan|plans|diagram|diagrams|process|processes|table|tables)\b/gi;
 
+// Every failure code that can reach a student must map to a specific, safe, understandable message.
+// A code missing from this map falls back to GENERIC_ANALYSIS_MESSAGE — which is exactly the vague
+// "Analysis could not be completed" wording we are eliminating, so keep this list complete.
 const PROVIDER_STUDENT_MESSAGES = {
   PROVIDER_AUTH_ERROR: "The diagnostic service is not ready yet. Please contact Kru Pom IELTS.",
-  PROVIDER_MODEL_ERROR: "The diagnostic service is not configured correctly. Please contact Kru Pom IELTS.",
+  PROVIDER_MODEL_ERROR: "The diagnostic model is not available for this account. Please contact Kru Pom IELTS.",
   PROVIDER_RATE_LIMIT: "The diagnostic service is busy right now. Please try again in a few minutes.",
-  PROVIDER_TIMEOUT: "The diagnostic service took too long to respond. Please try again.",
+  PROVIDER_TIMEOUT: "The diagnostic service took too long to complete this report. No credit was used.",
+  PROVIDER_NETWORK_ERROR: "The diagnostic service could not be reached. Please try again. No credit was used.",
+  PROVIDER_INCOMPLETE_RESPONSE: "The diagnostic response was incomplete and could not be finalised. No credit was used.",
+  PROVIDER_MAX_OUTPUT_TOKENS: "The diagnostic report was too long to finish in one attempt. No credit was used. Please try again.",
+  PROVIDER_REFUSAL: "The diagnostic engine could not process this submission. Please review the writing or contact Kru Pom IELTS. No credit was used.",
   PROVIDER_JSON_PARSE_ERROR: "Analysis could not be completed cleanly. Please try again or contact Kru Pom IELTS.",
+  PROVIDER_SCHEMA_ERROR: "The diagnostic report format was rejected by the engine. Please contact Kru Pom IELTS. No credit was used.",
+  REPORT_OUTPUT_VALIDATION_FAILED: "The report did not pass the final quality checks. No credit was used.",
+  REVISION_REPAIR_FAILED: "A safe corrected sentence could not be produced for this report. No credit was used.",
+  STORAGE_COMMIT_FAILED: "The report was generated but could not be saved safely. No credit was used.",
   PROVIDER_ERROR: GENERIC_ANALYSIS_MESSAGE
 };
 
@@ -96,6 +112,7 @@ export function getAnalyzerHealth() {
     endpoint: configuredOpenAiEndpoint(),
     timeoutMs: configuredTimeoutMs(),
     maxOutputTokens: configuredMaxOutputTokens(),
+    retryMaxOutputTokens: configuredRetryMaxOutputTokens(),
     reasoningEffort: configuredReasoningEffort(),
     fullEngineRequired: requiresFullDiagnosticEngine()
   };
@@ -131,18 +148,138 @@ export async function runProviderHealthCheck() {
   };
 }
 
+// A small, fully anonymised Task 2 opinion essay used only by the production-contract self-test.
+// It is synthetic — it belongs to no student, is never saved, and no quota is deducted for it.
+function buildContractSelfTestPayload() {
+  const writing = [
+    "Some people believe that public libraries are no longer needed because most information can be found online. I completely disagree, because libraries provide equal access to knowledge and a supportive space for focused study.",
+    "The first reason is fair access. Not every household can afford a fast internet connection or a personal computer, so free public libraries allow low-income students to read, research and complete their assignments without paying for expensive digital services.",
+    "The second reason is the quality of the study environment. A quiet library encourages concentration in a way that a busy home cannot, and trained librarians can guide readers towards reliable sources instead of the unverified material that fills many websites.",
+    "In conclusion, although the internet is convenient, public libraries remain essential because they protect equal access to information and offer a calm, guided space for serious study."
+  ].join("\n\n");
+  const wordMetadata = getWordCountMetadata("Task 2", writing);
+  return {
+    taskType: "Task 2",
+    essayType: "Opinion Essay",
+    prompt: "Some people think that public libraries are no longer necessary because information is now available online. To what extent do you agree or disagree?",
+    writing,
+    targetBand: "7.0",
+    reportLanguage: "en",
+    ...wordMetadata,
+    task2Safety: analyzeTask2Safety({ taskType: "Task 2", essayType: "Opinion Essay", prompt: "Some people think that public libraries are no longer necessary because information is now available online. To what extent do you agree or disagree?", writing, ...wordMetadata })
+  };
+}
+
+function mapProviderErrorToStage(errorCode) {
+  switch (errorCode) {
+    case "PROVIDER_AUTH_ERROR":
+    case "PROVIDER_MODEL_ERROR":
+    case "PROVIDER_RATE_LIMIT":
+    case "PROVIDER_TIMEOUT":
+    case "PROVIDER_NETWORK_ERROR":
+    case "PROVIDER_SCHEMA_ERROR":
+    case "PROVIDER_ERROR":
+      return "provider_request";
+    case "PROVIDER_INCOMPLETE_RESPONSE":
+    case "PROVIDER_MAX_OUTPUT_TOKENS":
+      return "provider_incomplete";
+    case "PROVIDER_REFUSAL":
+      return "provider_refusal";
+    case "PROVIDER_JSON_PARSE_ERROR":
+      return "json_parse";
+    case "REPORT_OUTPUT_VALIDATION_FAILED":
+      return "report_validation";
+    default:
+      return null;
+  }
+}
+
+// LEVEL 2 provider check: exercises the exact production request structure, the real diagnostic
+// schema, the same reasoning parameter, and the full validation/projection pipeline on a synthetic
+// fixture — reporting the precise stage that fails. It never saves a report or deducts a credit.
+export async function runProductionContractCheck() {
+  const payload = buildContractSelfTestPayload();
+  const startedAt = Date.now();
+  let config = null;
+  let stage = "provider_request";
+  try {
+    config = getOpenAiConfig(payload);
+    const data = await postOpenAIResponse({
+      config,
+      payload,
+      body: {
+        model: config.model,
+        input: [{ role: "user", content: [{ type: "input_text", text: buildPrompt(payload) }] }],
+        text: { format: buildDiagnosticResponseFormat(payload.taskType) },
+        reasoning: { effort: config.reasoningEffort },
+        max_output_tokens: config.maxOutputTokens
+      }
+    });
+
+    stage = "response_extraction";
+    const text = extractResponseText(data);
+    if (!text || !text.trim()) throw new Error("Provider returned empty output text.");
+
+    stage = "json_parse";
+    const parsed = extractParsedResponse(data) || parseJsonResponse(text, payload);
+
+    stage = "canonical_analysis";
+    const evidenceChecked = enforceEvidenceIntegrity(parsed, payload);
+    const normalized = normalizeAnalysis({ ...evidenceChecked, analysisMode: "Production contract self-test" }, payload);
+
+    stage = "report_validation";
+    const validated = validateReportOutput(normalized, payload);
+
+    stage = "student_view_projection";
+    buildStudentReportViewModel(
+      { ...validated, studentDisplayNameSnapshot: "Self Test", inputFingerprint: "self-test", engineVersion: "self-test" },
+      { previousSubmissionCount: 0, latestEstimatedRange: validated.estimatedBandRange }
+    );
+
+    return {
+      ran: true,
+      ok: true,
+      stage: "complete",
+      modelName: config.model,
+      reasoningEffort: config.reasoningEffort,
+      latencyMs: Date.now() - startedAt,
+      estimatedBandRange: validated.estimatedBandRange,
+      usage: safeUsage(data?.usage)
+    };
+  } catch (error) {
+    return {
+      ran: true,
+      ok: false,
+      stage: mapProviderErrorToStage(error?.errorCode) || stage,
+      errorCode: error?.errorCode || "INTERNAL_ERROR",
+      providerStatus: error?.providerStatus || null,
+      incompleteReason: error?.incompleteReason || null,
+      modelName: config?.model || configuredOpenAiModel() || null,
+      reasoningEffort: config?.reasoningEffort || configuredReasoningEffort(),
+      latencyMs: Date.now() - startedAt,
+      validationIssueCodes: Array.isArray(error?.validationDetails)
+        ? error.validationDetails.slice(0, 8).map((detail) => detail.code)
+        : []
+    };
+  }
+}
+
 async function analyzeWithOpenAI(payload) {
   const config = getOpenAiConfig(payload);
   const prompt = buildPrompt(payload);
+  // Exactly one bounded retry is attempted, and only for these recoverable first-attempt failures.
+  // PROVIDER_MAX_OUTPUT_TOKENS gets the dedicated larger retry ceiling; a parse/validation retry only
+  // needs a modest bump. A non-token incomplete reason is NOT retried with more tokens (it will not
+  // help) — it is thrown straight through to a safe failure.
+  const RETRYABLE_FIRST_ATTEMPT = ["PROVIDER_JSON_PARSE_ERROR", "REPORT_OUTPUT_VALIDATION_FAILED", "PROVIDER_MAX_OUTPUT_TOKENS"];
   const result = await runOpenAiAnalysisAttempt({ config, payload, prompt, isRetry: false }).catch(async (error) => {
-    if (!["PROVIDER_JSON_PARSE_ERROR", "REPORT_OUTPUT_VALIDATION_FAILED", "PROVIDER_INCOMPLETE_RESPONSE"].includes(error?.errorCode)) throw error;
+    if (!RETRYABLE_FIRST_ATTEMPT.includes(error?.errorCode)) throw error;
     try {
       return await runOpenAiAnalysisAttempt({
         config: {
           ...config,
-          // A truncated first attempt needs genuinely more room, not the same ceiling again.
-          maxOutputTokens: error?.errorCode === "PROVIDER_INCOMPLETE_RESPONSE"
-            ? config.maxOutputTokens + 2000
+          maxOutputTokens: error?.errorCode === "PROVIDER_MAX_OUTPUT_TOKENS"
+            ? configuredRetryMaxOutputTokens()
             : Math.max(config.maxOutputTokens, 5000),
           reasoningEffort: config.reasoningEffort === "minimal" ? "low" : config.reasoningEffort
         },
@@ -288,7 +425,7 @@ async function postOpenAIResponse({ config, body, payload = null }) {
       });
     }
 
-    throw providerError("PROVIDER_ERROR", {
+    throw providerError("PROVIDER_NETWORK_ERROR", {
       statusCode: 502,
       debugHint: `Provider request failed before a response was received: ${error?.message || "unknown error"}`,
       payload
@@ -318,10 +455,17 @@ async function postOpenAIResponse({ config, body, payload = null }) {
   // report must never be parsed as if it were complete.
   if (data?.status === "incomplete") {
     const reason = String(data?.incomplete_details?.reason || "unknown");
-    throw providerError("PROVIDER_INCOMPLETE_RESPONSE", {
+    const truncated = reason === "max_output_tokens";
+    // Separate a token-budget truncation (recoverable with a larger ceiling) from any other
+    // incomplete reason (which a larger ceiling would not fix).
+    throw providerError(truncated ? "PROVIDER_MAX_OUTPUT_TOKENS" : "PROVIDER_INCOMPLETE_RESPONSE", {
       statusCode: 502,
       providerStatus: response.status,
-      debugHint: `Provider response is incomplete (reason: ${reason}). If the reason is max_output_tokens, raise OPENAI_MAX_OUTPUT_TOKENS.`,
+      incompleteReason: reason,
+      usage: safeUsage(data?.usage),
+      debugHint: truncated
+        ? "Provider truncated the report at max_output_tokens; the engine retries once with OPENAI_RETRY_MAX_OUTPUT_TOKENS."
+        : `Provider response is incomplete (reason: ${reason}); a larger token ceiling will not fix this.`,
       payload
     });
   }
@@ -348,11 +492,20 @@ function classifyProviderResponse(status, providerText, payload) {
     lower.includes("unsupported_model") ||
     lower.includes("does not exist") ||
     lower.includes("not found");
+  // A rejected structured-output schema (400/422) is a contract defect on our side, not a transient
+  // provider error, so it gets its own code and must never be silently downgraded to free text.
+  const isSchemaError = (status === 400 || status === 422) && (
+    lower.includes("json_schema") ||
+    lower.includes("response_format") ||
+    lower.includes("schema") ||
+    lower.includes("text.format")
+  );
 
   let errorCode = "PROVIDER_ERROR";
   if (status === 401 || status === 403) errorCode = "PROVIDER_AUTH_ERROR";
   else if (isModelError) errorCode = "PROVIDER_MODEL_ERROR";
   else if (status === 429) errorCode = "PROVIDER_RATE_LIMIT";
+  else if (isSchemaError) errorCode = "PROVIDER_SCHEMA_ERROR";
 
   return providerError(errorCode, {
     statusCode: errorCode === "PROVIDER_RATE_LIMIT" ? 429 : 502,
@@ -371,14 +524,28 @@ function providerError(errorCode, options = {}) {
   if (options.providerStatus) error.providerStatus = options.providerStatus;
   if (options.providerBodyPreview) error.providerBodyPreview = options.providerBodyPreview;
   if (options.rawOutputPreview) error.rawOutputPreview = options.rawOutputPreview;
+  if (options.incompleteReason) error.incompleteReason = options.incompleteReason;
+  if (options.usage) error.usage = options.usage;
   return error;
+}
+
+// Only token counts survive from the provider usage block — never any content.
+function safeUsage(usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : undefined);
+  return {
+    inputTokens: num(usage.input_tokens),
+    outputTokens: num(usage.output_tokens),
+    reasoningTokens: num(usage.output_tokens_details?.reasoning_tokens),
+    totalTokens: num(usage.total_tokens)
+  };
 }
 
 function providerStudentMessage(errorCode, payload) {
   if (
     payload?.taskType === "Task 1" &&
     payload?.image?.dataUrl &&
-    ["PROVIDER_ERROR", "PROVIDER_TIMEOUT", "PROVIDER_JSON_PARSE_ERROR"].includes(errorCode)
+    ["PROVIDER_ERROR", "PROVIDER_NETWORK_ERROR", "PROVIDER_TIMEOUT", "PROVIDER_JSON_PARSE_ERROR"].includes(errorCode)
   ) {
     return "Task 1 image analysis could not be completed. Please try without the image or contact Kru Pom IELTS.";
   }
@@ -418,6 +585,19 @@ function configuredMaxOutputTokens() {
   const capValue = Number(process.env.DIAGNOSTIC_MAX_OUTPUT_TOKENS_CAP || DEFAULT_SERVERLESS_MAX_OUTPUT_TOKENS);
   const capTokens = Number.isFinite(capValue) && capValue > 0 ? capValue : DEFAULT_SERVERLESS_MAX_OUTPUT_TOKENS;
   return Math.min(maxOutputTokens, capTokens);
+}
+
+function configuredRetryMaxOutputTokens() {
+  const base = configuredMaxOutputTokens();
+  const value = Number(process.env.OPENAI_RETRY_MAX_OUTPUT_TOKENS || DEFAULT_OPENAI_RETRY_MAX_OUTPUT_TOKENS);
+  const retryTokens = Number.isFinite(value) && value > 0 ? value : DEFAULT_OPENAI_RETRY_MAX_OUTPUT_TOKENS;
+  // The retry ceiling is only meaningful if it exceeds the first-attempt ceiling.
+  const target = Math.max(retryTokens, base + 2000);
+  if (!isServerlessRuntime()) return target;
+  // On serverless the same output cap that bounds the first attempt also bounds the retry.
+  const capValue = Number(process.env.DIAGNOSTIC_MAX_OUTPUT_TOKENS_CAP || DEFAULT_SERVERLESS_MAX_OUTPUT_TOKENS);
+  const capTokens = Number.isFinite(capValue) && capValue > 0 ? capValue : DEFAULT_SERVERLESS_MAX_OUTPUT_TOKENS;
+  return Math.min(target, capTokens);
 }
 
 function configuredReasoningEffort() {

@@ -146,7 +146,7 @@ assert.equal(progress.changeIndicator, "new");
 assert.equal(progress.repeatedIssue, "");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.4.0",
+  appVersion: "12.4.1",
   engineVersion: "ielts-diagnostic-engine-v12.4.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.3.1",

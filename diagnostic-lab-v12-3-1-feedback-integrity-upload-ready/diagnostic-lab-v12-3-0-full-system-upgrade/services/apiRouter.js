@@ -2,9 +2,11 @@ import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { createAnalysisJobStore } from "./analysisJobStore.js";
+import { createAnalysisFailureLog, runStorageSelfTest } from "./analysisFailureLog.js";
 import {
   analyzeWriting,
   getAnalyzerHealth,
+  runProductionContractCheck,
   runProviderHealthCheck,
   validateReportOutput
 } from "./aiAnalyzer.js";
@@ -48,11 +50,38 @@ export function loadEnvFile(rootDir) {
   }
 }
 
+// Cached result of the most recent REAL provider/contract check. /api/health reads this cache so it
+// can report genuine connectivity without ever calling OpenAI on a public request. Populated only by
+// the admin-triggered diagnostics below.
+const providerCheckCache = {
+  provider: { status: "unknown", at: "", model: "", errorCode: "" },
+  contract: { status: "unknown", at: "", stage: "", errorCode: "" }
+};
+
+function recordProviderCheck(result) {
+  providerCheckCache.provider = {
+    status: result?.ok ? "connected" : "failed",
+    at: new Date().toISOString(),
+    model: result?.modelName || "",
+    errorCode: result?.ok ? "" : (result?.errorCode || "PROVIDER_ERROR")
+  };
+}
+
+function recordContractCheck(result) {
+  providerCheckCache.contract = {
+    status: result?.ok ? "passed" : "failed",
+    at: new Date().toISOString(),
+    stage: result?.stage || "",
+    errorCode: result?.ok ? "" : (result?.errorCode || "")
+  };
+}
+
 export function createApiHandler(options = {}) {
   const rootDir = options.rootDir || process.cwd();
   loadEnvFile(rootDir);
   const storage = options.storage || createStorage({ rootDir });
   const jobStore = options.jobStore || createAnalysisJobStore({ rootDir });
+  const failureLog = options.failureLog || createAnalysisFailureLog({ rootDir });
 
   return async function handleApiRequest(request) {
     const method = request.method || request.httpMethod || "GET";
@@ -68,13 +97,25 @@ export function createApiHandler(options = {}) {
         return jsonResponse(200, {
           ok: true,
           apiConnected: true,
+          // Configuration presence — NOT proof of connectivity.
+          providerConfigured: analyzerHealth.diagnosticEngineConfigured,
           diagnosticEngineConfigured: analyzerHealth.diagnosticEngineConfigured,
-          diagnosticEngineConnected: analyzerHealth.diagnosticEngineConfigured && analyzerHealth.modelConfigured,
           modelConfigured: analyzerHealth.modelConfigured,
           modelName: analyzerHealth.modelName,
+          // Real connectivity is only known after an admin runs a provider check; until then it is
+          // "unknown". This field never turns "connected" from configuration alone.
+          providerConnectivityStatus: providerCheckCache.provider.status,
+          lastProviderCheckAt: providerCheckCache.provider.at,
+          lastProviderCheckModel: providerCheckCache.provider.model,
+          lastProviderCheckErrorCode: providerCheckCache.provider.errorCode,
+          productionContractCheckStatus: providerCheckCache.contract.status,
+          lastProductionContractCheckAt: providerCheckCache.contract.at,
+          // Back-compat: diagnosticEngineConnected now reflects the real cached check, not config.
+          diagnosticEngineConnected: providerCheckCache.provider.status === "connected",
           fullEngineRequired: analyzerHealth.fullEngineRequired,
           timeoutMs: analyzerHealth.timeoutMs,
           maxOutputTokens: analyzerHealth.maxOutputTokens,
+          retryMaxOutputTokens: analyzerHealth.retryMaxOutputTokens,
           reasoningEffort: analyzerHealth.reasoningEffort,
           analysisMode: shouldUseAsyncAnalysis() ? "async-background" : "sync",
           jobStorageMode: jobStore.name,
@@ -236,10 +277,10 @@ export function createApiHandler(options = {}) {
       }
 
       if (method === "POST" && apiPath === "/api/analyze") {
-        return await handleAnalyze(request, storage, jobStore);
+        return await handleAnalyze(request, storage, jobStore, failureLog);
       }
 
-      const adminResponse = await maybeHandleAdminRoute(method, apiPath, request, storage);
+      const adminResponse = await maybeHandleAdminRoute(method, apiPath, request, storage, { failureLog, rootDir });
       if (adminResponse) return adminResponse;
 
       return jsonResponse(404, { ok: false, error: "API route not found." });
@@ -451,11 +492,14 @@ async function handleLogin(request, storage) {
   });
 }
 
-async function handleAnalyze(request, storage, jobStore) {
+async function handleAnalyze(request, storage, jobStore, failureLog = null) {
+  const startedAt = Date.now();
+  const requestId = createAnalysisRequestId();
   const session = await requireSession(request, storage);
   const user = session.user;
   const body = readJsonBody(request);
   const payload = applyTask1ClassificationGuard(applyTask2ClassificationGuard(validateAnalyzePayload(body)));
+  payload.analysisRequestId = requestId;
 
   const studentProfile = await resolveStudentProfileForAnalysis(storage, user, payload.studentProfileToken);
   Object.assign(payload, {
@@ -543,7 +587,10 @@ async function handleAnalyze(request, storage, jobStore) {
       duplicateCacheUsed: false,
       reason: error.errorCode || "analysis-failed"
     });
-    throw error;
+    await persistAnalyzeFailure(failureLog, { error, user, payload, requestId, startedAt });
+    // No credit was deducted (the audit above records quotaDeducted: false). Return a safe, coded,
+    // reference-tagged response instead of the old undifferentiated generic message.
+    return buildAnalyzeErrorResponse({ error, user, requestId });
   }
   const progressRecord = buildSubmissionHistoryRecord(user.username, payload, analysis, submissionHash);
   let transaction;
@@ -565,9 +612,12 @@ async function handleAnalyze(request, storage, jobStore) {
       });
     }
   } catch (error) {
-    error.errorCode = error.errorCode || "INTERNAL_ERROR";
+    // The report was generated but could not be committed: a distinct, honest failure. Quota is not
+    // deducted because the commit (which also increments usage) did not succeed.
+    error.errorCode = error.errorCode || "STORAGE_COMMIT_FAILED";
     error.debugHint = error.debugHint || "Atomic report, usage and audit commit failed. Check the configured storage adapter.";
-    throw error;
+    await persistAnalyzeFailure(failureLog, { error, user, payload, requestId, startedAt });
+    return buildAnalyzeErrorResponse({ error, user, requestId });
   }
   const savedRecord = transaction.record;
   const updatedUser = transaction.user || user;
@@ -594,6 +644,7 @@ async function handleAnalyze(request, storage, jobStore) {
   return jsonResponse(200, {
     ok: true,
     duplicateSubmission: false,
+    requestId,
     analysis: sanitizeAnalysisForClient(analysis),
     user: withExpiryFlags(addDailyLimitFlags(sanitizeUserForClient(updatedUser))),
     progressRecord: sanitizeProgressRecordForClient(savedRecord),
@@ -603,6 +654,34 @@ async function handleAnalyze(request, storage, jobStore) {
       payload.taskType
     )
   });
+}
+
+// Persists a safe, bounded failure record for admin visibility. Never throws: a logging failure must
+// not turn one analysis failure into two, and must not change the response the student receives.
+async function persistAnalyzeFailure(failureLog, { error, user, payload, requestId, startedAt }) {
+  if (!failureLog) return;
+  try {
+    const health = getAnalyzerHealth();
+    await failureLog.append({
+      requestId,
+      ownerAccountId: user?.username,
+      accountRole: user?.role,
+      taskType: payload?.taskType,
+      essayOrVisualType: payload?.publicEssayType || payload?.essayType || payload?.publicVisualType || payload?.visualType || "",
+      providerModel: error?.providerModel || health.modelName,
+      reasoningEffort: error?.providerReasoningEffort || health.reasoningEffort,
+      failureStage: failureStageForError(error),
+      errorCode: error?.errorCode,
+      providerStatus: error?.providerStatus,
+      incompleteReason: error?.incompleteReason,
+      retryAttempted: error?.retryAttempted,
+      firstAttemptErrorCode: error?.firstAttemptErrorCode,
+      validatorIssueCodes: Array.isArray(error?.validationDetails) ? error.validationDetails.map((detail) => detail.code) : [],
+      durationMs: Date.now() - Number(startedAt || Date.now())
+    });
+  } catch (logError) {
+    console.error("[diagnostic-lab] failed to persist analysis failure record", { message: truncate(String(logError?.message || ""), 200) });
+  }
 }
 
 async function handleAnalyzeStatus(request, storage, jobStore, jobId) {
@@ -823,9 +902,92 @@ async function handleDebugAnalyzeHealth(request, storage) {
   });
 }
 
-async function maybeHandleAdminRoute(method, apiPath, request, storage) {
+async function maybeHandleAdminRoute(method, apiPath, request, storage, context = {}) {
   if (!apiPath.startsWith("/api/admin/")) return null;
   await requireAdmin(request, storage);
+
+  // ---- System Diagnostics (admin session only; never expose secrets or student data) ----
+  if (method === "POST" && apiPath === "/api/admin/diagnostics/provider-connectivity") {
+    const analyzerHealth = getAnalyzerHealth();
+    if (!analyzerHealth.diagnosticEngineConfigured || !analyzerHealth.modelConfigured) {
+      return jsonResponse(200, {
+        ok: false,
+        ran: false,
+        reason: "Set OPENAI_API_KEY and OPENAI_MODEL before running a provider check.",
+        modelName: analyzerHealth.modelName
+      });
+    }
+    let result;
+    try {
+      const check = await runProviderHealthCheck();
+      result = { ok: check.ok, ran: true, modelName: check.modelName, endpoint: check.endpoint };
+    } catch (error) {
+      result = {
+        ok: false,
+        ran: true,
+        modelName: analyzerHealth.modelName,
+        errorCode: error?.errorCode || "PROVIDER_ERROR",
+        providerStatus: error?.providerStatus || null,
+        debugHint: safeDebugHint(error)
+      };
+    }
+    recordProviderCheck(result);
+    return jsonResponse(200, { ...result, checkedAt: providerCheckCache.provider.at });
+  }
+
+  if (method === "POST" && apiPath === "/api/admin/diagnostics/production-contract") {
+    const analyzerHealth = getAnalyzerHealth();
+    if (!analyzerHealth.diagnosticEngineConfigured || !analyzerHealth.modelConfigured) {
+      return jsonResponse(200, {
+        ok: false,
+        ran: false,
+        reason: "Set OPENAI_API_KEY and OPENAI_MODEL before running a contract check.",
+        modelName: analyzerHealth.modelName
+      });
+    }
+    const result = await runProductionContractCheck();
+    recordContractCheck(result);
+    // The contract result is already safe (no essay, prompt or raw output), but strip any debugHint.
+    const { debugHint, ...safe } = result;
+    return jsonResponse(200, { ...safe, checkedAt: providerCheckCache.contract.at });
+  }
+
+  if (method === "POST" && apiPath === "/api/admin/diagnostics/storage") {
+    const result = await runStorageSelfTest({ rootDir: context.rootDir });
+    return jsonResponse(200, { ...result, storageAdapter: storage.name, durableStorage: Boolean(storage.isDurable) });
+  }
+
+  if (method === "GET" && apiPath === "/api/admin/diagnostics/analysis-failures") {
+    const records = context.failureLog ? await context.failureLog.list() : [];
+    return jsonResponse(200, { ok: true, count: records.length, failures: records });
+  }
+
+  if (method === "POST" && apiPath === "/api/admin/diagnostics/clear-failures") {
+    const cleared = context.failureLog ? await context.failureLog.clear() : { cleared: true, count: 0 };
+    return jsonResponse(200, { ok: true, ...cleared });
+  }
+
+  if (method === "GET" && apiPath === "/api/admin/diagnostics/system") {
+    const analyzerHealth = getAnalyzerHealth();
+    return jsonResponse(200, {
+      ok: true,
+      appVersion: ANALYSIS_VERSIONS.appVersion,
+      engineVersion: ANALYSIS_VERSIONS.engineVersion,
+      analysisMode: shouldUseAsyncAnalysis() ? "async-background" : "sync",
+      provider: {
+        configured: analyzerHealth.diagnosticEngineConfigured,
+        modelConfigured: analyzerHealth.modelConfigured,
+        modelName: analyzerHealth.modelName,
+        reasoningEffort: analyzerHealth.reasoningEffort,
+        timeoutMs: analyzerHealth.timeoutMs,
+        maxOutputTokens: analyzerHealth.maxOutputTokens,
+        retryMaxOutputTokens: analyzerHealth.retryMaxOutputTokens
+      },
+      lastProviderCheck: providerCheckCache.provider,
+      lastContractCheck: providerCheckCache.contract,
+      storage: { adapter: storage.name, durable: Boolean(storage.isDurable), runtime: storage.runtime || "node" }
+    });
+  }
 
   if (method === "GET" && apiPath === "/api/admin/users") {
     const users = await storage.listUsers();
@@ -1094,6 +1256,72 @@ function shouldUseAsyncAnalysis() {
 
 function createJobId() {
   return `job-${Date.now().toString(36)}-${randomBytes(8).toString("hex")}`;
+}
+
+// A short, opaque reference id for one analysis submission. It correlates a student-visible failure
+// with the admin failure log and server logs. It carries no personal data.
+function createAnalysisRequestId() {
+  return `analysis-${Date.now().toString(36)}-${randomBytes(5).toString("hex")}`;
+}
+
+// A debug hint safe to return to a logged-in admin: it never includes the raw provider body, the
+// prompt, the essay, or a stack trace — only a short, sanitised description.
+function safeDebugHint(error) {
+  const hint = String(error?.debugHint || error?.message || "").slice(0, 200);
+  return hint.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [redacted]");
+}
+
+// Maps a failure to the pipeline stage that produced it, for the admin failure log and responses.
+function failureStageForError(error) {
+  const code = String(error?.errorCode || "");
+  if (["PROVIDER_AUTH_ERROR", "PROVIDER_MODEL_ERROR", "PROVIDER_RATE_LIMIT", "PROVIDER_NETWORK_ERROR", "PROVIDER_SCHEMA_ERROR", "PROVIDER_ERROR"].includes(code)) return "provider_request";
+  if (code === "PROVIDER_TIMEOUT") return "provider_timeout";
+  if (["PROVIDER_INCOMPLETE_RESPONSE", "PROVIDER_MAX_OUTPUT_TOKENS"].includes(code)) return "provider_incomplete";
+  if (code === "PROVIDER_REFUSAL") return "provider_refusal";
+  if (code === "PROVIDER_JSON_PARSE_ERROR") return "json_parse";
+  if (code === "REPORT_OUTPUT_VALIDATION_FAILED") return "output_validation";
+  if (code === "REVISION_REPAIR_FAILED") return "revision_repair";
+  if (code === "STORAGE_COMMIT_FAILED") return "storage_commit";
+  return "internal";
+}
+
+const RETRYABLE_ANALYSIS_CODES = new Set([
+  "PROVIDER_RATE_LIMIT",
+  "PROVIDER_TIMEOUT",
+  "PROVIDER_NETWORK_ERROR",
+  "PROVIDER_INCOMPLETE_RESPONSE",
+  "PROVIDER_MAX_OUTPUT_TOKENS",
+  "PROVIDER_JSON_PARSE_ERROR",
+  "REPORT_OUTPUT_VALIDATION_FAILED",
+  "STORAGE_COMMIT_FAILED"
+]);
+
+// Builds the analysis error response. Students receive only a safe message, error code, reference id
+// and retry guidance. Teachers/admins additionally receive the failure stage and safe provider
+// metadata — never the raw provider body, prompt, essay, or a stack trace.
+function buildAnalyzeErrorResponse({ error, user, requestId }) {
+  const normalized = normalizeError(error);
+  const failureStage = failureStageForError(error);
+  const retryable = RETRYABLE_ANALYSIS_CODES.has(normalized.errorCode);
+  const payload = {
+    ok: false,
+    error: normalized.payload.error,
+    errorCode: normalized.errorCode,
+    requestId,
+    retryable
+  };
+  for (const key of ["selectedEssayType", "detectedEssayType", "promptClassificationConfidence", "classificationMatch"]) {
+    if (error?.[key] !== undefined) payload[key] = error[key];
+  }
+  if (isTeacherOrAdmin(user)) {
+    payload.failureStage = failureStage;
+    payload.safeDebugSummary = safeDebugHint(error);
+    if (error?.providerStatus) payload.providerStatus = error.providerStatus;
+    if (error?.incompleteReason) payload.incompleteReason = error.incompleteReason;
+    if (error?.retryAttempted) payload.retryAttempted = true;
+    if (error?.firstAttemptErrorCode) payload.firstAttemptErrorCode = error.firstAttemptErrorCode;
+  }
+  return jsonResponse(normalized.statusCode, payload);
 }
 
 async function invokeAnalyzeWorker(request, jobId) {

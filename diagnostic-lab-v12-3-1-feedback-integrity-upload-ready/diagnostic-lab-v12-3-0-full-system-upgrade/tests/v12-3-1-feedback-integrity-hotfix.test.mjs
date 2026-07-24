@@ -11,7 +11,7 @@ import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { isTransientPdfError, runWithSingleTransientPdfRetry } from "../domain/pdfRetry.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.4.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.4.1");
 assert.equal(ANALYSIS_VERSIONS.rubricVersion, "kru-pom-ielts-writing-v12.3.0");
 assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.4.0");
 assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.5");

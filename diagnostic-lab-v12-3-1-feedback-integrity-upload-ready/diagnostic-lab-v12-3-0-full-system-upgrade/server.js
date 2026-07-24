@@ -12,7 +12,7 @@ const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const PORT = Number(process.env.PORT || 4174);
 const HOST = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 const handleApiRequest = createApiHandler({ rootDir: __dirname });
-const FRONTEND_ASSET_MANIFEST_VERSION = "frontend-bootstrap-v12.3.6";
+const FRONTEND_ASSET_MANIFEST_VERSION = "frontend-bootstrap-v12.4.0";
 
 // The public file set is resolved once at startup from the browser module graph (single source of
 // truth shared with the static-preview build). A new browser module becomes servable automatically.

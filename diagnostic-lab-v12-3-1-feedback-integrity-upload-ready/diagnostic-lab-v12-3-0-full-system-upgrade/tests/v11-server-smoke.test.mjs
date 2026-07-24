@@ -18,10 +18,10 @@ try {
   ]);
   assert.equal(health.status, 200);
   const healthJson = await health.json();
-  assert.equal(healthJson.appVersion, "12.3.6");
+  assert.equal(healthJson.appVersion, "12.4.0");
   assert.equal(home.status, 200);
   const html = await home.text();
-  assert.match(html, /script\.js\?v=diagnostic-v12-3-6-frontend-bootstrap/);
+  assert.match(html, /script\.js\?v=diagnostic-v12-4-0-engine-stabilisation/);
   assert.equal(task2Domain.status, 200);
   assert.match(await task2Domain.text(), /export function analyzeTask2Safety/);
   assert.equal(canonicalDomain.status, 200);

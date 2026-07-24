@@ -327,6 +327,10 @@ export function normalizeStudentFacingText(value) {
     .replace(/\btwo\s+-\s+body\b/gi, "two-body")
     // The paragraph model is TEEL. TESL is a recurring provider typo and must never reach a student.
     .replace(/\bTESL\b/g, "TEEL")
+    // SAR means Situation, Action, Result — never "Analysis". The provider sometimes writes
+    // "the SAR chain has Situation and Result, but the Analysis needs...". Repair the term only
+    // inside a sentence that is clearly about SAR, so ordinary uses of "analysis" stay untouched.
+    .replace(/([^.!?]*\b(?:SAR|Situation[^.!?]{0,120}Result|Result[^.!?]{0,120}Situation)\b[^.!?]*?)\bAnalysis\b/g, "$1Action")
     // Kru Pom's framework is written LFC-CPC; provider text and legacy keys use a bare space.
     .replace(/\bLFC[\s ]+CPC\b/g, "LFC-CPC")
     // Provider text often leaves a space before a closing quote ("traffic jam. ”) or punctuation.
@@ -387,7 +391,7 @@ export function validateCanonicalAnalysis(canonical = {}) {
   }
   for (const [index, card] of (canonical.evidenceIssues || []).entries()) {
     if (!SEVERITY_TAXONOMY.includes(card.severity)) issues.push(`Evidence issue ${index + 1} uses an invalid severity.`);
-    if (canonical.metadata?.taskType === "Task 2" && !REVISION_TYPES.includes(card.revisionType)) {
+    if (canonical.metadata?.taskType === "Task 2" && !REVISION_TYPES.includes(card.revisionType) && card.revisionType !== "Revision Unavailable") {
       issues.push(`Evidence issue ${index + 1} uses an invalid revision type.`);
     }
   }

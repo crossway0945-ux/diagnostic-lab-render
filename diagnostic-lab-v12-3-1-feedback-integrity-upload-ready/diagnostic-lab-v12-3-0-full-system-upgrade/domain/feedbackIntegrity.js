@@ -131,18 +131,19 @@ export function buildFeedbackIntegrityModel({
   const canonicalIssues = (Array.isArray(feedbackCards) ? feedbackCards : [])
     .map((card, index) => canonicalizeIssue(card, index, { writing, taskType, visualType, reportLanguage, prompt, paragraphs, records }))
     .filter(Boolean);
+  ensureExecutiveDevelopmentCoverage(canonicalIssues, `${mainScoreLimitingFactor} ${mostUrgentRepair}`, taskType);
   const topIssueIds = selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType, `${mainScoreLimitingFactor} ${mostUrgentRepair}`);
   const canonicalTopIssues = topIssueIds
     .map((issueId) => canonicalIssues.find((issue) => issue.issueId === issueId))
     .filter(Boolean)
     .map((issue) => projectTopIssue(issue));
-  const paragraphCoverage = buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType });
+  const conclusionFunction = assessConclusionFunction(paragraphs, taskType);
+  const paragraphCoverage = buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType, conclusionFunction });
   const majorIds = canonicalIssues
     .filter((issue) => ["Critical", "Major", "Serious", "Moderate"].includes(issue.severity))
     .map((issue) => issue.issueId);
   const summaryIssueIds = (majorIds.length ? majorIds : topIssueIds).slice(0, 3);
   const urgentRepairIssueIds = (majorIds.length ? majorIds : topIssueIds).slice(0, 2);
-  const conclusionFunction = assessConclusionFunction(paragraphs, taskType);
   return {
     issues: canonicalIssues,
     topIssues: canonicalTopIssues,
@@ -510,7 +511,10 @@ function canonicalizeIssue(card, index, context) {
   // The same discriminator is used everywhere: a revision is teacher guidance only when it supplies
   // an analytical element (an affected group, a condition or timing) the original never had.
   // A rewording that merely swaps synonyms stays a Minimal Correction.
-  const developmentRepair = repairTargets.some((target) =>
+  // Scope: only cards whose PRIMARY category is a development category get the automatic label
+  // escalation. A Meaning Control correction may legitimately rebuild a sentence without becoming
+  // "teacher-guided development"; its labelling is governed by the meaning-repair path.
+  const developmentRepair = DEVELOPMENT_ISSUE_CATEGORIES.includes(issueCategory) && repairTargets.some((target) =>
     ["mechanism", "explanation depth", "example specificity", "SAR completeness", "scope", "affected group", "consequence"].includes(target));
   const expansionCheck = checkRevisionTypeFidelity({
     original: canonicalEvidence,
@@ -552,6 +556,7 @@ function canonicalizeIssue(card, index, context) {
     original: canonicalEvidence,
     revision: card.targetedRevision,
     prompt: context.prompt,
+    writing: context.writing,
     revisionType,
     taskType: context.taskType
   });
@@ -562,6 +567,33 @@ function canonicalizeIssue(card, index, context) {
   for (const problem of revisionQuality.problems) {
     if (problem.code === "REVISION_TYPE_FIDELITY") continue;
     repairs.push({ code: problem.code, message: problem.message, paragraphLocation: record.location });
+  }
+  // Release blocker: a revision that fails grammar, reference coherence, task fidelity or language
+  // safety is never shown to a student. The diagnosis, evidence and score are all preserved; only
+  // the unsafe model sentence is withheld and replaced by a controlled instruction. Showing broken
+  // or meaning-shifted language as a study model is worse than showing no model sentence.
+  const revisionWithheld = ["fail"].some((status) => [
+    revisionQuality.grammarValidationStatus,
+    revisionQuality.semanticValidationStatus,
+    revisionQuality.taskFidelityStatus,
+    revisionQuality.languageSafetyStatus
+  ].includes(status));
+  let displayedRevision = String(card.targetedRevision || "");
+  let displayedRevisionType = revisionType;
+  if (revisionWithheld) {
+    if (process.env.DIAGNOSTIC_DEBUG_WITHHOLD) {
+      console.error("[withhold]", record.location, JSON.stringify(revisionQuality.problems));
+    }
+    repairs.push({
+      code: "REVISION_WITHHELD",
+      reasons: revisionQuality.problems.map((problem) => problem.code),
+      paragraphLocation: record.location,
+      disclosed: true
+    });
+    displayedRevision = String(context.reportLanguage || "").toLowerCase() === "th"
+      ? "ระบบยังไม่สามารถยืนยันประโยคตัวอย่างที่ปลอดภัยสำหรับจุดนี้ได้ จึงไม่แสดงประโยคตัวอย่าง ให้แก้ตาม Student Action ด้านล่างด้วยตนเอง แล้วส่งงานเข้ามาตรวจอีกครั้ง"
+      : "A safe corrected sentence could not be verified for this point, so no model sentence is shown. Rewrite it yourself following the Student Action below, then resubmit for checking.";
+    displayedRevisionType = "Revision Unavailable";
   }
 
   let revisionAlignmentStatus = alignment.revisionAlignmentStatus;
@@ -615,11 +647,13 @@ function canonicalizeIssue(card, index, context) {
     displayedEvidenceCount: evidenceLocations.length,
     punctuationClaimValid: true,
     punctuationClaimCorrected: !originalPunctuationClaimValid,
-    revisionType,
+    targetedRevision: displayedRevision,
+    revisionType: displayedRevisionType,
+    revisionWithheld,
     repairTargets,
     repairedTargets: alignment.repairedTargets,
     unresolvedTargets: alignment.unresolvedTargets,
-    revisionAlignmentStatus,
+    revisionAlignmentStatus: revisionWithheld ? "withheld" : revisionAlignmentStatus,
     revisionAlignmentPass: alignment.pass,
     grammarValidationStatus: revisionQuality.grammarValidationStatus,
     semanticValidationStatus: revisionQuality.semanticValidationStatus,
@@ -628,9 +662,13 @@ function canonicalizeIssue(card, index, context) {
     revisionTypeValidationStatus: revisionQuality.revisionTypeValidationStatus,
     revisionQualityProblems: revisionQuality.problems,
     revisionLimitationNote,
-    whyRevisionIsStronger: revisionLimitationNote
-      ? appendLimitationNote(card.whyRevisionIsStronger, revisionLimitationNote)
-      : card.whyRevisionIsStronger,
+    whyRevisionIsStronger: revisionWithheld
+      ? (String(context.reportLanguage || "").toLowerCase() === "th"
+        ? "ระบบไม่แสดงประโยคตัวอย่างสำหรับจุดนี้ เพราะยังยืนยันความปลอดภัยของประโยคไม่ได้ครบทุกด้าน การเขียนแก้ด้วยตนเองตาม Student Action จะปลอดภัยกว่าการจำประโยคที่อาจมีข้อผิดพลาด"
+        : "No model sentence is shown for this point because a fully safe version could not be verified. Rewriting it yourself from the Student Action is safer than memorising a sentence that may contain an error.")
+      : revisionLimitationNote
+        ? appendLimitationNote(card.whyRevisionIsStronger, revisionLimitationNote)
+        : card.whyRevisionIsStronger,
     integrityRepairs: repairs,
     feedbackCardId: `card-${index + 1}`
   };
@@ -724,6 +762,37 @@ function selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType, execut
   return selected;
 }
 
+// When the Executive Summary names a development weakness (causal mechanism, example development,
+// SAR) as a score limiter, at least one canonical issue must carry that weakness as its PRIMARY
+// category — otherwise the student is told the main problem and then shown only language cards.
+// The reclassification reuses the same detectors that classify ordinary diagnoses, applied to the
+// executive text, so nothing here is tied to any topic or fixture.
+function ensureExecutiveDevelopmentCoverage(issues, executiveText, taskType) {
+  if (String(taskType || "") === "Task 1") return;
+  const signal = detectDevelopmentSignal(normalizeText(executiveText));
+  if (!signal) return;
+  if (issues.some((issue) => DEVELOPMENT_ISSUE_CATEGORIES.includes(issue.issueCategory))) return;
+  const labels = executiveParagraphLabels(executiveText);
+  const candidates = issues.filter((issue) =>
+    ["example", "explanation", "body_topic_sentence"].includes(issue.sentenceRole) &&
+    (!labels.length || labels.some((label) => normalizeText(issue.paragraphLabel) === normalizeText(label))));
+  const target = [...candidates].sort((left, right) => severityRank(right.severity) - severityRank(left.severity))[0];
+  if (!target) return;
+  const demoted = target.issueCategory;
+  target.secondaryIssueCategories = [...new Set([
+    ...(target.secondaryIssueCategories || []),
+    ...(LANGUAGE_ISSUE_CATEGORIES.includes(demoted) ? [demoted] : [])
+  ])].filter((label) => label !== signal);
+  target.issueCategory = signal;
+  if (["High-Band Refinement", "Pass / Strong", "Minor Repair"].includes(String(target.severity))) {
+    target.severity = "Moderate";
+  }
+  target.integrityRepairs = [
+    ...(target.integrityRepairs || []),
+    { code: "EXECUTIVE_DEVELOPMENT_COVERAGE", from: demoted, to: signal, paragraphLocation: target.paragraphLocation }
+  ];
+}
+
 export function executiveParagraphLabels(text) {
   const value = String(text || "");
   const labels = [];
@@ -738,7 +807,7 @@ export function executiveParagraphLabels(text) {
   return [...new Set(labels)];
 }
 
-function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType }) {
+function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType, conclusionFunction = null }) {
   const guidance = Array.isArray(paragraphFeedback) ? paragraphFeedback : [];
   return paragraphs.map((paragraph) => {
     const issues = canonicalIssues.filter((issue) => issue.paragraphLabel === paragraph.role);
@@ -750,7 +819,10 @@ function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback
       DEVELOPMENT_ISSUE_CATEGORIES.includes(issue.issueCategory) ||
       (Array.isArray(issue.unresolvedTargets) && issue.unresolvedTargets.length > 0)
     );
-    const status = capParagraphStatus(paragraphStatus(primary?.severity), developmentGap);
+    const languageOnly = issues.length > 0 && issues.every((issue) => LANGUAGE_ISSUE_CATEGORIES.includes(issue.issueCategory));
+    const routeIssue = issues.some((issue) => ["Body Route Alignment", "Thesis Route Clarity", "Position Clarity"].includes(issue.issueCategory));
+    const base = capParagraphStatus(paragraphStatus(primary?.severity), developmentGap);
+    const status = dimensionAwareParagraphStatus({ role: paragraph.role, base, languageOnly, developmentGap, routeIssue, conclusionFunction });
     return {
       paragraphId: `paragraph-${paragraph.paragraphNumber}`,
       paragraphLabel: paragraph.role,
@@ -1137,6 +1209,24 @@ function paragraphStatus(severity = "") {
 function capParagraphStatus(status, developmentGap) {
   if (!developmentGap) return status;
   return ["Strong", "Mostly Controlled"].includes(status) ? "Moderate" : status;
+}
+
+// One combined word ("Moderate") hides which dimension is weak. Kru Pom's standard separates the
+// paragraph's function/route, its development, and its language: a conclusion whose function is
+// complete but whose wording needs repair must not read the same as a conclusion that fails to
+// close the essay. Serious statuses (Critical / Needs Work) always pass through unchanged.
+function dimensionAwareParagraphStatus({ role, base, languageOnly, developmentGap, routeIssue, conclusionFunction }) {
+  if (["Critical", "Needs Work"].includes(base)) return base;
+  if (routeIssue) return base;
+  const body = /^Body Paragraph/.test(String(role));
+  if (String(role) === "Conclusion" && languageOnly && conclusionFunction?.status === "Strong") {
+    return "Functionally Strong — Language Repair Needed";
+  }
+  if (body && developmentGap) return "Route Aligned — Development Moderate";
+  if (String(role) === "Introduction" && languageOnly) return "Structurally Strong — Language Repair Needed";
+  if (body && languageOnly) return "Function Controlled — Language Repair Needed";
+  if (String(role) === "Overview" && languageOnly) return "Functionally Controlled — Language Repair Needed";
+  return base;
 }
 
 function introducesConclusionNewIdea(text) {

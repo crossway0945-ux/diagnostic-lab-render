@@ -304,7 +304,7 @@ async function testCanonicalRendererAndPdfSerializationPath() {
   assert.match(script, /studentProfileSelect\.required = canManageStudents/);
   assert.match(index, /Permanently delete archived student/);
   assert.doesNotMatch(index, /Structural Diagram|Advantages Outweigh Disadvantages/);
-  assert.match(index, /script\.js\?v=diagnostic-v12-3-6-frontend-bootstrap/);
+  assert.match(index, /script\.js\?v=diagnostic-v12-4-0-engine-stabilisation/);
   // The server no longer hand-lists public files; it resolves the browser module graph from a shared
   // source of truth (which includes services/canonicalAnalysis.js and services/task2Safety.js).
   // The actual HTTP serving of every module is proven end-to-end in v12-3-6-frontend-bootstrap.
@@ -430,7 +430,7 @@ function assertCanonicalReport(analysis, payload, label) {
     assert.ok(SEVERITY_TAXONOMY.includes(card.severity), `${label}: severity ${index + 1}`);
     assert.ok(normalizedWriting.includes(normalizeEvidence(card.exactSentence)), `${label}: exact evidence ${index + 1}`);
     assert.ok(String(card.studentAction || "").trim().length >= 8, `${label}: issue-specific action ${index + 1}`);
-    if (payload.taskType === "Task 2") assert.ok(REVISION_TYPES.includes(card.revisionType), `${label}: revision type ${index + 1}`);
+    if (payload.taskType === "Task 2") assert.ok([...REVISION_TYPES, "Revision Unavailable"].includes(card.revisionType), `${label}: revision type ${index + 1}`);
   }
   if (canonical.capMetadata.applied) {
     assert.ok(canonical.capMetadata.criterion, `${label}: cap criterion`);

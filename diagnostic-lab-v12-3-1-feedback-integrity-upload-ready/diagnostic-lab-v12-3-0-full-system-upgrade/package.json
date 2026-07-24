@@ -1,6 +1,6 @@
 {
   "name": "ielts-writing-7-diagnostic-lab",
-  "version": "12.3.6",
+  "version": "12.4.0",
   "description": "V12.3 full-system IELTS Writing diagnostic upgrade with canonical evidence mapping, bilingual student-safe reports, revision-fidelity validation, and production deployment verification.",
   "type": "module",
   "scripts": {

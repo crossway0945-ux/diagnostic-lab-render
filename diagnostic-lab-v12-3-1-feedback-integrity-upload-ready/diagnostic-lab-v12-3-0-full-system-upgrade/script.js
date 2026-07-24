@@ -1819,6 +1819,7 @@ function sanitizePrintText(value) {
     .replace(/\u2192/g, "->")
     .replace(/\bLFC[\s\u00a0]+CPC\b/g, "LFC-CPC")
     .replace(/\bTESL\b/g, "TEEL")
+    .replace(/([^.!?]*\b(?:SAR|Situation[^.!?]{0,120}Result|Result[^.!?]{0,120}Situation)\b[^.!?]*?)\bAnalysis\b/g, "$1Action")
     .replace(/([\u201d"\u2019'\w]),(?=[\u201c"\u2018'\w])/g, "$1, ")
     .replace(/([.,;:!?])[ \t]+(["'\u201d\u2019])/g, "$1$2")
     .replace(/[ \t]+([\u201d\u2019])/g, "$1")

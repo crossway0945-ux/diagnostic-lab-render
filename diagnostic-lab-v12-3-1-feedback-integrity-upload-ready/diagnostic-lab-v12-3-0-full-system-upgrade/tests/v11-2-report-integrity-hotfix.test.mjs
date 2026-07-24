@@ -71,8 +71,14 @@ for (const card of report.feedbackCards) {
 }
 const body1Card = report.feedbackCards.find((card) => /Every family is living/i.test(card.exactSentence));
 assert.ok(body1Card);
-assert.doesNotMatch(body1Card.targetedRevision, /is living|different places and distances|travel through long distance/i);
-assert.match(body1Card.targetedRevision, /Families live in different locations/i);
+// The old deterministic repair "Families live in different locations, which could be very far away
+// from their homes" attaches the relative clause to the wrong referent (the locations cannot be far
+// from the homes they ARE). V12.4.0 rejects that revision as semantically unsafe and withholds it
+// rather than showing a student an illogical model sentence.
+assert.equal(body1Card.revisionWithheld, true);
+assert.equal(body1Card.revisionType, "Revision Unavailable");
+assert.doesNotMatch(body1Card.targetedRevision, /Families live in different locations/i);
+assert.match(body1Card.targetedRevision, /could not be verified|Student Action/i);
 
 const revisionCases = [
   {
@@ -140,14 +146,14 @@ assert.equal(progress.changeIndicator, "new");
 assert.equal(progress.repeatedIssue, "");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.3.6",
-  engineVersion: "ielts-diagnostic-engine-v12.3.5",
+  appVersion: "12.4.0",
+  engineVersion: "ielts-diagnostic-engine-v12.4.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.3.1",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.3.5",
-  feedbackSchemaVersion: "feedback-integrity-v12.3.5",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.4.0",
+  feedbackSchemaVersion: "feedback-integrity-v12.4.0",
   issueTaxonomyVersion: "issue-taxonomy-v12.3.5",
-  revisionValidatorVersion: "revision-alignment-v12.3.5"
+  revisionValidatorVersion: "revision-alignment-v12.4.0"
 });
 
 const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");

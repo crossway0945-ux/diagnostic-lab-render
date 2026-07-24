@@ -35,7 +35,17 @@ const CLOSING = /[.!?]["'’”)\]]*$/u;
 const DANGLING_DEMONSTRATIVE = /\b(?:in|on|at|of|for|with|from|into|within)\s+(?:the\s+)?[a-z][\w-]*(?:\s+[a-z][\w-]*){0,3}\s+(?:this|that|these|those)\s+(?:could|would|can|will|may|might|should|is|are|was|were|has|have)\b/i;
 const DOUBLE_SUBJECT = /\b(?:it|they|he|she|this|that|there)\s+(?:it|they|he|she)\b/i;
 const REPEATED_WORD = /\b([\w-]+)\s+\1\b/i;
-const COMMA_SPLICE = /,\s*(?:it|they|he|she|we|you|this|that|there)\s+(?:is|are|was|were|has|have|can|could|will|would|may|might|should)\b/i;
+// A clear subject pronoun directly after a comma (no coordinating conjunction between) begins a
+// second independent clause, whatever verb follows — "..., they need to travel" is as much a splice
+// as "..., they will travel". this/that/there can also be determiners or existential, so they are
+// only treated as a splice subject when an unambiguous finite verb follows.
+const COMMA_SPLICE = /,\s*(?:it|they|he|she|we|you)\s+[a-z][\w'-]*/i;
+const COMMA_SPLICE_DEMONSTRATIVE = /,\s*(?:this|that|there)\s+(?:is|are|was|were|has|have|can|could|will|would|may|might|should|makes?|made|means?|leads?|causes?|creates?|increases?|reduces?|forces?|allows?)\b/i;
+// A leading preposition or subordinator marks the left side as a non-clause (an introductory phrase
+// or a dependent clause), so "In many cities, they build zones" and "If it is free, they use it" are
+// not comma splices. Anchored at the start so a subordinator inside the main clause does not excuse a
+// real splice.
+const LEADING_NONCLAUSE = /^(?:in|on|at|for|with|from|by|to|of|during|after|before|since|although|though|while|because|if|when|whenever|as|through|within|without|despite|besides|among|between|over|under|near|unlike|whereas|once|unless)\b/i;
 const CONJUNCTION_START = /^(?:and|but|so|because|which|that|although|though|while|whereas)\b/i;
 
 const STOP_WORDS = new Set(
@@ -44,6 +54,12 @@ const STOP_WORDS = new Set(
 
 function words(value) {
   return String(value || "").toLowerCase().match(/[\p{L}\p{N}]+(?:['-][\p{L}\p{N}]+)*/gu) || [];
+}
+
+// The noun phrase a modal policy claim is about: "X should (not) be <verb>..." -> X.
+function policyClaimSubject(value) {
+  const match = String(value || "").match(/(?:^|[.!?]\s+|\bthat\s+|\bbelieve\s+)([A-Za-z][A-Za-z' -]{2,80}?)\s+should\s+(?:not\s+)?(?:be\s+)?[a-z]+/i);
+  return match ? match[1] : "";
 }
 
 function contentWords(value) {
@@ -65,10 +81,30 @@ export function checkRevisionGrammar(revision = "") {
   if (!CLOSING.test(text)) problems.push("The revision does not end with terminal punctuation.");
   if (/[,;:]\s*$/u.test(text)) problems.push("The revision ends mid-clause.");
   if (!hasFiniteVerb(text)) problems.push("The revision has no finite verb.");
-  if (CONJUNCTION_START.test(text)) problems.push("The revision opens with a subordinating or coordinating conjunction and cannot stand alone.");
+  // "Although A, B." / "While A, B." are complete sentences: a leading subordinator is only a
+  // fragment when no main clause follows. Leading coordinators (and/but/so) stay flagged.
+  const startsWithSubordinator = /^(?:because|which|that|although|though|while|whereas)\b/i.test(text);
+  const startsWithCoordinator = /^(?:and|but|so)\b/i.test(text);
+  if (startsWithCoordinator || (startsWithSubordinator && !/,/.test(text))) {
+    problems.push("The revision opens with a conjunction and does not form a standalone sentence.");
+  }
   if (DANGLING_DEMONSTRATIVE.test(text)) problems.push("A demonstrative pronoun follows a noun phrase without a connector, leaving a broken clause.");
   if (DOUBLE_SUBJECT.test(text)) problems.push("The revision repeats the subject.");
-  if (COMMA_SPLICE.test(text)) problems.push("The revision joins two independent clauses with a comma.");
+  // A comma splice needs an independent clause on BOTH sides. "For many students, it is hard..."
+  // is an introductory phrase (fewer than two content words / leading preposition), not a splice.
+  const spliceMatch = COMMA_SPLICE.exec(text) || COMMA_SPLICE_DEMONSTRATIVE.exec(text);
+  if (spliceMatch) {
+    const beforeComma = text.slice(0, spliceMatch.index);
+    // Only the clause immediately before the pronoun comma decides a splice. "Subsequently, if X,
+    // they would Y" ends in a dependent if-clause, so the pronoun clause is that conditional's main
+    // clause, not a spliced second sentence; "In many cities, they build Z" ends in a prepositional
+    // phrase. A leading subordinator or preposition on that immediate clause marks it non-independent.
+    const immediateClause = beforeComma.slice(beforeComma.lastIndexOf(",") + 1).trim();
+    const dependentClause = LEADING_NONCLAUSE.test(immediateClause);
+    if (!dependentClause && hasFiniteVerb(immediateClause) && contentWords(immediateClause).length >= 2) {
+      problems.push("The revision joins two independent clauses with a comma.");
+    }
+  }
   if (REPEATED_WORD.test(text)) problems.push("The revision repeats a word consecutively.");
   if (words(text).length < 5) problems.push("The revision is too short to model a full sentence.");
   return { status: problems.length ? "fail" : "pass", problems };
@@ -90,8 +126,8 @@ export function checkRevisionReference(revision = "") {
       problems.push(`"${selfDistance[1]}" cannot be described as far from "${selfDistance[2]}": the reference points at itself.`);
     }
   }
-  const orphanPronoun = /^\s*(?:it|they|this|that|these|those)\b/i.test(text.trim());
-  if (orphanPronoun) problems.push("The revision opens with a pronoun that has no referent inside the sentence.");
+  // Note: a revision that replaces a mid-paragraph sentence may legitimately open with a pronoun
+  // whose referent is the previous sentence, so a leading pronoun is not checked here.
   return { status: problems.length ? "fail" : "pass", problems };
 }
 
@@ -99,19 +135,45 @@ export function checkRevisionReference(revision = "") {
  * Task fidelity: the revision must stay inside the vocabulary of the student's own sentence and the
  * prompt. It may not silently swap the subject of the policy, and may not invent statistics.
  */
-export function checkRevisionTaskFidelity({ original = "", revision = "", prompt = "" } = {}) {
+export function checkRevisionTaskFidelity({ original = "", revision = "", prompt = "", writing = "" } = {}) {
   const problems = [];
   const revisionText = String(revision || "");
   if (!revisionText.trim()) return { status: "fail", problems: ["The revision is empty."] };
 
   const known = new Set([...contentWords(original), ...contentWords(prompt)]);
   const introduced = [...new Set(contentWords(revisionText))].filter((word) => !known.has(word));
-  // A fabricated figure is never acceptable: numbers must come from the student or the prompt.
-  const originalNumbers = new Set(String(original).match(/\d[\d.,]*/g) || []);
-  const promptNumbers = new Set(String(prompt).match(/\d[\d.,]*/g) || []);
-  for (const value of revisionText.match(/\d[\d.,]*/g) || []) {
-    if (!originalNumbers.has(value) && !promptNumbers.has(value)) {
-      problems.push(`The revision introduces the figure "${value}", which appears in neither the student's sentence nor the prompt.`);
+
+  // Policy-subject drift: when both sentences make a modal policy claim ("X should (not) be ..."),
+  // the revision may not swap the subject to a noun the student never used for that claim. This
+  // catches agent swaps such as "towns and cities should not be divided" becoming "facilities
+  // should not be divided" — a different policy — while allowing synonyms already present in the
+  // original subject or the prompt's own policy subject.
+  const originalSubject = policyClaimSubject(original);
+  const revisedSubject = policyClaimSubject(revisionText);
+  if (originalSubject && revisedSubject) {
+    const allowed = new Set([...contentWords(originalSubject), ...contentWords(policyClaimSubject(prompt) || "")]);
+    const revisedHead = contentWords(revisedSubject);
+    const headNoun = revisedHead[0];
+    if (headNoun && allowed.size > 0 && !allowed.has(headNoun)) {
+      problems.push(`The revision changes the policy subject from "${originalSubject.trim()}" to "${revisedSubject.trim()}", which alters what the task's policy applies to.`);
+    }
+  }
+
+  // A fabricated figure is never acceptable: every number must already exist in the quoted sentence,
+  // the prompt, or somewhere in the student's own full response (a Task 1 introduction repair may
+  // legitimately pull an age range or year the student reported in another paragraph).
+  const knownNumbers = new Set([
+    ...(String(original).match(/\d[\d.,]*/g) || []),
+    ...(String(prompt).match(/\d[\d.,]*/g) || []),
+    ...(String(writing).match(/\d[\d.,]*/g) || [])
+  ].map((value) => value.replace(/[.,]+$/, "")));
+  for (const raw of revisionText.match(/\d[\d.,]*%?/g) || []) {
+    const value = raw.replace(/[.,]+$/, "");
+    // Only data-like figures count as fabrication: multi-digit numbers, decimals and percentages.
+    // A bare single digit is almost always an ordinal or list marker, not invented visual data.
+    const dataLike = /%$/.test(raw) || /\d[.,]\d/.test(value) || value.replace(/\D/g, "").length >= 2;
+    if (dataLike && !knownNumbers.has(value.replace(/%$/, ""))) {
+      problems.push(`The revision introduces the figure "${value}", which appears in neither the student's response nor the prompt.`);
     }
   }
   return {
@@ -199,12 +261,13 @@ export function validateRevisionQuality({
   original = "",
   revision = "",
   prompt = "",
+  writing = "",
   revisionType = "",
   taskType = ""
 } = {}) {
   const grammar = checkRevisionGrammar(revision);
   const reference = checkRevisionReference(revision);
-  const taskFidelity = checkRevisionTaskFidelity({ original, revision, prompt });
+  const taskFidelity = checkRevisionTaskFidelity({ original, revision, prompt, writing });
   const languageSafety = checkRevisionLanguageSafety(revision);
   const typeFidelity = checkRevisionTypeFidelity({ original, revision, revisionType });
 

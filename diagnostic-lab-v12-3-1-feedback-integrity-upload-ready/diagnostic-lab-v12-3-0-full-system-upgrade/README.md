@@ -25,7 +25,7 @@ Create a `.env` file from `.env.example`, then set the diagnostic provider key o
 
 ```bash
 OPENAI_API_KEY=your_provider_key_here
-OPENAI_MODEL=gpt-5.5
+OPENAI_MODEL=gpt-5.6-sol
 OPENAI_BASE_URL=https://api.openai.com/v1/responses
 OPENAI_TIMEOUT_MS=25000
 OPENAI_MAX_OUTPUT_TOKENS=5000
@@ -42,10 +42,10 @@ For Render/Railway production:
 NODE_ENV=production
 HOST=0.0.0.0
 OPENAI_API_KEY=your_provider_key_here
-OPENAI_MODEL=gpt-5.5
+OPENAI_MODEL=gpt-5.6-sol
 ```
 
-`OPENAI_MODEL` is required whenever `OPENAI_API_KEY` is set. The supplied environment template uses `gpt-5.5`; confirm that this model is available to the production account before deployment. If the model is missing or unavailable, `/api/analyze` returns `PROVIDER_MODEL_ERROR` and quota is not deducted. `OPENAI_REASONING_EFFORT=medium` is the recommended stability/default setting; use `high` only if your hosting timeout and OpenAI account limits can handle slower, deeper checks. `PORT` is usually assigned automatically by the hosting platform. API keys are read only by `server.js` and must never be exposed in frontend code.
+`OPENAI_MODEL` is required whenever `OPENAI_API_KEY` is set. The supplied environment template uses `gpt-5.6-sol`; confirm that this model is available to the production account before deployment. If the model is missing or unavailable, `/api/analyze` returns `PROVIDER_MODEL_ERROR` and quota is not deducted. `OPENAI_REASONING_EFFORT` accepts minimal, low, medium, high and max. Run `node scripts/provider-preflight.mjs` with the production key BEFORE switching OPENAI_MODEL; if the account lacks access to the model, keep the current model. Use `high` or `max` only if your hosting timeout and OpenAI account limits can handle slower, deeper checks. `PORT` is usually assigned automatically by the hosting platform. API keys are read only by `server.js` and must never be exposed in frontend code.
 
 For production checking quality, keep `DIAGNOSTIC_REQUIRE_FULL_ENGINE=true`. This prevents the app from returning a weak local/basic report when the GPT-5.5 diagnostic engine is not connected.
 
@@ -302,7 +302,7 @@ ADMIN_SECRET=<admin-only secret, optional>
 DIAGNOSTIC_STORAGE_ADAPTER=memory
 DIAGNOSTIC_REQUIRE_FULL_ENGINE=true
 OPENAI_API_KEY=<your provider key>
-OPENAI_MODEL=gpt-5.5
+OPENAI_MODEL=gpt-5.6-sol
 OPENAI_BASE_URL=https://api.openai.com/v1/responses
 OPENAI_TIMEOUT_MS=25000
 OPENAI_MAX_OUTPUT_TOKENS=5000
@@ -322,7 +322,7 @@ After deploy, verify the API before testing login:
 https://diagnostic.wonderbloom.co/api/health
 ```
 
-Expected result after setting OpenAI env vars: JSON with `ok: true`, `apiConnected: true`, `diagnosticEngineConfigured: true`, `diagnosticEngineConnected: true`, `modelName: "gpt-5.5"`, and `storageMode: "netlify-memory"` or `"memory"`. If this URL returns HTML, the deploy package is missing `netlify/functions`, `services`, `schemas`, or the `netlify.toml` redirect.
+Expected result after setting OpenAI env vars: JSON with `ok: true`, `apiConnected: true`, `diagnosticEngineConfigured: true`, `diagnosticEngineConnected: true`, `modelName: "gpt-5.6-sol"`, and `storageMode: "netlify-memory"` or `"memory"`. If this URL returns HTML, the deploy package is missing `netlify/functions`, `services`, `schemas`, or the `netlify.toml` redirect.
 
 ## Student Account Management
 

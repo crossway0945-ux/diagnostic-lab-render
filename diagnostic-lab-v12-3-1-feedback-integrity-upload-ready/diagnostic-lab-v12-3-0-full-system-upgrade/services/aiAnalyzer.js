@@ -135,12 +135,15 @@ async function analyzeWithOpenAI(payload) {
   const config = getOpenAiConfig(payload);
   const prompt = buildPrompt(payload);
   const result = await runOpenAiAnalysisAttempt({ config, payload, prompt, isRetry: false }).catch(async (error) => {
-    if (!["PROVIDER_JSON_PARSE_ERROR", "REPORT_OUTPUT_VALIDATION_FAILED"].includes(error?.errorCode)) throw error;
+    if (!["PROVIDER_JSON_PARSE_ERROR", "REPORT_OUTPUT_VALIDATION_FAILED", "PROVIDER_INCOMPLETE_RESPONSE"].includes(error?.errorCode)) throw error;
     try {
       return await runOpenAiAnalysisAttempt({
         config: {
           ...config,
-          maxOutputTokens: Math.max(config.maxOutputTokens, 5000),
+          // A truncated first attempt needs genuinely more room, not the same ceiling again.
+          maxOutputTokens: error?.errorCode === "PROVIDER_INCOMPLETE_RESPONSE"
+            ? config.maxOutputTokens + 2000
+            : Math.max(config.maxOutputTokens, 5000),
           reasoningEffort: config.reasoningEffort === "minimal" ? "low" : config.reasoningEffort
         },
         payload,
@@ -156,7 +159,13 @@ async function analyzeWithOpenAI(payload) {
     }
   });
 
-  return result;
+  // Every saved report records exactly which model and reasoning effort produced it, so the audit
+  // trail survives model migrations (e.g. gpt-5.5 -> gpt-5.6-sol) without exposing any secret.
+  return {
+    ...result,
+    providerModel: config.model,
+    providerReasoningEffort: config.reasoningEffort
+  };
 }
 
 async function runOpenAiAnalysisAttempt({ config, payload, prompt, isRetry, previousError = null }) {
@@ -293,8 +302,9 @@ async function postOpenAIResponse({ config, body, payload = null }) {
     throw classifyProviderResponse(response.status, providerText, payload);
   }
 
+  let data;
   try {
-    return await response.json();
+    data = await response.json();
   } catch (error) {
     throw providerError("PROVIDER_JSON_PARSE_ERROR", {
       statusCode: 502,
@@ -303,6 +313,30 @@ async function postOpenAIResponse({ config, body, payload = null }) {
       payload
     });
   }
+
+  // Responses API completion metadata: a 200 response can still be unusable. A truncated or refused
+  // report must never be parsed as if it were complete.
+  if (data?.status === "incomplete") {
+    const reason = String(data?.incomplete_details?.reason || "unknown");
+    throw providerError("PROVIDER_INCOMPLETE_RESPONSE", {
+      statusCode: 502,
+      providerStatus: response.status,
+      debugHint: `Provider response is incomplete (reason: ${reason}). If the reason is max_output_tokens, raise OPENAI_MAX_OUTPUT_TOKENS.`,
+      payload
+    });
+  }
+  const refusal = (data?.output || [])
+    .flatMap((item) => item?.content || [])
+    .find((content) => content?.type === "refusal");
+  if (refusal) {
+    throw providerError("PROVIDER_REFUSAL", {
+      statusCode: 502,
+      providerStatus: response.status,
+      debugHint: `Provider refused the request: ${truncate(String(refusal.refusal || ""), 200)}`,
+      payload
+    });
+  }
+  return data;
 }
 
 function classifyProviderResponse(status, providerText, payload) {
@@ -388,12 +422,14 @@ function configuredMaxOutputTokens() {
 
 function configuredReasoningEffort() {
   const value = String(process.env.OPENAI_REASONING_EFFORT || "medium").trim().toLowerCase();
-  const effort = ["minimal", "low", "medium", "high"].includes(value) ? value : "medium";
+  // "max" is a real Responses API effort level (GPT-5.6 family). It must never be silently
+  // downgraded outside the serverless timeout guard below.
+  const effort = ["minimal", "low", "medium", "high", "max"].includes(value) ? value : "medium";
   if (!isServerlessRuntime() || process.env.DIAGNOSTIC_SERVERLESS_FAST_MODE === "false") {
     return effort;
   }
 
-  return ["medium", "high"].includes(effort) ? DEFAULT_SERVERLESS_REASONING_EFFORT : effort;
+  return ["medium", "high", "max"].includes(effort) ? DEFAULT_SERVERLESS_REASONING_EFFORT : effort;
 }
 
 function requiresFullDiagnosticEngine() {
@@ -2674,8 +2710,10 @@ function repairDeterministicLanguageSentence(sentence) {
     .replace(/\bsome places\b/gi, "some destinations")
     .replace(/\b(?:a )?specific place\b/gi, "a particular facility")
     .replace(/\bcertain place\b/gi, "particular facility")
-    .replace(/\ball the same places\b/gi, "facilities of the same type")
-    .replace(/\bspecific places like towns and cities\b/gi, "facilities in towns and cities")
+    // Removed two phrase rewrites that changed the policy subject of a conclusion ("specific places
+    // like towns and cities" -> "facilities in towns and cities"): a deterministic repair may fix
+    // language only, never shift what the task's policy applies to. Meaning-level rewrites must come
+    // from the analysis engine and pass the revision-quality validator.
     .replace(/\bshould (used|increased|decreased|provided|supplied|charged|paid|made|given|done|taken|written|built)\b/gi, "should be $1")
     .replace(/\bcould (used|increased|decreased|provided|supplied|charged|paid|made|given|done|taken|written|built)\b/gi, "could be $1")
     .replace(/\bwould (used|increased|decreased|provided|supplied|charged|paid|made|given|done|taken|written|built)\b/gi, "would be $1")
@@ -3714,7 +3752,9 @@ function collectTask2ReportOutputIssues(analysis, payload) {
   const issues = [];
   const safety = payload.task2Safety || analyzeTask2Safety(payload);
   const canonical = analysis.canonicalAnalysis || analysis.canonicalTask2Analysis || reconcileTask2CanonicalAnalysis(payload, analysis, safety);
-  const allowedRevisionTypes = new Set(REVISION_TYPES);
+  // "Revision Unavailable" is the controlled withheld state: an unsafe model sentence was replaced
+  // by an instruction, which is a valid, deliberate outcome — not a malformed revision type.
+  const allowedRevisionTypes = new Set([...REVISION_TYPES, "Revision Unavailable"]);
 
   if (!isCompleteGeneratedField(analysis.mainScoreLimitingFactor)) issues.push("Executive Summary is empty, fragmented, or incomplete.");
   if (!isCompleteGeneratedField(analysis.mostUrgentRepair)) issues.push("Most Urgent Repair is empty, fragmented, or incomplete.");
@@ -4022,6 +4062,8 @@ function findRepeatedGenericFields(cards = []) {
   for (const field of ["kruPomDiagnosis", "whyRevisionIsStronger", "studentAction"]) {
     const counts = new Map();
     for (const card of cards) {
+      // Withheld revisions intentionally share one controlled notice; that is not generic guidance.
+      if (card?.revisionType === "Revision Unavailable" && field !== "studentAction") continue;
       const value = normalizeEvidenceText(card?.[field]);
       if (value.split(/\s+/).length < 8) continue;
       counts.set(value, (counts.get(value) || 0) + 1);

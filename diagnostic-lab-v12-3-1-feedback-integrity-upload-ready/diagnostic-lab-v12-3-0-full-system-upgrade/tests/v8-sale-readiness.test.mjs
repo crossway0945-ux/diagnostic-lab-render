@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { analyzeWriting } from "../services/aiAnalyzer.js";
 import { createApiHandler } from "../services/apiRouter.js";
+import { createAnalysisJobStore } from "../services/analysisJobStore.js";
 import {
   analyzeTask2Safety,
   REVISION_TYPES,
@@ -238,8 +239,10 @@ async function testPermanentStudentDeletionAndIsolation() {
     ], null, 2));
     await writeFile(path.join(rootDir, "submission-history.json"), "[]\n");
     await writeFile(path.join(rootDir, "student-profiles.json"), "[]\n");
-    await writeFile(path.join(rootDir, ".diagnostic-jobs.json"), "{}\n");
     const handler = createApiHandler({ rootDir });
+    // Durable per-job store (V12.5.0) replaces the legacy single .diagnostic-jobs.json file. The
+    // handler and this store are disk-authoritative on the same rootDir, so seeds/deletes are shared.
+    const jobStore = createAnalysisJobStore({ rootDir });
     const login = await request(handler, "POST", "/api/login", { username: "teacher-v8", password: "pass-v8" });
     const cookie = login.headers["Set-Cookie"];
     const target = await request(handler, "POST", "/api/student-profiles", { displayName: "Delete Me" }, cookie);
@@ -252,10 +255,8 @@ async function testPermanentStudentDeletionAndIsolation() {
       { username: "teacher-v8", studentProfileId: targetStored.id, submissionId: "target-2", taskType: "Task 2" },
       { username: "teacher-v8", studentProfileId: otherStored.id, submissionId: "other-1", taskType: "Task 2" }
     ], null, 2));
-    await writeFile(path.join(rootDir, ".diagnostic-jobs.json"), JSON.stringify({
-      targetJob: { username: "teacher-v8", payload: { studentProfileId: targetStored.id } },
-      otherJob: { username: "teacher-v8", payload: { studentProfileId: otherStored.id } }
-    }, null, 2));
+    await jobStore.set("targetJob", { jobId: "targetJob", username: "teacher-v8", status: "queued", payload: { studentProfileId: targetStored.id } });
+    await jobStore.set("otherJob", { jobId: "otherJob", username: "teacher-v8", status: "queued", payload: { studentProfileId: otherStored.id } });
 
     const archived = await request(handler, "PATCH", `/api/student-profiles/${encodeURIComponent(target.json.profile.profileToken)}`, { action: "archive" }, cookie);
     assert.equal(archived.statusCode, 200);
@@ -272,11 +273,11 @@ async function testPermanentStudentDeletionAndIsolation() {
 
     const remainingProfiles = JSON.parse(await readFile(path.join(rootDir, "student-profiles.json"), "utf8"));
     const remainingHistory = JSON.parse(await readFile(path.join(rootDir, "submission-history.json"), "utf8"));
-    const remainingJobs = JSON.parse(await readFile(path.join(rootDir, ".diagnostic-jobs.json"), "utf8"));
+    const remainingJobs = await jobStore.list();
     const users = JSON.parse(await readFile(path.join(rootDir, "users.json"), "utf8"));
     assert.deepEqual(remainingProfiles.map((profile) => profile.id), [otherStored.id]);
     assert.deepEqual(remainingHistory.map((record) => record.submissionId), ["other-1"]);
-    assert.deepEqual(Object.keys(remainingJobs), ["otherJob"]);
+    assert.deepEqual(remainingJobs.map((job) => job.jobId), ["otherJob"]);
     assert.equal(users[0].used, 7);
     assert.equal(other.statusCode, 201);
   } finally {
@@ -304,7 +305,7 @@ async function testCanonicalRendererAndPdfSerializationPath() {
   assert.match(script, /studentProfileSelect\.required = canManageStudents/);
   assert.match(index, /Permanently delete archived student/);
   assert.doesNotMatch(index, /Structural Diagram|Advantages Outweigh Disadvantages/);
-  assert.match(index, /script\.js\?v=diagnostic-v12-4-1-analysis-reliability/);
+  assert.match(index, /script\.js\?v=diagnostic-v12-5-0-async-render/);
   // The server no longer hand-lists public files; it resolves the browser module graph from a shared
   // source of truth (which includes services/canonicalAnalysis.js and services/task2Safety.js).
   // The actual HTTP serving of every module is proven end-to-end in v12-3-6-frontend-bootstrap.

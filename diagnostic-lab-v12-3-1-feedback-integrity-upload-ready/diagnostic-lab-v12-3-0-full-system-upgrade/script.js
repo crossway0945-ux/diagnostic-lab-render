@@ -384,9 +384,11 @@ form.addEventListener("submit", async (event) => {
       });
       result = await readJsonResponse(response, "Analysis could not be completed after visual-type confirmation.");
     }
-    if (response.status === 202 && result.queued && result.jobId) {
-      showToast("Analysis is running. Please keep this page open.");
-      const completed = await waitForAnalysisJob(result.jobId);
+    if (response.status === 202 && (result.accepted || result.queued) && result.jobId) {
+      showToast(result.duplicate
+        ? "This analysis is already running. Reconnecting…"
+        : "Analysis started. You can keep this tab open — refreshing is safe.");
+      const completed = await waitForAnalysisJob(result.jobId, result.requestId);
       handleCompletedAnalysis(completed, payload);
       return;
     }
@@ -417,29 +419,101 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-async function waitForAnalysisJob(jobId) {
+// The active job is remembered locally so a page refresh (or accidental navigation) can reconnect to
+// an analysis that is still running server-side, rather than losing it. Scoped by account so one
+// browser used by different logins does not cross wires.
+function activeJobStorageKey() {
+  return `diagnostic-active-job:${currentUser?.username || "anon"}`;
+}
+function rememberActiveJob(job) {
+  try { localStorage.setItem(activeJobStorageKey(), JSON.stringify({ jobId: job.jobId, requestId: job.requestId || "" })); } catch {}
+}
+function forgetActiveJob() {
+  try { localStorage.removeItem(activeJobStorageKey()); } catch {}
+}
+function recallActiveJob() {
+  try { return JSON.parse(localStorage.getItem(activeJobStorageKey()) || "null"); } catch { return null; }
+}
+
+async function waitForAnalysisJob(jobId, requestId = "") {
+  rememberActiveJob({ jobId, requestId });
   const startedAt = Date.now();
   while (Date.now() - startedAt < ANALYSIS_POLL_TIMEOUT_MS) {
     await sleep(ANALYSIS_POLL_INTERVAL_MS);
-    const response = await fetch(`/api/analyze-status/${encodeURIComponent(jobId)}`);
-    const result = await readJsonResponse(response, "Analysis status could not be checked. Please try again.");
+    let result;
+    try {
+      const response = await fetch(`/api/analyze-status/${encodeURIComponent(jobId)}`);
+      result = await readJsonResponse(response, "Analysis status could not be checked. Please try again.");
+    } catch {
+      // Transient network blip while polling: keep the job remembered and keep trying.
+      continue;
+    }
+
+    // Safe, non-numeric stage label in the aria-live loading region (never a fake percentage).
+    if (result.message && loadingState) {
+      loadingState.textContent = requestId ? `${result.message}… (Ref ${requestId})` : `${result.message}…`;
+    }
 
     if (result.status === "complete" && result.analysis) {
+      forgetActiveJob();
       return result;
     }
 
-    if (result.status === "failed" || result.ok === false) {
+    if (["failed", "expired", "cancelled"].includes(result.status) || result.ok === false) {
+      forgetActiveJob();
       const error = new Error(studentMessageForError(result.errorCode, result.error));
-      error.status = response.status;
+      error.status = 200;
       error.errorCode = result.errorCode;
+      error.requestId = result.requestId || requestId;
+      error.failureStage = result.failureStage;
       error.debugHint = result.debugHint;
       throw error;
     }
   }
 
-  const error = new Error("The diagnostic service is still processing. Please try again in a few minutes.");
+  // Client patience limit reached; the job may still finish server-side. Keep it remembered so a
+  // refresh can resume, and surface a safe, retryable message.
+  const error = new Error("The diagnostic service is still processing. Refresh this page to resume, or try again shortly.");
   error.errorCode = "PROVIDER_TIMEOUT";
+  error.requestId = requestId;
   throw error;
+}
+
+// On load, reconnect to an analysis that was still running when the page was last open (brief §6.7).
+async function resumeActiveAnalysisJob() {
+  const active = recallActiveJob();
+  if (!active?.jobId) return;
+  let result;
+  try {
+    const response = await fetch(`/api/analyze-status/${encodeURIComponent(active.jobId)}`);
+    result = await readJsonResponse(response, "");
+  } catch {
+    return; // network issue on load — leave the job remembered and try again next time
+  }
+  if (result.status === "complete" && result.analysis) {
+    forgetActiveJob();
+    handleCompletedAnalysis(result, { taskType: result.analysis?.taskType });
+    return;
+  }
+  if (["failed", "expired", "cancelled"].includes(result.status) || result.ok === false || !result.status) {
+    forgetActiveJob(); // do not nag on load about an old failure
+    return;
+  }
+  // Still running → resume the polling UI where we left off.
+  setLoading(true);
+  showToast("Reconnecting to your analysis in progress…");
+  try {
+    const completed = await waitForAnalysisJob(active.jobId, active.requestId || result.requestId);
+    handleCompletedAnalysis(completed, { taskType: completed.analysis?.taskType });
+  } catch (error) {
+    showError(studentMessageForError(error.errorCode, error.message), {
+      requestId: error.requestId,
+      errorCode: error.errorCode,
+      failureStage: error.failureStage
+    });
+  } finally {
+    setLoading(false);
+  }
 }
 
 function handleCompletedAnalysis(result, payload) {
@@ -559,6 +633,8 @@ function setAuthenticatedUser(user) {
   document.body.classList.remove("auth-loading");
   updateUserPanel(user);
   loadStudentProfiles();
+  // Reconnect to an analysis that was still running when this page was last open (refresh recovery).
+  resumeActiveAnalysisJob();
 }
 
 function showLoginScreen() {

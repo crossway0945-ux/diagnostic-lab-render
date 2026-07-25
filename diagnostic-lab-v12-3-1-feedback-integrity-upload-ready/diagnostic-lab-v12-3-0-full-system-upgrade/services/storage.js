@@ -1,7 +1,14 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+
+// Brief §35 names the persistent disk variable DATA_DIR; this service historically read
+// DIAGNOSTIC_DATA_DIR. Honour both so the documented value and the live service agree, with
+// DIAGNOSTIC_DATA_DIR winning when both are set (it is the value the running service already uses).
+export function resolveDataDir(rootDir = process.cwd()) {
+  return process.env.DIAGNOSTIC_DATA_DIR || process.env.DATA_DIR || rootDir;
+}
 
 const DEFAULT_USERS_FILE = "users.json";
 const DEFAULT_HISTORY_FILE = "submission-history.json";
@@ -10,7 +17,9 @@ const DEFAULT_STUDENT_PROFILES_FILE = "student-profiles.json";
 
 export function createStorage(options = {}) {
   const rootDir = options.rootDir || process.cwd();
-  const dataDir = process.env.DIAGNOSTIC_DATA_DIR || rootDir;
+  // An explicit dataDir wins over env — used by isolated admin self-tests so they never read or write
+  // the production /var/data store. Normal callers omit it and get the env-resolved data dir.
+  const dataDir = options.dataDir || resolveDataDir(rootDir);
   const serverlessRuntime = isServerlessRuntime();
   const requestedAdapter = options.adapter || process.env.DIAGNOSTIC_STORAGE_ADAPTER || "";
   const allowServerlessJson = process.env.ALLOW_NETLIFY_LOCAL_JSON === "true";
@@ -1199,9 +1208,20 @@ async function readJsonWithSeed(filePath, seedPath, fallback) {
   return fallback;
 }
 
+// Atomic write: serialise to a unique temp file in the same directory, then rename over the target.
+// rename() is atomic on the same filesystem, so a crash (or a Render restart) mid-write can never
+// leave a half-written users/history/audit/job file — a reader sees either the old or the new file,
+// never a truncated one. The temp file is cleaned up on failure so it cannot accumulate.
 async function writeJson(filePath, value) {
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const tmpPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await rename(tmpPath, filePath);
+  } catch (error) {
+    await unlink(tmpPath).catch(() => {});
+    throw error;
+  }
 }
 
 function numberOr(...values) {

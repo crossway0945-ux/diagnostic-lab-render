@@ -2,7 +2,11 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createApiHandler } from "./services/apiRouter.js";
+import { createApiHandler, loadEnvFile } from "./services/apiRouter.js";
+import { createStorage } from "./services/storage.js";
+import { createAnalysisJobStore } from "./services/analysisJobStore.js";
+import { createAnalysisFailureLog } from "./services/analysisFailureLog.js";
+import { startAnalysisWorker } from "./services/analysisWorker.js";
 import { resolvePublicFilePaths, validatePublicAssetGraph } from "./services/publicAssetGraph.js";
 import { ANALYSIS_VERSIONS } from "./services/analysisVersions.js";
 
@@ -11,8 +15,15 @@ const __dirname = path.dirname(__filename);
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const PORT = Number(process.env.PORT || 4174);
 const HOST = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
-const handleApiRequest = createApiHandler({ rootDir: __dirname });
-const FRONTEND_ASSET_MANIFEST_VERSION = "frontend-bootstrap-v12.4.0";
+
+// Create the durable storage, job store and failure log ONCE and share them with both the API handler
+// and the async worker, so the 202 submission path and the worker loop operate on the same instances.
+loadEnvFile(__dirname);
+const storage = createStorage({ rootDir: __dirname });
+const jobStore = createAnalysisJobStore({ rootDir: __dirname });
+const failureLog = createAnalysisFailureLog({ rootDir: __dirname });
+const handleApiRequest = createApiHandler({ rootDir: __dirname, storage, jobStore, failureLog });
+const FRONTEND_ASSET_MANIFEST_VERSION = "frontend-bootstrap-v12.5.0";
 
 // The public file set is resolved once at startup from the browser module graph (single source of
 // truth shared with the static-preview build). A new browser module becomes servable automatically.
@@ -105,6 +116,31 @@ server.listen(PORT, HOST, () => {
   const displayHost = HOST === "0.0.0.0" ? "127.0.0.1" : HOST;
   console.log(`IELTS Diagnostic Lab running at http://${displayHost}:${PORT}/`);
 });
+
+// Render-native async: start the in-process analysis worker (brief §6.4). It shares the store
+// instances above so the submission path and the worker never diverge. In sync mode it is not started.
+let analysisWorker = null;
+if (process.env.DIAGNOSTIC_ANALYSIS_MODE === "async-render") {
+  analysisWorker = startAnalysisWorker({ rootDir: __dirname, storage, jobStore, failureLog });
+}
+
+// Graceful shutdown (brief §6.4): stop leasing new jobs, let the current stage persist (each stage
+// write is atomic), then close the server. Anything not finished is safely recovered on the next boot.
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[diagnostic-lab] received ${signal}; draining analysis worker before exit.`);
+  try {
+    await analysisWorker?.stop?.();
+  } catch (error) {
+    console.error("[diagnostic-lab] worker drain error", { message: String(error?.message || "").slice(0, 200) });
+  }
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 12000).unref();
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 async function readRawBody(req) {
   let total = 0;

@@ -393,7 +393,7 @@ async function testTeacherStudentSelectionReenablesAnalyzeButton() {
   const rootHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
   const previewHtml = await readFile(new URL("../netlify-static-preview/index.html", import.meta.url), "utf8");
   const selectionAvailabilitySync = /studentProfileSelect\.addEventListener\("change",[\s\S]*?updateSelectedStudentDisplay\(\);\s*updateAnalyzeAvailability\(\);\s*loadProgressHistory\(\);/;
-  const cacheBustedScript = "script.js?v=diagnostic-v12-4-1-analysis-reliability";
+  const cacheBustedScript = "script.js?v=diagnostic-v12-5-0-async-render";
 
   for (const source of [rootScript, previewScript]) {
     assert.match(source, selectionAvailabilitySync);
@@ -526,7 +526,6 @@ async function testDiagnosticResetPreservesProtectedData() {
     await writeFile(path.join(dataDir, "usage-audit.json"), JSON.stringify(audit, null, 2));
     await writeFile(path.join(dataDir, "submission-history.json"), JSON.stringify([{ submissionId: "old-report", username: "protected-user" }], null, 2));
     await writeFile(path.join(dataDir, "student-profiles.json"), JSON.stringify([{ id: "old-profile", ownerAccountId: "protected-user", displayName: "Old Student", active: true }], null, 2));
-    await writeFile(path.join(dataDir, ".diagnostic-jobs.json"), JSON.stringify({ "old-job": { status: "complete" } }, null, 2));
 
     process.env.DIAGNOSTIC_STORAGE_ADAPTER = "local-json";
     process.env.DIAGNOSTIC_DATA_DIR = dataDir;
@@ -536,6 +535,9 @@ async function testDiagnosticResetPreservesProtectedData() {
     delete process.env.AWS_EXECUTION_ENV;
     const storage = createStorage({ rootDir: dataDir });
     const jobStore = createAnalysisJobStore({ rootDir: dataDir });
+    // Seed a temporary analysis job in the durable per-job store (V12.5.0). Diagnostic reset must clear
+    // it while leaving protected user/audit data untouched.
+    await jobStore.set("old-job", { jobId: "old-job", username: "protected-user", status: "complete", payload: { studentProfileId: "old-profile" } });
 
     const dryRunResult = await runDiagnosticReset({ storage, jobStore, execute: false });
     assert.equal(dryRunResult.mode, "dry-run");
@@ -546,7 +548,7 @@ async function testDiagnosticResetPreservesProtectedData() {
     assert.equal(executedResult.mode, "executed");
     assert.equal(JSON.parse(await readFile(path.join(dataDir, "submission-history.json"), "utf8")).length, 0);
     assert.equal(JSON.parse(await readFile(path.join(dataDir, "student-profiles.json"), "utf8")).length, 0);
-    assert.deepEqual(JSON.parse(await readFile(path.join(dataDir, ".diagnostic-jobs.json"), "utf8")), {});
+    assert.equal((await jobStore.list()).length, 0);
     assert.deepEqual(JSON.parse(await readFile(path.join(dataDir, "users.json"), "utf8")), users);
     assert.deepEqual(JSON.parse(await readFile(path.join(dataDir, "usage-audit.json"), "utf8")), audit);
     assert.equal(executedResult.before.protectedStores[0].checksum, executedResult.after.protectedStores[0].checksum);

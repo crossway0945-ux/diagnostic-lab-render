@@ -1,13 +1,16 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isServerlessRuntime } from "./storage.js";
+import { isServerlessRuntime, resolveDataDir } from "./storage.js";
+import { createRenderJobStore } from "./renderJobStore.js";
 
 const memoryJobsByPath = new Map();
 
 export function createAnalysisJobStore(options = {}) {
   const rootDir = options.rootDir || process.cwd();
-  const dataDir = process.env.DIAGNOSTIC_DATA_DIR || rootDir;
+  const dataDir = resolveDataDir(rootDir);
   if (isServerlessRuntime()) {
+    // Netlify/serverless path is unchanged: durable Blobs only when async + blobs are enabled,
+    // otherwise the disabled store (a serverless instance cannot host a persistent worker loop).
     if (
       process.env.DIAGNOSTIC_ANALYSIS_MODE === "async" &&
       process.env.DIAGNOSTIC_ENABLE_NETLIFY_BLOBS === "true"
@@ -16,7 +19,10 @@ export function createAnalysisJobStore(options = {}) {
     }
     return new DisabledJobStore();
   }
-  return new LocalJobStore({ rootDir: dataDir });
+  // Render/Node: durable per-job atomic store with lease/heartbeat support (brief §6.2). This is the
+  // store the Render-native async worker loop drives. The legacy single-file LocalJobStore below is
+  // retained only for reference/back-compat and is no longer the default.
+  return createRenderJobStore({ rootDir, dataDir });
 }
 
 class DisabledJobStore {

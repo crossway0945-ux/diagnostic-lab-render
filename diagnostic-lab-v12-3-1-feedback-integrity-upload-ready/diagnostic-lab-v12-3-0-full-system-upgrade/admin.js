@@ -13,6 +13,9 @@ const diagnosticsButtons = {
   provider: document.querySelector("#diagnostics-provider"),
   contract: document.querySelector("#diagnostics-contract"),
   storage: document.querySelector("#diagnostics-storage"),
+  jobs: document.querySelector("#diagnostics-jobs"),
+  recovery: document.querySelector("#diagnostics-recovery"),
+  idempotency: document.querySelector("#diagnostics-idempotency"),
   failures: document.querySelector("#diagnostics-failures"),
   clearFailures: document.querySelector("#diagnostics-clear-failures")
 };
@@ -100,6 +103,9 @@ diagnosticsButtons.system?.addEventListener("click", () => runDiagnostic("System
 diagnosticsButtons.provider?.addEventListener("click", () => runDiagnostic("Provider connectivity", "/api/admin/diagnostics/provider-connectivity"));
 diagnosticsButtons.contract?.addEventListener("click", () => runDiagnostic("Production output contract", "/api/admin/diagnostics/production-contract"));
 diagnosticsButtons.storage?.addEventListener("click", () => runDiagnostic("Storage self-test", "/api/admin/diagnostics/storage"));
+diagnosticsButtons.jobs?.addEventListener("click", () => runDiagnostic("Job queue status", "/api/admin/diagnostics/job-queue-status", "GET"));
+diagnosticsButtons.recovery?.addEventListener("click", () => runDiagnostic("Stale job recovery test", "/api/admin/diagnostics/stale-job-recovery-test"));
+diagnosticsButtons.idempotency?.addEventListener("click", () => runDiagnostic("Duplicate / idempotency test", "/api/admin/diagnostics/duplicate-idempotency-test"));
 diagnosticsButtons.failures?.addEventListener("click", () => runDiagnostic("Recent analysis failures", "/api/admin/diagnostics/analysis-failures", "GET"));
 diagnosticsButtons.clearFailures?.addEventListener("click", () => runDiagnostic("Clear failure history", "/api/admin/diagnostics/clear-failures"));
 

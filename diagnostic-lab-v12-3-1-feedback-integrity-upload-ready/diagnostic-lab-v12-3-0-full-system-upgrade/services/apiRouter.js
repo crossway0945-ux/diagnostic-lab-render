@@ -2,6 +2,24 @@ import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { createAnalysisJobStore } from "./analysisJobStore.js";
+import {
+  JOB_SCHEMA_VERSION,
+  isActiveJobState,
+  isTerminalJobState,
+  stageMessageForStatus
+} from "./renderJobStore.js";
+import {
+  jobConfigSnapshot,
+  jobLeaseMs,
+  jobStaleMs,
+  jobTimeoutMs,
+  providerMaxAttempts
+} from "./jobConfig.js";
+import {
+  runDuplicateIdempotencyTest,
+  runJobQueueStatus,
+  runStaleJobRecoveryTest
+} from "./jobDiagnostics.js";
 import { createAnalysisFailureLog, runStorageSelfTest } from "./analysisFailureLog.js";
 import {
   analyzeWriting,
@@ -13,7 +31,7 @@ import {
 import { classifyTask1Visual, normalizeTask1PublicVisualType, TASK1_PUBLIC_VISUAL_TYPES } from "../domain/task1Classification.js";
 import { projectCanonicalAnalysis } from "./canonicalAnalysis.js";
 import { classifyTask2Prompt, normalizeTask2PublicTypeLabel, TASK2_PUBLIC_TYPES } from "./task2Safety.js";
-import { ANALYSIS_VERSIONS, attachAnalysisVersions } from "./analysisVersions.js";
+import { ANALYSIS_VERSIONS, ORCHESTRATION_VERSION, attachAnalysisVersions } from "./analysisVersions.js";
 import { getWordCountMetadata } from "../wordCount.js";
 import { buildStudentReportViewModel } from "../domain/reportViewModels.js";
 import {
@@ -117,7 +135,10 @@ export function createApiHandler(options = {}) {
           maxOutputTokens: analyzerHealth.maxOutputTokens,
           retryMaxOutputTokens: analyzerHealth.retryMaxOutputTokens,
           reasoningEffort: analyzerHealth.reasoningEffort,
-          analysisMode: shouldUseAsyncAnalysis() ? "async-background" : "sync",
+          analysisMode: analysisModeLabel(),
+          orchestrationVersion: ORCHESTRATION_VERSION,
+          jobSchemaVersion: JOB_SCHEMA_VERSION,
+          jobConfig: jobConfigSnapshot(),
           jobStorageMode: jobStore.name,
           storageMode: storage.name,
           storageAdapter: storage.name,
@@ -280,7 +301,7 @@ export function createApiHandler(options = {}) {
         return await handleAnalyze(request, storage, jobStore, failureLog);
       }
 
-      const adminResponse = await maybeHandleAdminRoute(method, apiPath, request, storage, { failureLog, rootDir });
+      const adminResponse = await maybeHandleAdminRoute(method, apiPath, request, storage, { failureLog, rootDir, jobStore });
       if (adminResponse) return adminResponse;
 
       return jsonResponse(404, { ok: false, error: "API route not found." });
@@ -543,38 +564,71 @@ async function handleAnalyze(request, storage, jobStore, failureLog = null) {
   Object.assign(payload, await buildAnalysisLineage(storage, user.username, payload));
 
   if (shouldUseAsyncAnalysis()) {
-    const existingJob = idempotencyKey ? await jobStore.get(idempotencyKey) : null;
-    if (existingJob && existingJob.username === user.username) {
-      return jsonResponse(202, {
-        ok: true,
-        queued: true,
-        jobId: existingJob.jobId,
-        status: existingJob.status || "queued",
-        statusUrl: `/api/analyze-status/${encodeURIComponent(existingJob.jobId)}`
-      });
+    // An existing active job for the same content (owner + student + hash/clientSubmissionId) must not
+    // start a second provider call and must not touch quota. Return its jobId so the client just polls.
+    const activeJob = await findActiveDuplicateJob(jobStore, user.username, payload.studentProfileId, {
+      clientSubmissionId: idempotencyKey,
+      submissionHash
+    });
+    if (activeJob) {
+      await auditAnalyze(storage, user, payload, { openAiCalled: false, quotaDeducted: false, duplicateCacheUsed: true });
+      return jsonResponse(202, buildAcceptedResponse(activeJob, { duplicate: true }));
     }
 
-    const jobId = idempotencyKey || createJobId();
-    await jobStore.set(jobId, {
+    // Create a durable queued job and return 202 immediately. The complete provider analysis runs in
+    // the worker loop, never inside this request. Access was already enforced (check only, no deduct).
+    const health = getAnalyzerHealth();
+    const now = new Date().toISOString();
+    const jobId = createJobId();
+    const job = {
       jobId,
+      requestId,
       username: user.username,
+      ownerId: user.username,
+      role: user.role,
       status: "queued",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      payload: {
-        ...payload,
-        submissionHash
-      }
-    });
-    await invokeAnalyzeWorker(request, jobId);
+      stage: "queued",
+      progressMessageKey: stageMessageForStatus("queued"),
+      createdAt: now,
+      updatedAt: now,
+      startedAt: "",
+      completedAt: "",
+      failedAt: "",
+      attempt: 0,
+      providerAttempt: 0,
+      revisionRepairAttempt: 0,
+      leaseOwner: "",
+      leaseExpiresAt: "",
+      heartbeatAt: "",
+      errorCode: "",
+      failureStage: "",
+      retryable: false,
+      message: "",
+      debugHint: "",
+      reportId: "",
+      quotaCommitted: false,
+      teacherUsageCommitted: false,
+      providerModel: health.modelName,
+      reasoningEffort: health.reasoningEffort,
+      engineVersion: ANALYSIS_VERSIONS.engineVersion,
+      jobSchemaVersion: JOB_SCHEMA_VERSION,
+      taskType: payload.taskType,
+      essayType: payload.publicEssayType || payload.essayType || "",
+      visualType: payload.publicVisualType || payload.visualType || "",
+      submissionHash,
+      clientSubmissionId: idempotencyKey || "",
+      payload: { ...payload, submissionHash }
+    };
+    await jobStore.set(jobId, job);
+    await auditAnalyze(storage, user, payload, { openAiCalled: false, quotaDeducted: false, duplicateCacheUsed: false, reason: "queued" });
 
-    return jsonResponse(202, {
-      ok: true,
-      queued: true,
-      jobId,
-      status: "queued",
-      statusUrl: `/api/analyze-status/${encodeURIComponent(jobId)}`
-    });
+    // Legacy Netlify async invokes a background function; Render-native async relies on the in-process
+    // worker loop that is already polling the durable store, so no cross-process kick is needed.
+    if (!isRenderAsyncMode()) {
+      await invokeAnalyzeWorker(request, jobId);
+    }
+
+    return jsonResponse(202, buildAcceptedResponse(job, { duplicate: false }));
   }
 
   let analysis;
@@ -686,58 +740,159 @@ async function persistAnalyzeFailure(failureLog, { error, user, payload, request
 
 async function handleAnalyzeStatus(request, storage, jobStore, jobId) {
   const session = await requireSession(request, storage);
-  const job = await jobStore.get(jobId);
+  let job = await jobStore.get(jobId);
+  // Ownership is mandatory: a job is only ever visible to the account that created it (brief §6.6).
   if (!job || job.username !== session.user.username) {
     throw statusError("Analysis job was not found. Please submit again.", 404, "VALIDATION_ERROR");
+  }
+  const isStaff = isTeacherOrAdmin(session.user);
+
+  // Defensive terminalization: if the worker is not advancing a job and it has exceeded the whole-job
+  // timeout, return a definitive, safe answer instead of letting the client poll forever. No credit is
+  // involved (nothing committed), so this is safe and idempotent.
+  if (isActiveJobState(job.status)) {
+    const ageMs = Date.now() - Date.parse(job.createdAt || new Date().toISOString());
+    if (Number.isFinite(ageMs) && ageMs > jobStaleMs()) {
+      job = await jobStore.set(jobId, timeoutJob(job, "ASYNC_JOB_EXPIRED", "expired")).catch(() => job);
+    } else if (Number.isFinite(ageMs) && ageMs > jobTimeoutMs()) {
+      job = await jobStore.set(jobId, timeoutJob(job, "ASYNC_JOB_TIMEOUT", "failed")).catch(() => job);
+    }
   }
 
   if (job.status === "complete") {
     return jsonResponse(200, {
       ok: true,
       status: "complete",
+      jobId: job.jobId,
+      requestId: job.requestId || "",
+      reportId: job.reportId || "",
       analysis: sanitizeAnalysisForClient(job.analysis),
       user: job.user,
       progressRecord: sanitizeProgressRecordForClient(job.progressRecord),
       progressSummary: job.progressSummary || null,
       duplicateSubmission: Boolean(job.duplicateSubmission),
-      message: job.message || ""
+      message: job.message || stageMessageForStatus("complete")
     });
   }
 
-  if (job.status === "failed") {
-    return jsonResponse(200, {
+  if (job.status === "failed" || job.status === "cancelled" || job.status === "expired") {
+    const errorCode = job.errorCode || "PROVIDER_ERROR";
+    const payload = {
       ok: false,
-      status: "failed",
-      errorCode: job.errorCode || "PROVIDER_ERROR",
+      status: job.status,
+      jobId: job.jobId,
+      requestId: job.requestId || "",
+      errorCode,
       error: job.message || GENERIC_ANALYSIS_ERROR,
-      debugHint: job.debugHint || ""
-    });
+      retryable: job.retryable !== undefined ? Boolean(job.retryable) : RETRYABLE_ANALYSIS_CODES.has(errorCode)
+    };
+    if (isStaff) {
+      payload.failureStage = job.failureStage || failureStageForError({ errorCode });
+      if (job.debugHint) payload.safeDebugSummary = safeDebugHint({ debugHint: job.debugHint });
+      if (job.providerStatus) payload.providerStatus = job.providerStatus;
+      payload.attempt = job.attempt || 0;
+      payload.providerAttempt = job.providerAttempt || 0;
+    }
+    return jsonResponse(200, payload);
   }
 
+  // Active: a safe, non-numeric stage label only. Never a fake percentage, never provider internals.
   return jsonResponse(200, {
     ok: true,
     status: job.status || "queued",
+    stage: job.stage || job.status || "queued",
+    jobId: job.jobId,
+    requestId: job.requestId || "",
+    message: job.progressMessageKey || stageMessageForStatus(job.status),
     startedAt: job.startedAt || null,
-    updatedAt: job.updatedAt || job.createdAt || null
+    updatedAt: job.updatedAt || job.createdAt || null,
+    ...(isStaff ? { heartbeatAt: job.heartbeatAt || null, attempt: job.attempt || 0 } : {})
   });
 }
 
-export async function processAnalyzeJob({ jobId, rootDir = process.cwd() }) {
-  loadEnvFile(rootDir);
-  const storage = createStorage({ rootDir });
-  const jobStore = createAnalysisJobStore({ rootDir });
-  const job = await jobStore.get(jobId);
-  if (!job) throw statusError("Analysis job was not found.", 404, "VALIDATION_ERROR");
-  if (job.status === "complete" || job.status === "running") return job;
-
-  await jobStore.set(jobId, {
+// Marks a stuck active job as a distinct timeout/expiry terminal state (brief §7). No credit involved.
+function timeoutJob(job, errorCode, status) {
+  const now = new Date().toISOString();
+  return {
     ...job,
-    status: "running",
-    startedAt: job.startedAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  });
+    status,
+    stage: status,
+    failureStage: "async_job_timeout",
+    failedAt: now,
+    updatedAt: now,
+    leaseOwner: "",
+    leaseExpiresAt: "",
+    errorCode,
+    retryable: true,
+    message: errorCode === "ASYNC_JOB_EXPIRED"
+      ? "The analysis expired before it could finish. No credit was used. Please try again."
+      : "The analysis took too long to finish. No credit was used. Please try again."
+  };
+}
+
+// Durable, lease-aware, restart-safe analysis worker for one job (brief §6.3–§6.5, §11, §7).
+// Callable two ways:
+//   • by the Render worker loop with shared { storage, jobStore, failureLog, leaseOwner, leaseMs }
+//     (the job is already leased to leaseOwner), and
+//   • directly as processAnalyzeJob({ jobId, rootDir }) (legacy Netlify worker / tests), where it
+//     creates its own instances and claims the lease itself.
+// Exactly-once credit is guaranteed by storage.commitAnalysis (it dedupes by clientSubmissionId /
+// submissionHash before incrementing usage), so a retry or restart can never double-charge.
+export async function processAnalyzeJob({
+  jobId,
+  rootDir = process.cwd(),
+  storage: injectedStorage,
+  jobStore: injectedJobStore,
+  failureLog: injectedFailureLog,
+  leaseOwner,
+  leaseMs
+} = {}) {
+  loadEnvFile(rootDir);
+  const storage = injectedStorage || createStorage({ rootDir });
+  const jobStore = injectedJobStore || createAnalysisJobStore({ rootDir });
+  const failureLog = injectedFailureLog || createAnalysisFailureLog({ rootDir });
+  const lease = Number(leaseMs || jobLeaseMs());
+  const owner = leaseOwner || `inproc:${process.pid}:${randomBytes(4).toString("hex")}`;
+  const canLease = typeof jobStore.claim === "function" && typeof jobStore.heartbeat === "function";
+
+  let job = await jobStore.get(jobId);
+  if (!job) throw statusError("Analysis job was not found.", 404, "VALIDATION_ERROR");
+  if (isTerminalJobState(job.status)) return job;
+
+  // Take (or renew) the lease. If another worker holds a live lease, do not touch the job.
+  if (canLease) {
+    const claimed = await jobStore.claim(jobId, owner, lease);
+    if (!claimed) return await jobStore.get(jobId);
+    job = claimed;
+  }
+
+  // Advance the visible stage and renew the lease in one write.
+  const stage = async (status, patch = {}) => {
+    const base = { status, stage: status, progressMessageKey: stageMessageForStatus(status), ...patch };
+    if (canLease) {
+      job = await jobStore.heartbeat(jobId, owner, lease, base) || { ...job, ...base };
+    } else {
+      job = await jobStore.set(jobId, { ...job, ...base, updatedAt: new Date().toISOString() });
+    }
+    return job;
+  };
+  // Write a terminal state (clears the lease). Never uses heartbeat (which rejects terminal states).
+  const finalize = async (patch) => {
+    const now = new Date().toISOString();
+    job = await jobStore.set(jobId, { ...job, leaseOwner: "", leaseExpiresAt: "", updatedAt: now, ...patch });
+    return job;
+  };
+  const ageMs = () => Date.now() - Date.parse(job.createdAt || new Date().toISOString());
+  const startedAt = job.startedAt || job.createdAt;
 
   try {
+    await stage("preprocessing", { startedAt: job.startedAt || new Date().toISOString() });
+
+    // Whole-job timeout is distinct from a provider timeout (brief §7): do not begin expensive work
+    // on a job that has already exceeded its budget.
+    if (ageMs() > jobStaleMs()) return failAsyncTimeout(finalize, "ASYNC_JOB_EXPIRED", "expired");
+    if (ageMs() > jobTimeoutMs()) return failAsyncTimeout(finalize, "ASYNC_JOB_TIMEOUT", "failed");
+
     const user = await storage.getUserByUsername(job.username);
     if (!user || user.status !== "active") {
       throw statusError("Please log in to use the diagnostic lab.", 401, "NOT_AUTHENTICATED");
@@ -746,6 +901,10 @@ export async function processAnalyzeJob({ jobId, rootDir = process.cwd() }) {
     await assertOwnedStudentProfile(storage, user, job.payload || {});
 
     const submissionHash = job.payload?.submissionHash || createSubmissionHash(user.username, job.payload || {});
+
+    // Restart-safety idempotency checkpoint: if a report for this submission already exists (a prior
+    // attempt committed but crashed before marking the job complete), project it — no provider call,
+    // no second credit (brief §6.5, §11).
     const existingRecord = job.payload?.clientSubmissionId
       ? await storage.findSubmissionByKey(user.username, job.payload.clientSubmissionId, job.payload.studentProfileId)
       : null;
@@ -763,32 +922,36 @@ export async function processAnalyzeJob({ jobId, rootDir = process.cwd() }) {
         duplicateRecord,
         job.payload.taskType
       );
-      await auditAnalyze(storage, latestUser || user, job.payload || {}, {
-        openAiCalled: false,
-        quotaDeducted: false,
-        duplicateCacheUsed: true
-      });
-      const completeJob = {
-        ...job,
+      await auditAnalyze(storage, latestUser || user, job.payload || {}, { openAiCalled: false, quotaDeducted: false, duplicateCacheUsed: true });
+      return finalize({
         status: "complete",
+        stage: "complete",
         completedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        reportId: duplicateRecord.submissionId || duplicateRecord.id || job.reportId || "",
         analysis: duplicatePayload.analysis,
         user: duplicatePayload.user,
         progressRecord: duplicatePayload.progressRecord,
         progressSummary: duplicatePayload.progressSummary,
         duplicateSubmission: duplicatePayload.duplicateSubmission,
         message: duplicatePayload.message
-      };
-      await jobStore.set(jobId, completeJob);
-      return completeJob;
+      });
     }
 
     await enforceAnalysisAccess(storage, user, job.payload || {});
 
+    // Bounded provider attempts across restarts: a job that has already used its provider budget and
+    // still has no saved report fails safely instead of re-calling the provider unboundedly.
+    if (Number(job.providerAttempt || 0) >= providerMaxAttempts()) {
+      const code = job.errorCode || "ASYNC_JOB_EXPIRED";
+      return failAsyncTimeout(finalize, code, "failed");
+    }
+
     let analysis;
     try {
-      analysis = validateReportOutput(await analyzeWriting(job.payload), job.payload);
+      await stage("provider_request", { providerAttempt: Number(job.providerAttempt || 0) + 1 });
+      const raw = await analyzeWriting(job.payload);
+      await stage("scoring_validation");
+      analysis = validateReportOutput(raw, job.payload);
     } catch (error) {
       await auditAnalyze(storage, user, job.payload || {}, {
         openAiCalled: true,
@@ -798,6 +961,8 @@ export async function processAnalyzeJob({ jobId, rootDir = process.cwd() }) {
       });
       throw error;
     }
+
+    await stage("saving");
     const progressRecord = buildSubmissionHistoryRecord(user.username, job.payload, analysis, submissionHash);
     const transaction = typeof storage.commitAnalysis === "function"
       ? await storage.commitAnalysis(progressRecord, buildAnalyzeAuditEntry(user, job.payload || {}, {
@@ -818,18 +983,17 @@ export async function processAnalyzeJob({ jobId, rootDir = process.cwd() }) {
     const savedRecord = transaction.record;
     const updatedUser = transaction.user || user;
     if (!transaction.created) {
-      await auditAnalyze(storage, updatedUser, job.payload || {}, {
-        openAiCalled: true,
-        quotaDeducted: false,
-        duplicateCacheUsed: true
-      });
+      await auditAnalyze(storage, updatedUser, job.payload || {}, { openAiCalled: true, quotaDeducted: false, duplicateCacheUsed: true });
     }
 
-    const completeJob = {
-      ...job,
+    return finalize({
       status: "complete",
+      stage: "complete",
       completedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      reportId: savedRecord.submissionId || savedRecord.id || "",
+      // Commit markers make the exactly-once accounting auditable (brief §11).
+      quotaCommitted: Boolean(transaction.created && isLimitedUser(updatedUser || user)),
+      teacherUsageCommitted: Boolean(transaction.created && isUnlimitedInternalUser(updatedUser || user)),
       analysis: savedRecord.report || savedRecord.analysis,
       user: withExpiryFlags(addDailyLimitFlags(sanitizeUserForClient(updatedUser || user))),
       progressRecord: savedRecord,
@@ -840,23 +1004,44 @@ export async function processAnalyzeJob({ jobId, rootDir = process.cwd() }) {
       ),
       duplicateSubmission: !transaction.created,
       message: !transaction.created ? "This exact submission has already been analyzed. No credit or daily limit was used. Opening the existing saved report." : ""
-    };
-    await jobStore.set(jobId, completeJob);
-    return completeJob;
+    });
   } catch (error) {
     const normalized = normalizeError(error);
-    const failedJob = {
-      ...job,
+    const errorCode = normalized.payload.errorCode || "PROVIDER_ERROR";
+    await persistAnalyzeFailure(failureLog, {
+      error,
+      user: { username: job.username, role: job.role },
+      payload: job.payload || {},
+      requestId: job.requestId,
+      startedAt: Date.parse(startedAt) || Date.now()
+    });
+    return finalize({
       status: "failed",
+      stage: failureStageForError(error),
       failedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      errorCode: normalized.payload.errorCode || "PROVIDER_ERROR",
+      errorCode,
+      failureStage: failureStageForError(error),
+      retryable: RETRYABLE_ANALYSIS_CODES.has(errorCode),
+      providerStatus: error?.providerStatus || null,
       message: normalized.payload.error || GENERIC_ANALYSIS_ERROR,
       debugHint: normalized.payload.debugHint || error.debugHint || ""
-    };
-    await jobStore.set(jobId, failedJob);
-    return failedJob;
+    });
   }
+}
+
+// Distinct, safe terminal state for whole-job timeout/expiry (brief §7). No credit is ever involved.
+function failAsyncTimeout(finalize, errorCode, status) {
+  return finalize({
+    status,
+    stage: "async_job_timeout",
+    failedAt: new Date().toISOString(),
+    errorCode,
+    failureStage: "async_job_timeout",
+    retryable: true,
+    message: errorCode === "ASYNC_JOB_EXPIRED"
+      ? "The analysis expired before it could finish. No credit was used. Please try again."
+      : "The analysis took too long to finish. No credit was used. Please try again."
+  });
 }
 
 async function handleDebugAnalyzeHealth(request, storage) {
@@ -973,7 +1158,7 @@ async function maybeHandleAdminRoute(method, apiPath, request, storage, context 
       ok: true,
       appVersion: ANALYSIS_VERSIONS.appVersion,
       engineVersion: ANALYSIS_VERSIONS.engineVersion,
-      analysisMode: shouldUseAsyncAnalysis() ? "async-background" : "sync",
+      analysisMode: analysisModeLabel(),
       provider: {
         configured: analyzerHealth.diagnosticEngineConfigured,
         modelConfigured: analyzerHealth.modelConfigured,
@@ -985,8 +1170,26 @@ async function maybeHandleAdminRoute(method, apiPath, request, storage, context 
       },
       lastProviderCheck: providerCheckCache.provider,
       lastContractCheck: providerCheckCache.contract,
-      storage: { adapter: storage.name, durable: Boolean(storage.isDurable), runtime: storage.runtime || "node" }
+      storage: { adapter: storage.name, durable: Boolean(storage.isDurable), runtime: storage.runtime || "node" },
+      jobStore: context.jobStore?.name || "",
+      jobConfig: jobConfigSnapshot()
     });
+  }
+
+  // ---- Async job diagnostics (brief §9). No student content, no secrets. ----
+  if (method === "GET" && apiPath === "/api/admin/diagnostics/job-queue-status") {
+    if (!context.jobStore) return jsonResponse(200, { ok: true, supported: false, reason: "No job store on this deployment." });
+    return jsonResponse(200, await runJobQueueStatus(context.jobStore));
+  }
+
+  if (method === "POST" && apiPath === "/api/admin/diagnostics/stale-job-recovery-test") {
+    // Runs entirely in an isolated temp store; never touches production job data.
+    return jsonResponse(200, await runStaleJobRecoveryTest());
+  }
+
+  if (method === "POST" && apiPath === "/api/admin/diagnostics/duplicate-idempotency-test") {
+    // Runs entirely in an isolated temp storage with a synthetic user; no production quota is touched.
+    return jsonResponse(200, await runDuplicateIdempotencyTest());
   }
 
   if (method === "GET" && apiPath === "/api/admin/users") {
@@ -1247,11 +1450,59 @@ function defaultExpiryDate() {
 }
 
 function shouldUseAsyncAnalysis() {
-  if (process.env.DIAGNOSTIC_ANALYSIS_MODE === "sync") return false;
-  if (process.env.DIAGNOSTIC_ANALYSIS_MODE === "async") {
-    return process.env.DIAGNOSTIC_ENABLE_NETLIFY_BLOBS === "true";
-  }
+  const mode = String(process.env.DIAGNOSTIC_ANALYSIS_MODE || "sync");
+  if (mode === "sync") return false;
+  // Render-native durable async: an in-process worker loop drives a durable job store. No Netlify.
+  if (mode === "async-render") return true;
+  // Legacy Netlify background-function async (requires Netlify Blobs). Unchanged.
+  if (mode === "async") return process.env.DIAGNOSTIC_ENABLE_NETLIFY_BLOBS === "true";
   return false;
+}
+
+// True only for the Render-native worker-loop mode, where the in-process worker picks jobs up and the
+// submission handler must NOT try to invoke a (nonexistent) Netlify background function.
+function isRenderAsyncMode() {
+  return String(process.env.DIAGNOSTIC_ANALYSIS_MODE || "sync") === "async-render";
+}
+
+function analysisModeLabel() {
+  if (isRenderAsyncMode()) return "async-render";
+  if (shouldUseAsyncAnalysis()) return "async-background";
+  return "sync";
+}
+
+// The prompt 202 body (brief §6.1). `queued: true` is kept for older frontends during rollout.
+function buildAcceptedResponse(job, { duplicate = false } = {}) {
+  return {
+    ok: true,
+    accepted: true,
+    queued: true,
+    jobId: job.jobId,
+    requestId: job.requestId || "",
+    status: job.status || "queued",
+    statusUrl: `/api/analyze-status/${encodeURIComponent(job.jobId)}`,
+    duplicate: Boolean(duplicate),
+    message: stageMessageForStatus(job.status || "queued")
+  };
+}
+
+// Find an in-flight (non-terminal) job for the same owner + student + content. Used to collapse a
+// re-submission of identical content onto one provider call and one credit (brief §6.1 step 10, §12).
+async function findActiveDuplicateJob(jobStore, ownerId, studentProfileId, { clientSubmissionId, submissionHash } = {}) {
+  if (typeof jobStore.list === "function") {
+    const jobs = await jobStore.list();
+    return jobs.find((job) =>
+      String(job.username || "") === String(ownerId || "") &&
+      String(job.payload?.studentProfileId || "") === String(studentProfileId || "") &&
+      isActiveJobState(job.status) && (
+        (clientSubmissionId && job.clientSubmissionId === clientSubmissionId) ||
+        (submissionHash && job.submissionHash === submissionHash)
+      )
+    ) || null;
+  }
+  // Legacy stores without list(): best-effort lookup by the clientSubmissionId-as-jobId convention.
+  const job = clientSubmissionId ? await jobStore.get(clientSubmissionId) : null;
+  return job && job.username === ownerId && isActiveJobState(job.status) ? job : null;
 }
 
 function createJobId() {
@@ -1276,6 +1527,7 @@ function failureStageForError(error) {
   const code = String(error?.errorCode || "");
   if (["PROVIDER_AUTH_ERROR", "PROVIDER_MODEL_ERROR", "PROVIDER_RATE_LIMIT", "PROVIDER_NETWORK_ERROR", "PROVIDER_SCHEMA_ERROR", "PROVIDER_ERROR"].includes(code)) return "provider_request";
   if (code === "PROVIDER_TIMEOUT") return "provider_timeout";
+  if (code === "ASYNC_JOB_TIMEOUT" || code === "ASYNC_JOB_EXPIRED") return "async_job_timeout";
   if (["PROVIDER_INCOMPLETE_RESPONSE", "PROVIDER_MAX_OUTPUT_TOKENS"].includes(code)) return "provider_incomplete";
   if (code === "PROVIDER_REFUSAL") return "provider_refusal";
   if (code === "PROVIDER_JSON_PARSE_ERROR") return "json_parse";
@@ -1293,7 +1545,9 @@ const RETRYABLE_ANALYSIS_CODES = new Set([
   "PROVIDER_MAX_OUTPUT_TOKENS",
   "PROVIDER_JSON_PARSE_ERROR",
   "REPORT_OUTPUT_VALIDATION_FAILED",
-  "STORAGE_COMMIT_FAILED"
+  "STORAGE_COMMIT_FAILED",
+  "ASYNC_JOB_TIMEOUT",
+  "ASYNC_JOB_EXPIRED"
 ]);
 
 // Builds the analysis error response. Students receive only a safe message, error code, reference id

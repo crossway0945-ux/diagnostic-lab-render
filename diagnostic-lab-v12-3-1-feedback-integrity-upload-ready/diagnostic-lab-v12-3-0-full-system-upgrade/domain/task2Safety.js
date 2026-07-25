@@ -640,6 +640,45 @@ export function classifyTask2Prompt(payload = {}) {
   const directQuestionCount = countPromptQuestions(prompt);
   const explicitOpinionQuestion = /do you (?:think|agree|believe)|what is your (?:opinion|view)|to what extent/i.test(prompt);
   let winner = matches[0] || null;
+
+  // A prompt that asks about problems/causes AND solutions is a Problem & Solution task even when the
+  // two requests are split into separate sentences/questions, e.g. "What do you think the causes are?
+  // What solutions can you suggest?". The add() patterns above use [^?]* and so stop at the first
+  // question mark, missing this split form; without this the prompt fell through to a generic
+  // multi-question Direct Question and wrongly rejected a correctly-selected Problem & Solution. This
+  // is guarded by !winner, so it NEVER changes a prompt that an explicit pattern already matched.
+  if (!winner) {
+    const solutionSignal = /\b(?:solutions?|measures?|steps?|tackle|address(?:ed|ing)?|deal with|remed(?:y|ies)|solve|combat|overcome|prevent|reduce|what (?:can|could|should) be done)\b/i.test(prompt);
+    const causeSignal = /\b(?:causes?|reasons?|why)\b/i.test(prompt);
+    const problemSignal = /\b(?:problems?|issues?|challenges?|difficulties?)\b/i.test(prompt);
+    if (solutionSignal && (causeSignal || problemSignal)) {
+      const useCauses = causeSignal;
+      winner = {
+        publicFamily: TASK2_PUBLIC_FAMILIES.PROBLEM_SOLUTION,
+        internalSubtype: useCauses ? TASK2_INTERNAL_SUBTYPES.CAUSES_SOLUTIONS : TASK2_INTERNAL_SUBTYPES.STANDARD,
+        confidence: "high",
+        signal: useCauses ? "causes and solutions" : "problems and solutions",
+        signalLabel: "problem/cause + solution structure",
+        promptObligations: [
+          promptObligation(
+            useCauses ? "causes" : "problems",
+            useCauses ? "Explain the causes" : "Explain the problems",
+            promptParts.find((part) => /cause|reason|problem|issue|challenge/i.test(part)) || prompt,
+            false,
+            "explain"
+          ),
+          promptObligation(
+            "solutions",
+            useCauses ? "Develop solutions matched to the causes" : "Develop solutions matched to the problems",
+            promptParts.find((part) => /solution|measure|step|tackle|reduce|address|deal|solve/i.test(part)) || prompt,
+            false,
+            "solve"
+          )
+        ]
+      };
+    }
+  }
+
   if (!winner && directQuestionCount >= 2) {
     winner = {
       publicFamily: TASK2_PUBLIC_FAMILIES.DIRECT_QUESTION,

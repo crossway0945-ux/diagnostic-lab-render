@@ -105,14 +105,31 @@ fields), `services/analysisJobStore.js` (route Node → render-durable), `servic
 shutdown, shared store instances), `script.js`/`styles.css` (robust polling + refresh recovery),
 `admin.html`/`admin.js` (3 new diagnostic buttons), `render.yaml` + `RENDER_ENV_TEMPLATE.txt`
 (async-render env), `services/analysisVersions.js` + `package.json` + `package-lock.json` +
-`index.html` (12.5.0 + cache token). Two historical tests (`v8-sale-readiness`, `diagnostic-api`)
-were **retargeted** from the legacy single-file job store to the durable store **without weakening any
-assertion** (reset still clears jobs + preserves protected data; deletion still isolates one student).
+`index.html` (12.5.0 + cache token), **`domain/task2Safety.js` (classification accuracy fix — see
+§12)**. Two historical tests (`v8-sale-readiness`, `diagnostic-api`) were **retargeted** from the
+legacy single-file job store to the durable store **without weakening any assertion** (reset still
+clears jobs + preserves protected data; deletion still isolates one student).
 
 **Deliberately untouched:** scoring engine, `domain/*` (canonicalAnalysis, feedbackIntegrity,
-revisionQuality, task2Safety, task1Classification, textIntegrity), `schemas/*`, prompt-builder logic,
+revisionQuality, task1Classification, textIntegrity), `schemas/*`, prompt-builder logic,
 rubric/prompt/taxonomy/revision-validator versions, PDF/print layout, pricing (2,999 THB / 10 / 60d),
 auth/sessions/hashing, the V12.3.6 frontend bootstrap, Render service/domain/Root Directory/disk.
+
+## 12. Task 2 classification accuracy fix (`domain/task2Safety.js`)
+
+A production `ESSAY_TYPE_MISMATCH` wrongly rejected a correctly-selected **Problem & Solution** on a
+prompt like *"What do you think the causes are? What solutions can you suggest?"*. Root cause: the
+cause/problem→solution detectors use `[^?]*`, which stops at the first `?`, so a two-part prompt whose
+two requests are split into separate questions matched no pattern and fell through to a generic
+multi-question **Direct Question**. Fix: before that fall-through, a `!winner`-guarded rule reclassifies
+a prompt that carries **both** a problem/cause signal **and** a solution signal to Problem & Solution
+(causes-solutions subtype when a cause/reason signal is present, else standard). Because it is guarded
+by `!winner`, it can never change a prompt that an explicit pattern already matched — verified: all 24
+test files pass, the v8-2 genuine-mismatch case is preserved, and genuine two-question Direct Questions
+(no solution requested) still classify as Direct Question. This is a bug fix, not a scoring change:
+`engineVersion` is **deliberately kept at v12.4.0** so existing duplicate-hashes stay valid and students
+are not re-charged for identical re-submissions across the release. Regression test:
+`tests/v12-5-0-cause-solution-classification.test.mjs`.
 
 ## 6. Admin diagnostics (preserved + extended)
 
@@ -161,7 +178,7 @@ Extract the ZIP → open `diagnostic-lab-v12-3-1-feedback-integrity-upload-ready
 create a nested version folder, do **not** delete the parent, do **not** change the Render Root
 Directory. Commit to `main` after review.
 
-**Under GitHub's 100-file web-upload limit:** this ZIP ships **84 files**, so the whole extracted set
+**Under GitHub's 100-file web-upload limit:** this ZIP ships **85 files**, so the whole extracted set
 drags in one upload. Superseded historical release manifests (V11.7–V12.4.1) are intentionally **not**
 in the ZIP — they already exist in the repo and a GitHub upload never deletes files it doesn't
 include, so they remain. Only the current README, the V12.5.0 manifest, the V12.5 Thai guide,

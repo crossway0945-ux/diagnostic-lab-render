@@ -305,7 +305,7 @@ async function testCanonicalRendererAndPdfSerializationPath() {
   assert.match(script, /studentProfileSelect\.required = canManageStudents/);
   assert.match(index, /Permanently delete archived student/);
   assert.doesNotMatch(index, /Structural Diagram|Advantages Outweigh Disadvantages/);
-  assert.match(index, /script\.js\?v=diagnostic-v12-6-0-evidence-integrity/);
+  assert.match(index, /script\.js\?v=diagnostic-v12-7-0-root-cause-correction/);
   // The server no longer hand-lists public files; it resolves the browser module graph from a shared
   // source of truth (which includes services/canonicalAnalysis.js and services/task2Safety.js).
   // The actual HTTP serving of every module is proven end-to-end in v12-3-6-frontend-bootstrap.

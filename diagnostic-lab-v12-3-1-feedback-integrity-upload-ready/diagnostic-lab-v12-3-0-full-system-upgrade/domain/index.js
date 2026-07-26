@@ -1,5 +1,6 @@
 export * from "./task1Classification.js";
 export * from "./task2Safety.js";
+export * from "./task2RouteModel.js";
 export * from "./canonicalAnalysis.js";
 export * from "./paragraphEvidence.js";
 export * from "./feedbackIntegrity.js";
@@ -7,6 +8,7 @@ export * from "./reportViewModels.js";
 export * from "./textIntegrity.js";
 export * from "./sentenceRoles.js";
 export * from "./evidenceAssertions.js";
+export * from "./agreementValidator.js";
 export * from "./issueGraph.js";
 export * from "./thesisDimensions.js";
 export * from "./reportConsistency.js";

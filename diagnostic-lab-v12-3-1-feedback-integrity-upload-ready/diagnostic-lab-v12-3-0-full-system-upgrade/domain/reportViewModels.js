@@ -18,10 +18,35 @@ export const STUDENT_REPORT_ALLOWLIST = Object.freeze([
   "footer"
 ]);
 
+const STUDENT_SECTION_FIELDS = Object.freeze({
+  reportHeader: ["productName", "reportTitle", "reportLanguage", "generatedAt"],
+  studentMetadata: ["studentName", "taskType", "taskSubtype", "wordCount", "minimumWordCount", "wordCountStatus"],
+  executiveSummary: ["mainScoreLimitingFactor", "mostUrgentRepair"],
+  completionStatus: ["status", "evidence", "wordShortfall"],
+  positionAndRoute: ["label", "position", "confidence", "summary", "thesisDimensions"],
+  thesisDimensions: ["applicable", "status", "taskFamily", "routeRequired", "routePresent", "routeOrderClear", "causalHierarchyClear", "lexicalNamingAccurate", "bodyRouteTraceable", "positionRequired", "positionPresent"],
+  criterion: ["range", "diagnosis", "evidence"],
+  framework: ["status", "diagnosis"],
+  topIssue: ["issueCategory", "secondaryCategories", "issueType", "title", "severity", "criteria", "framework", "summary", "exactSentence", "paragraphLocation", "whyItLimitsBand"],
+  paragraphCoverage: ["paragraphLabel", "paragraphFunction", "status", "diagnosis", "priorityRepair", "dimensions"],
+  detailedFeedback: [
+    "issueCategory", "primaryCategory", "secondaryCategories", "issueType", "severity",
+    "criteria", "framework", "paragraphLocation", "exactSentence", "targetSpan",
+    "detectedDefect", "expectedCorrection", "sentenceFunction", "whyItLimitsBand",
+    "kruPomDiagnosis", "revisionType", "targetedRevision", "whyRevisionIsStronger",
+    "studentAction", "evidenceScope", "evidenceCount", "evidenceLocations"
+  ],
+  evidenceLocation: ["paragraphLocation", "exactEvidence"],
+  repairPlan: ["day", "title", "task"],
+  progressSummary: ["previousSubmissionCount", "previousEstimatedRange", "latestEstimatedRange", "currentMainRepair", "repeatedIssue", "validatedReportVersionCount"]
+});
+
+const INTERNAL_STUDENT_TEXT_PATTERN = /\b(?:source|target|evidence)\s+offsets?\b|\bexact source span\b|\bvalidated (?:span|occurrence|issue)\b|\b(?:body_topic_sentence|thesis_route|cause_route|solution_route|view_route|paragraph_closing_sentence|evidence_assertion|repair_targets?)\b|\bcanonical(?:ized)?\b/i;
+
 export function buildStudentReportViewModel(analysis = {}, progressSummary = {}) {
   const taskType = String(analysis.taskType || "Task 2");
   const reportLanguage = String(analysis.reportLanguage || "en").toLowerCase() === "th" ? "th" : "en";
-  const viewModel = normalizeVisibleTree({
+  const viewModel = scrubStudentTree(normalizeVisibleTree({
     reportHeader: {
       productName: "IELTS Writing 7+ Diagnostic Lab",
       reportTitle: "IELTS Writing 7+ Diagnostic Report",
@@ -68,7 +93,7 @@ export function buildStudentReportViewModel(analysis = {}, progressSummary = {})
     progressSummary: publicProgress(progressSummary),
     disclaimer: String(analysis.disclaimer || ""),
     footer: "Kru Pom IELTS | IELTS Writing 7+ Diagnostic Lab | Diagnostic estimate only"
-  });
+  }));
   assertStudentReportViewModel(viewModel);
   return viewModel;
 }
@@ -104,13 +129,38 @@ export function assertStudentReportViewModel(viewModel) {
   if (extras.length || missing.length) {
     throw new Error(`StudentReportViewModel allowlist mismatch. Extra: ${extras.join(", ") || "none"}; missing: ${missing.join(", ") || "none"}.`);
   }
-  assertUnicodeIntegrity(JSON.stringify(viewModel), { studentFacing: true });
+  assertKeys(viewModel.reportHeader, STUDENT_SECTION_FIELDS.reportHeader, "reportHeader");
+  assertKeys(viewModel.studentMetadata, STUDENT_SECTION_FIELDS.studentMetadata, "studentMetadata");
+  assertKeys(viewModel.executiveSummary, STUDENT_SECTION_FIELDS.executiveSummary, "executiveSummary");
+  assertKeys(viewModel.completionStatus, STUDENT_SECTION_FIELDS.completionStatus, "completionStatus");
+  assertKeys(viewModel.positionAndRoute, STUDENT_SECTION_FIELDS.positionAndRoute, "positionAndRoute");
+  assertKeys(viewModel.positionAndRoute?.thesisDimensions, STUDENT_SECTION_FIELDS.thesisDimensions, "positionAndRoute.thesisDimensions");
+  for (const [criterion, item] of Object.entries(viewModel.criteriaBreakdown || {})) {
+    assertKeys(item, STUDENT_SECTION_FIELDS.criterion, `criteriaBreakdown.${criterion}`);
+  }
+  for (const [component, item] of Object.entries(viewModel.frameworkBreakdown || {})) {
+    assertKeys(item, STUDENT_SECTION_FIELDS.framework, `frameworkBreakdown.${component}`);
+  }
+  for (const [index, issue] of (viewModel.topIssues || []).entries()) assertKeys(issue, STUDENT_SECTION_FIELDS.topIssue, `topIssues[${index}]`);
+  for (const [index, paragraph] of (viewModel.paragraphCoverage || []).entries()) assertKeys(paragraph, STUDENT_SECTION_FIELDS.paragraphCoverage, `paragraphCoverage[${index}]`);
+  for (const [index, card] of (viewModel.detailedFeedback || []).entries()) {
+    assertKeys(card, STUDENT_SECTION_FIELDS.detailedFeedback, `detailedFeedback[${index}]`);
+    for (const [locationIndex, location] of (card.evidenceLocations || []).entries()) {
+      assertKeys(location, STUDENT_SECTION_FIELDS.evidenceLocation, `detailedFeedback[${index}].evidenceLocations[${locationIndex}]`);
+    }
+  }
+  for (const [index, item] of (viewModel.repairPlan || []).entries()) assertKeys(item, STUDENT_SECTION_FIELDS.repairPlan, `repairPlan[${index}]`);
+  assertKeys(viewModel.progressSummary, STUDENT_SECTION_FIELDS.progressSummary, "progressSummary");
+  const serialized = JSON.stringify(viewModel);
+  if (INTERNAL_STUDENT_TEXT_PATTERN.test(serialized)) {
+    throw new Error("StudentReportViewModel contains internal validation or implementation language.");
+  }
+  assertUnicodeIntegrity(serialized, { studentFacing: true });
   return true;
 }
 
 function publicIssue(issue = {}) {
   return {
-    issueId: String(issue.issueId || ""),
     issueCategory: String(issue.issueCategory || issue.issueType || issue.title || "Diagnostic Issue"),
     secondaryCategories: Array.isArray(issue.secondaryIssueCategories) ? issue.secondaryIssueCategories.map(String) : [],
     issueType: String(issue.issueType || issue.title || "Diagnostic Issue"),
@@ -130,7 +180,6 @@ function publicFeedback(card = {}) {
     String(card.revisionAlignmentStatus || "") === "withheld" ||
     String(card.revisionType || "") === "Revision Unavailable";
   return {
-    issueId: String(card.issueId || ""),
     issueCategory: String(card.issueCategory || card.issueType || "Diagnostic Issue"),
     primaryCategory: String(card.primaryCategory || card.issueCategory || card.issueType || "Diagnostic Issue"),
     secondaryCategories: Array.isArray(card.secondaryCategories || card.secondaryIssueCategories)
@@ -141,26 +190,12 @@ function publicFeedback(card = {}) {
     criteria: Array.isArray(card.criteria) ? card.criteria.map(String) : [],
     framework: Array.isArray(card.framework) ? card.framework.map(String) : [],
     paragraphLocation: String(card.paragraphLocation || ""),
-    sourceParagraphId: String(card.sourceParagraphId || card.paragraphId || ""),
-    sourceSentenceId: String(card.sourceSentenceId || ""),
-    sentenceRole: String(card.sentenceRole || "unknown"),
-    secondarySentenceRoles: Array.isArray(card.secondarySentenceRoles) ? card.secondarySentenceRoles.map(String) : [],
     exactSentence: String(card.exactSentence || ""),
-    normalizedEvidence: String(card.normalizedEvidence || ""),
-    evidenceStartOffset: Number(card.evidenceStartOffset ?? -1),
-    evidenceEndOffset: Number(card.evidenceEndOffset ?? -1),
     targetSpan: String(card.targetSpan || ""),
-    targetStartOffset: Number(card.targetStartOffset ?? -1),
-    targetEndOffset: Number(card.targetEndOffset ?? -1),
-    evidenceAssertionType: String(card.evidenceAssertionType || ""),
     detectedDefect: revisionWithheld
       ? "The exact evidence was validated; the unverified correction was withheld."
       : String(card.detectedDefect || ""),
     expectedCorrection: revisionWithheld ? "" : String(card.expectedCorrection || ""),
-    evidenceValidationStatus: String(card.evidenceValidationStatus || ""),
-    evidenceValidationReason: revisionWithheld
-      ? "The exact evidence was validated; the unverified correction was withheld."
-      : String(card.evidenceValidationReason || ""),
     sentenceFunction: String(card.sentenceFunction || ""),
     whyItLimitsBand: String(card.whyItLimitsBand || ""),
     kruPomDiagnosis: String(card.kruPomDiagnosis || ""),
@@ -168,11 +203,6 @@ function publicFeedback(card = {}) {
     targetedRevision: String(card.targetedRevision || ""),
     whyRevisionIsStronger: String(card.whyRevisionIsStronger || ""),
     studentAction: String(card.studentAction || ""),
-    repairTargets: Array.isArray(card.repairTargets) ? card.repairTargets.map(String) : [],
-    repairedTargets: Array.isArray(card.repairedTargets) ? card.repairedTargets.map(String) : [],
-    unresolvedTargets: Array.isArray(card.unresolvedTargets) ? card.unresolvedTargets.map(String) : [],
-    revisionAlignmentStatus: String(card.revisionAlignmentStatus || ""),
-    summaryPriority: Number(card.summaryPriority || 0),
     evidenceScope: String(card.evidenceScope || "single-location"),
     evidenceCount: Number(card.evidenceCount || 1),
     evidenceLocations: Array.isArray(card.evidenceLocations) ? card.evidenceLocations.map((item) => ({
@@ -184,15 +214,12 @@ function publicFeedback(card = {}) {
 
 function publicParagraphCoverage(item = {}) {
   return {
-    paragraphId: String(item.paragraphId || ""),
     paragraphLabel: String(item.paragraphLabel || "Paragraph"),
     paragraphFunction: String(item.paragraphFunction || ""),
     status: String(item.status || "Strong"),
     diagnosis: String(item.diagnosis || ""),
     priorityRepair: String(item.priorityRepair || "No priority repair"),
-    priorityIssueId: String(item.priorityIssueId || ""),
-    dimensions: clonePublicObject(item.dimensions),
-    issueIds: Array.isArray(item.issueIds) ? item.issueIds.map(String) : []
+    dimensions: clonePublicObject(item.dimensions)
   };
 }
 
@@ -243,4 +270,27 @@ function publicFramework(scores = {}) {
 function clonePublicObject(value) {
   if (!value || typeof value !== "object") return {};
   return JSON.parse(JSON.stringify(value));
+}
+
+function scrubStudentTree(value) {
+  if (Array.isArray(value)) return value.map(scrubStudentTree);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrubStudentTree(item)]));
+  }
+  if (typeof value !== "string") return value;
+  return value
+    .replace(/\s+at source offsets?\s+\d+(?:-\d+)?/gi, "")
+    .replace(/\bsource offsets?\s+\d+(?:-\d+)?\b/gi, "the highlighted wording")
+    .replace(/\bexact source span\b/gi, "quoted wording")
+    .replace(/\bvalidated (?:span|occurrence|issue)\b/gi, "identified point")
+    .replace(/\bbody_topic_sentence\b/gi, "paragraph opening")
+    .replace(/\b(?:thesis_route|cause_route|solution_route|view_route)\b/gi, "response route")
+    .replace(/\bparagraph_closing_sentence\b/gi, "paragraph closing sentence")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function assertKeys(value, allowed, path) {
+  const extras = Object.keys(value || {}).filter((key) => !allowed.includes(key));
+  if (extras.length) throw new Error(`StudentReportViewModel field allowlist mismatch at ${path}. Extra: ${extras.join(", ")}.`);
 }

@@ -54,6 +54,8 @@ export const CANONICAL_SENTENCE_ROLES = Object.freeze([
   "unknown"
 ]);
 
+export const SENTENCE_ROLE_CLASSIFIER_VERSION = "deterministic-role-model-v12.7.0";
+
 export function classifySentenceRole({
   taskType = "Task 2",
   visualType = "",
@@ -165,7 +167,8 @@ function roleResult(primaryRole, secondaryRoles, confidence, signals) {
     primaryRole,
     secondaryRoles: [...new Set((secondaryRoles || []).filter((role) => role && role !== primaryRole))],
     confidence,
-    signals
+    signals,
+    classifierVersion: SENTENCE_ROLE_CLASSIFIER_VERSION
   };
 }
 

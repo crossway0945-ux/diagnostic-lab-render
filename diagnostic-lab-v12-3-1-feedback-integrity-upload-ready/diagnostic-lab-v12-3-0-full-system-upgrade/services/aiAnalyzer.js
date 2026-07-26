@@ -3586,7 +3586,10 @@ function normalizeAnalysis(analysis, payload) {
     topIssues: top3Issues,
     paragraphFeedback,
     mainScoreLimitingFactor,
-    mostUrgentRepair
+    mostUrgentRepair,
+    routeAssessment: guardedAnalysis.routeAssessment || null,
+    criteriaScores: guardedAnalysis.criteriaScores || {},
+    frameworkScores: guardedAnalysis.kruPomScores || {}
   });
   const feedbackIntegrityAudit = auditFeedbackIntegrity(feedbackIntegrity, payload.writing);
   const feedbackIntegrityValidationIssues = feedbackIntegrityAudit

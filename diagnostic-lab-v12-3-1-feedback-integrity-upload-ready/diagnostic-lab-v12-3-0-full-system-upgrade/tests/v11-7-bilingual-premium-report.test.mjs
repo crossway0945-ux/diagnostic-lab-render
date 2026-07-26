@@ -94,7 +94,7 @@ const rootCss = await readFile(new URL("../styles.css", import.meta.url), "utf8"
 for (const html of [rootHtml, previewHtml]) {
   assert.match(html, /name="reportLanguage" value="en"/);
   assert.match(html, /name="reportLanguage" value="th"/);
-  assert.match(html, /diagnostic-v12-6-0-evidence-integrity/);
+  assert.match(html, /diagnostic-v12-7-0-root-cause-correction/);
 }
 assert.match(rootScript, /const REPORT_COPY = Object\.freeze/);
 assert.match(rootScript, /reportLanguage: selectedReportLanguage\(\)/);

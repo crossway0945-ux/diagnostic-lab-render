@@ -200,7 +200,7 @@ The print report hides web UI controls such as sidebar navigation, login, button
 
 Recommended production path for this project. Use Render as the main web app and backend host, not Netlify Drop.
 
-The V12.6.0 release ZIP is flat-root: `package.json` is directly at the ZIP root. Extract it, then upload the **contents** directly to the GitHub repository root. Confirm GitHub shows `/package.json`, `/server.js`, and `/render.yaml` without an enclosing release folder.
+The V12.7.0 release ZIP is flat-root: `package.json` is directly at the ZIP root. Extract it, then upload the **contents** directly to the GitHub repository root. Confirm GitHub shows `/package.json`, `/server.js`, and `/render.yaml` without an enclosing release folder.
 
 In Render dashboard settings use:
 
@@ -213,7 +213,7 @@ Health Check Path: /api/health
 
 Leaving Root Directory blank means Render runs from the connected repository root, where `package.json` is located. Blueprint users get the equivalent `rootDir: .` from `render.yaml`.
 
-This package includes `render.yaml`, `RENDER_ENV_TEMPLATE.txt`, `ROOT_DIRECTORY_V12_6.txt`, `UPLOAD_AND_RENDER_SETTINGS_V12_6_THAI.md`, and the V12.6.0 release manifest.
+This package includes `render.yaml`, `RENDER_ENV_TEMPLATE.txt`, `ROOT_DIRECTORY_V12_7.txt`, `UPLOAD_AND_RENDER_SETTINGS_V12_7_THAI.md`, and the V12.7.0 release manifest.
 
 1. Create a new Web Service.
 2. Connect the repository.

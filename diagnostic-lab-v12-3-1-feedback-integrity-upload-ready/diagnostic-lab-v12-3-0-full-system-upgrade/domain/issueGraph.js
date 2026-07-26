@@ -214,24 +214,21 @@ export function buildSpecificStudentAction(issue = {}) {
   const assertion = issue.evidenceAssertion || {};
   const category = String(issue.issueCategory || "");
   const location = String(issue.paragraphLocation || issue.paragraphLabel || "the quoted location");
-  const offset = Number.isInteger(Number(assertion.targetOffsetStart)) && Number(assertion.targetOffsetStart) >= 0
-    ? ` at source offset ${assertion.targetOffsetStart}`
-    : "";
   if (assertion.assertionType === "punctuation_spacing") {
-    return `In ${location}, replace "${assertion.targetSpan}" with "${assertion.correctedSpan}"${offset}.`;
+    return `In ${location}, replace "${assertion.targetSpan}" with "${assertion.correctedSpan}".`;
   }
   if (assertion.assertionType === "countability") {
-    return `In ${location}, remove the unsupported singular article in "${assertion.targetSpan}" and write "${assertion.correctedSpan}"${offset}.`;
+    return `In ${location}, remove the unsupported singular article in "${assertion.targetSpan}" and write "${assertion.correctedSpan}".`;
   }
   if (assertion.assertionType === "article") {
-    return `In ${location}, change "${assertion.targetSpan}" to "${assertion.correctedSpan}"${offset}.`;
+    return `In ${location}, change "${assertion.targetSpan}" to "${assertion.correctedSpan}".`;
   }
   if (["Lexical Precision", "Word Choice", "Meaning Control", "Collocation", "Word Form"].includes(category) &&
     assertion.targetSpan && assertion.correctedSpan) {
     if (assertion.targetSpan.length <= 60 && assertion.correctedSpan.length <= 60) {
       return `Replace "${assertion.targetSpan}" with "${assertion.correctedSpan}" in this sentence; keep the original claim and grammatical frame.`;
     }
-    return `Rebuild the wording at source offsets ${assertion.targetOffsetStart}-${assertion.targetOffsetEnd} for ${category}; preserve the sentence's original claim, route and grammatical frame.`;
+    return `Rebuild the highlighted wording for ${category}; preserve the sentence's original claim, route and grammatical frame.`;
   }
   if (category === "Causal Mechanism") {
     return "Write the missing cause-and-effect chain explicitly: cause -> immediate effect -> wider consequence.";
@@ -270,15 +267,15 @@ export function buildSpecificStudentAction(issue = {}) {
     if (issue.sentenceRole === "introduction_paraphrase") {
       return "Use the intro checklist: verify the visual type, subject, measurement, groups and time period before rewriting the neutral paraphrase.";
     }
-    return `Recheck this ${issue.sentenceRole || "reporting sentence"} against the supplied visual and rewrite only the unsupported visual claim.`;
+      return "Recheck this reporting sentence against the supplied visual and rewrite only the unsupported visual claim.";
   }
   const taskAssertion = ["causal_gap", "example_scope", "route_gap", "task_coverage", "data_error", "overview_error", "comparison_error", "process_sequence", "map_change"]
     .includes(assertion.assertionType);
   if (!taskAssertion && assertion.targetSpan && assertion.correctedSpan &&
     assertion.targetSpan.length <= 60 && assertion.correctedSpan.length <= 60) {
-      return `In ${location}, change "${assertion.targetSpan}" to "${assertion.correctedSpan}"${offset}.`;
+      return `In ${location}, change "${assertion.targetSpan}" to "${assertion.correctedSpan}".`;
     }
-  return `Revise the quoted ${issue.sentenceRole || "sentence"} for ${category || "the validated issue"}, then verify that its paragraph function is unchanged.`;
+  return `Revise the quoted sentence for ${category || "this issue"}, then check that it still performs the same paragraph function.`;
 }
 
 export function validateLexicalReplacement({ evidence = "", revision = "", assertion = {} } = {}) {
@@ -379,7 +376,8 @@ function issuesAreDuplicates(left, right) {
   const sameRevision = normalizeText(left.targetedRevision) === normalizeText(right.targetedRevision);
   const sameAssertion = leftAssertion.assertionType === rightAssertion.assertionType;
   const diagnosisSimilarity = tokenSimilarity(left.diagnosis || left.whyItLimitsBand, right.diagnosis || right.whyItLimitsBand);
-  return (sameCorrection || sameRevision) && (sameAssertion || diagnosisSimilarity >= 0.55);
+  const sameSentence = Number(left.sentenceIndex) === Number(right.sentenceIndex);
+  return sameSentence && sameAssertion && (sameCorrection || sameRevision) && diagnosisSimilarity >= 0.55;
 }
 
 function finalizeIssueIdentity(issue) {
@@ -391,7 +389,8 @@ function finalizeIssueIdentity(issue) {
     assertion.targetOffsetStart,
     assertion.targetOffsetEnd,
     assertion.assertionType,
-    normalizeText(assertion.correctedSpan || issue.targetedRevision)
+    normalizeText(assertion.correctedSpan || issue.targetedRevision),
+    normalizeText(issue.diagnosis || issue.whyItLimitsBand)
   ].join("|");
   return { ...issue, issueSignature: signature, issueId: stableId(signature) };
 }

@@ -10,7 +10,7 @@ const requiredModel = "gpt-5.6-sol";
 const apiKeyPresent = Boolean(String(process.env.OPENAI_API_KEY || "").trim());
 const configuredModel = String(process.env.OPENAI_MODEL || "").trim();
 const reasoningEffort = String(process.env.OPENAI_REASONING_EFFORT || "medium").trim();
-const outputPath = path.resolve("qa", "output", "v12-6-real-provider-results.json");
+const outputPath = path.resolve("qa", "output", "v12-7-real-provider-results.json");
 
 if (!apiKeyPresent) {
   console.error("REAL PROVIDER REGRESSION PENDING: OPENAI_API_KEY is not set. No provider call was made and no result file was written.");
@@ -22,7 +22,7 @@ if (configuredModel !== requiredModel) {
 }
 
 process.env.DIAGNOSTIC_REQUIRE_FULL_ENGINE = "true";
-const corpus = JSON.parse(await readFile(new URL("../fixtures/v12-6-regression-corpus.json", import.meta.url), "utf8"));
+const corpus = JSON.parse(await readFile(new URL("../fixtures/v12-7-regression-corpus.json", import.meta.url), "utf8"));
 const startedAt = new Date().toISOString();
 const healthStarted = Date.now();
 const providerHealth = await runProviderHealthCheck();

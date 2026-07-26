@@ -1,5 +1,9 @@
 import { countWords, getWordCountMetadata, normalizeEssayText } from "../wordCount.js";
 import { analysisVersionMetadata } from "../services/analysisVersions.js";
+import {
+  TASK2_ROUTE_CLASSIFIER_VERSION,
+  buildTaskAwareRouteModel
+} from "./task2RouteModel.js";
 
 const POSITION_PATTERN = /\b(?:i\s+(?:(strongly|firmly|completely|fully|heavily|generally|partly|partially|consequently|therefore|ultimately)\s+)?(agree|disagree)|in my (?:view|opinion)[^.!?]{0,80}\b(agree|disagree)|i believe[^.!?]{0,80}\b(?:should|must|ought|outweigh|more (?:important|significant|beneficial)))\b/i;
 const SUPPORT_PATTERN = /\b(?:agree|support|benefit|advantage|basic right|human right|should (?:receive|be provided)|free of charge|without (?:a )?charge|protect|improve|enable|allow|essential)\b/i;
@@ -192,6 +196,15 @@ export function analyzeTask2Safety(payload = {}) {
     positionConfidence,
     stanceRequired
   });
+  const taskAwareRouteModel = buildTaskAwareRouteModel({
+    taskFamily: essayRoute,
+    internalSubtype,
+    requiredRoutes: classification.requiredRoutes,
+    prompt: payload.prompt,
+    introduction,
+    bodyParagraphs,
+    conclusion
+  });
   const routeAssessment = buildTaskTypeRouteAssessment({
     payload,
     essayRoute,
@@ -204,7 +217,8 @@ export function analyzeTask2Safety(payload = {}) {
     conclusionPosition,
     detectedPosition,
     positionConfidence,
-    unfinishedEndingDetected
+    unfinishedEndingDetected,
+    taskAwareRouteModel
   });
   const concessionStatus = classifyConcessionStatus({
     routeAssessment,
@@ -316,7 +330,8 @@ export function analyzeTask2Safety(payload = {}) {
     },
     routeAssessment: {
       ...routeAssessment,
-      semanticPosition
+      semanticPosition,
+      taskAwareRouteModel
     },
     criterionAssessment: {},
     capMetadata,
@@ -1056,22 +1071,27 @@ function buildProblemSolutionRouteAssessment(context) {
   const prompt = String(context.payload.prompt || "");
   const asksCauses = /causes?|reasons?|why/i.test(prompt);
   const asksProblems = /problems?|effects?|consequences?/i.test(prompt) && !asksCauses;
-  const bodyRoutes = context.bodyParagraphs.map((paragraph, index) => {
-    const sentences = splitSentences(paragraph);
-    const causeScore = countMatches(paragraph, /\b(?:cause[sd]?|because|due to|result(?:s|ed)? from|reason|led to|number of cars|car ownership|commut|daily travel|congestion)\b/gi);
-    const problemScore = countMatches(paragraph, /\b(?:problem|effect|consequence|congestion|pollution|delay|accident|pressure|traffic jam)\b/gi);
-    const solutionScore = countMatches(paragraph, /\b(?:solution|measure|government should|could|need to|transit|transport(?:ation)?|carpool|parking|tax|invest|encourage|reduce|improve)\b/gi);
-    const label = solutionScore > Math.max(causeScore, problemScore)
-      ? "develops solutions"
-      : asksCauses ? "develops causes" : asksProblems ? "develops problems" : index === 0 ? "develops causes/problems" : "develops solutions";
-    const lateAdditionalRoute = sentences.findIndex((sentence, sentenceIndex) => sentenceIndex > 0 && /\b(?:second|another|additional)\s+(?:cause|problem|reason)\b/i.test(sentence));
-    const additionalRouteUnderdeveloped = lateAdditionalRoute >= 0 && sentences.length - lateAdditionalRoute <= 2;
-    const developmentSignals = sentences.length >= 3 && countWords(paragraph) >= 55 && !additionalRouteUnderdeveloped;
-    return routeItem(index, label, paragraph, developmentSignals ? "adequate" : "partial");
+  const routeModel = context.taskAwareRouteModel || buildTaskAwareRouteModel({
+    taskFamily: context.essayRoute,
+    internalSubtype: context.internalSubtype,
+    requiredRoutes: asksCauses ? ["cause", "solution"] : ["problem", "solution"],
+    prompt,
+    introduction: context.introduction,
+    bodyParagraphs: context.bodyParagraphs,
+    conclusion: context.conclusion
   });
+  const bodyRoutes = routeModel.paragraphRoutes.map((route, index) => ({
+    ...routeItem(index, route.label, context.bodyParagraphs[index], route.developmentStatus),
+    primaryRoute: route.primaryRoute,
+    controllingProposition: route.controllingProposition,
+    routeConfidence: route.confidence,
+    routeRationale: route.rationale,
+    secondPassTriggered: route.secondPassTriggered,
+    evidence: route.evidence
+  }));
   const firstLabel = asksCauses ? "causes" : asksProblems ? "problems" : "causes/problems";
-  const hasFirstRoute = bodyRoutes.some((item) => new RegExp(firstLabel.replace("/", "|")).test(item.label));
-  const hasSolutions = bodyRoutes.some((item) => /solutions/.test(item.label));
+  const hasFirstRoute = bodyRoutes.some((item) => asksCauses ? item.primaryRoute === "cause" : asksProblems ? item.primaryRoute === "problem" : ["cause", "problem"].includes(item.primaryRoute));
+  const hasSolutions = bodyRoutes.some((item) => item.primaryRoute === "solution");
   const missingRequirements = [...(!hasFirstRoute ? [firstLabel] : []), ...(!hasSolutions ? ["solutions"] : [])];
   const partiallyDeveloped = bodyRoutes.some((item) => item.status === "partial");
   const status = missingRequirements.length ? "failed" : partiallyDeveloped ? "partial" : "controlled";
@@ -1085,6 +1105,8 @@ function buildProblemSolutionRouteAssessment(context) {
       requirement("conclusion", "Causes/problems and solutions summarised", Boolean(context.conclusion) && !context.unfinishedEndingDetected, firstSentence(context.conclusion))
     ],
     bodyRoutes,
+    taskAwareRouteModel: routeModel,
+    routeClassifierVersion: TASK2_ROUTE_CLASSIFIER_VERSION,
     missingRequirements,
     status,
     conclusionLabel: buildSummaryConclusionLabel(context),
@@ -1266,6 +1288,15 @@ function assessParagraphDevelopmentStatus(context, item, index, status) {
 function assessThesisRouteCoverage(context) {
   const introduction = String(context.introduction || "");
   if (!introduction || countWords(introduction) < 8) return ROUTE_COVERAGE.ABSENT;
+  const semanticPromise = context.taskAwareRouteModel?.introductionRoutePromise;
+  const requiredSemanticRoutes = context.taskAwareRouteModel?.requiredRouteTypes || [];
+  if (!context.stanceRequired && semanticPromise && requiredSemanticRoutes.length && !requiredSemanticRoutes.includes("unresolved")) {
+    const promised = new Set(semanticPromise.promisedRoutes || []);
+    const covered = requiredSemanticRoutes.filter((route) => promised.has(route)).length;
+    if (covered === requiredSemanticRoutes.length) return ROUTE_COVERAGE.ADEQUATELY_DEVELOPED;
+    if (covered > 0) return ROUTE_COVERAGE.MENTIONED_ONLY;
+    return ROUTE_COVERAGE.ABSENT;
+  }
   if (context.stanceRequired) {
     if (!context.introPosition || ["unclear", "contradictory"].includes(context.introPosition)) return ROUTE_COVERAGE.MENTIONED_ONLY;
     const positionSentence = splitSentences(introduction).find((sentence) => POSITION_PATTERN.test(sentence)) || introduction;
@@ -2390,7 +2421,7 @@ function buildCanonicalFrameworkAssessment(routeAssessment, developmentRisk = {}
   const thesisStatus = isControlledRouteStatus(routeAssessment.thesisRouteStatus)
     ? "Strong"
     : isPartialRouteStatus(routeAssessment.thesisRouteStatus) ? "Moderate" : "Needs Work";
-  const conclusionStatus = evaluateConclusionClosure(conclusion, languageProfile);
+  const conclusionStatus = evaluateConclusionClosure(conclusion, routeAssessment.status, languageProfile);
   return {
     thesisRouteClarity: { status: thesisStatus },
     bodyRouteAlignment: { status: routeStatus },
@@ -2411,9 +2442,12 @@ function buildCanonicalFrameworkAssessment(routeAssessment, developmentRisk = {}
   };
 }
 
-function evaluateConclusionClosure(conclusion) {
+function evaluateConclusionClosure(conclusion, overallRouteStatus) {
   if (!conclusion || !isControlledRouteStatus(conclusion.status)) {
     return { status: "Needs Work", reason: "missing, unfinished, contradictory, or route-incomplete conclusion" };
+  }
+  if (isFailedRouteStatus(overallRouteStatus)) {
+    return { status: "Needs Work", reason: "The conclusion is complete as a sentence, but it cannot close a required route that is absent or contradicted in the essay." };
   }
   return {
     status: "Strong",
@@ -2434,8 +2468,16 @@ export function reconcileTask2CanonicalAnalysis(payload = {}, providerAnalysis =
   const safety = enrichTask2SafetyWithLanguageAudit(initialSafety, payload, providerAnalysis.languageAudit);
   const base = safety.canonicalAnalysis;
   const capMetadata = mergeCanonicalCapMetadata(base.capMetadata, providerAnalysis, safety);
-  const criterionScores = normalizeCanonicalCriterionScores(providerAnalysis.criteriaScores, safety, capMetadata);
-  const overallBandRange = deriveTask2OverallBandRange(criterionScores, capMetadata);
+  const computedCriterionScores = normalizeCanonicalCriterionScores(providerAnalysis.criteriaScores, safety, capMetadata);
+  const computedOverallBandRange = deriveTask2OverallBandRange(computedCriterionScores, capMetadata);
+  const frozenScoring = freezeTask2ScoringSnapshot({
+    criterionScores: computedCriterionScores,
+    overallBandRange: computedOverallBandRange,
+    routeStatus: safety.routeAssessment?.status,
+    routeClassifierVersion: safety.routeAssessment?.routeClassifierVersion || TASK2_ROUTE_CLASSIFIER_VERSION
+  });
+  const criterionScores = frozenScoring.criterionScores;
+  const overallBandRange = frozenScoring.overallBandRange;
   const primaryLimiters = Array.from(new Set([
     ...base.primaryLimiters,
     ...(Array.isArray(providerAnalysis.highBandLimiters) ? providerAnalysis.highBandLimiters : [])
@@ -2467,6 +2509,7 @@ export function reconcileTask2CanonicalAnalysis(payload = {}, providerAnalysis =
     criterionAssessment,
     capMetadata: normalizedCapMetadata,
     overallScore,
+    scoringSnapshot: frozenScoring,
     executiveSummary,
     primaryLimiters,
     repairPlan: Array.isArray(providerAnalysis.practicePlan) ? providerAnalysis.practicePlan : [],
@@ -2474,7 +2517,8 @@ export function reconcileTask2CanonicalAnalysis(payload = {}, providerAnalysis =
       analysisSource: "canonical-analysis-v12.3.1",
       routeSource: "canonical-analysis-v12.3.1",
       scoreSource: "criterion-arithmetic",
-      capSource: normalizedCapMetadata.applied ? "explicit-canonical-cap" : "none"
+      capSource: normalizedCapMetadata.applied ? "explicit-canonical-cap" : "none",
+      scoringFrozenBeforeIssueGeneration: true
     },
     // Compatibility projections. These reference canonical values and are never scored independently.
     essayType: base.metadata.essayType,
@@ -2484,6 +2528,27 @@ export function reconcileTask2CanonicalAnalysis(payload = {}, providerAnalysis =
     criterionScores,
     overallBandRange: overallScore
   };
+}
+
+export function freezeTask2ScoringSnapshot({
+  criterionScores = {},
+  overallBandRange = {},
+  routeStatus = "",
+  routeClassifierVersion = TASK2_ROUTE_CLASSIFIER_VERSION
+} = {}) {
+  const criteria = Object.freeze(Object.fromEntries(Object.entries(criterionScores).map(([criterion, value]) => [
+    criterion,
+    Object.freeze({ ...(value || {}) })
+  ])));
+  const overall = Object.freeze({ ...(overallBandRange || {}) });
+  return Object.freeze({
+    version: "score-freeze-v12.7.0",
+    routeClassifierVersion,
+    routeStatus: String(routeStatus || ""),
+    criterionScores: criteria,
+    overallBandRange: overall,
+    frozen: true
+  });
 }
 
 export function buildTask2FamilyExecutiveSummary(safety, base) {

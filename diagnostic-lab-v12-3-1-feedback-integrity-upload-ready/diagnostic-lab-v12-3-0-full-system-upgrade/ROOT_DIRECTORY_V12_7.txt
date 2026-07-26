@@ -1,0 +1,21 @@
+KRU POM IELTS WRITING 7+ DIAGNOSTIC LAB — V12.7.0
+
+RELEASE PACKAGE FORMAT: FLAT ROOT
+
+Open the ZIP and confirm that package.json, server.js and render.yaml are visible immediately.
+There must not be another enclosing release folder.
+
+GitHub upload location:
+/
+
+Render Dashboard:
+Root Directory: LEAVE BLANK
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+
+If using render.yaml (Blueprint):
+rootDir: .
+
+Leaving Root Directory blank in the Render Dashboard means “use the repository root”.
+The package connects correctly because package.json is uploaded to /package.json.

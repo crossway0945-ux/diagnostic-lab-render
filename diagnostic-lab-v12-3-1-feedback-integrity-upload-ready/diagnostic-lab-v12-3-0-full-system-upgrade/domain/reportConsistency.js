@@ -101,6 +101,24 @@ export function auditReportConsistency(model = {}) {
     if (issue.evidenceValidationStatus !== "validated") findings.push(fatal("ISSUE_EVIDENCE_UNVALIDATED", `Issue ${issue.issueId} has no validated evidence assertion.`));
     if (!issue.studentActionValidation?.pass) findings.push(repairable("STUDENT_ACTION_UNSPECIFIC", `Issue ${issue.issueId} Student Action does not match its local diagnosis.`));
   }
+  const route = model.routeAssessment || {};
+  const routeFailed = ["absent", "contradicted"].includes(String(route.status || route.overallRouteStatus || ""));
+  const routeControlled = ["adequately_developed", "fully_extended"].includes(String(route.status || route.overallRouteStatus || ""));
+  const trHigh = bandHigh(model.criteriaScores?.["Task Response"]?.range);
+  if (routeFailed && Number.isFinite(trHigh) && trHigh > 5.5) {
+    findings.push(fatal("ROUTE_SCORE_CONTRADICTION", "Task Response exceeds the route-failure ceiling recorded by the canonical route assessment."));
+  }
+  if (routeControlled && Number.isFinite(trHigh) && trHigh <= 5.5 && !(route.missingRequirements || []).length) {
+    findings.push(repairable("CONTROLLED_ROUTE_SCORE_UNEXPLAINED", "Task Response is at or below 5.5 even though the canonical route is controlled and no missing requirement is recorded."));
+  }
+  const bodyRouteStatus = String(model.frameworkScores?.["Body Paragraph Route Alignment"]?.status || model.frameworkScores?.bodyRouteAlignment?.status || "");
+  if (routeFailed && /strong/i.test(bodyRouteStatus)) {
+    findings.push(fatal("ROUTE_FRAMEWORK_CONTRADICTION", "Body Route Alignment is Strong while the canonical route assessment is failed."));
+  }
+  const conclusionStatus = String(model.frameworkScores?.["Conclusion Closure"]?.status || model.frameworkScores?.conclusionClosure?.status || "");
+  if (routeFailed && /strong/i.test(conclusionStatus)) {
+    findings.push(fatal("ROUTE_CONCLUSION_CONTRADICTION", "Conclusion Closure is Strong while a required canonical route is absent or contradicted."));
+  }
   return findings;
 }
 
@@ -149,22 +167,20 @@ export function buildEvidenceBasedRepairPlan(issues = [], reportLanguage = "en",
     }));
   }
   const phases = [
-    ["Locate", (issue) => {
-      const focus = ["Example Development", "SAR Example Quality"].includes(issue.issueCategory)
-        ? "the missing affected group or wider consequence"
+    ["Notice the pattern", (issue) => {
+      const learningFocus = ["Example Development", "SAR Example Quality"].includes(issue.issueCategory)
+        ? "the missing causal mechanism or wider consequence"
         : ["Causal Mechanism", "Solution Mechanism"].includes(issue.issueCategory)
-          ? "the missing causal mechanism and wider consequence"
-          : `the validated ${issue.issueCategory} defect`;
-      return `Locate "${issue.targetSpan || issue.exactEvidence}" in ${issue.paragraphLabel} and identify ${focus}.`;
+          ? "the missing causal mechanism and its consequence"
+          : `the ${issue.issueCategory} pattern`;
+      return `Read the quoted sentence from ${issue.paragraphLabel}. Underline ${learningFocus} and explain the problem in your own words.`;
     }],
-    ["Repair", (issue) => `${issue.paragraphLabel}: ${issue.studentAction}`],
-    ["Compare", (issue) => `Compare the original and targeted revision for ${issue.issueCategory}; verify that the original route and meaning are preserved.`],
-    ["Transfer", (issue) => `Write one new sentence that applies the same ${issue.issueCategory} repair without copying the report wording.`],
-    ["Paragraph check", (issue) => `Re-read ${issue.paragraphLabel} and confirm that the repaired sentence still performs its ${issue.sentenceRole || "paragraph"} function.`],
-    ["Evidence check", (issue) => issue.revisionWithheld
-      ? `Use the exact source span in ${issue.paragraphLabel}, follow the Student Action, and resubmit before treating any rewrite as a model sentence.`
-      : `Verify the repair against the exact source span and the expected correction: "${issue.expectedCorrection || issue.targetedRevision}".`],
-    ["Final proof", (issue) => `Complete a final proofread focused on the validated ${issue.issueCategory} issue in ${issue.paragraphLabel}.`]
+    ["Practise the rule", (issue) => `Write three short examples that use the same ${issue.issueCategory} rule correctly, then read them aloud for meaning and grammar.`],
+    ["Repair the sentence", (issue) => `${issue.paragraphLabel}: ${issue.studentAction}`],
+    ["Strengthen the idea", (issue) => `Add one precise supporting detail to the repaired sentence without changing the paragraph's main claim.`],
+    ["Transfer to a new topic", (issue) => `Write one new sentence on a different IELTS topic that demonstrates accurate ${issue.issueCategory}.`],
+    ["Rebuild the paragraph", (issue) => `Re-read ${issue.paragraphLabel}. Check that the opening claim, explanation, example and consequence still form one clear line of reasoning.`],
+    ["Final learner checklist", (issue) => `Proofread the full response once for ${issue.issueCategory}, then tick each corrected sentence only after it is clear, accurate and complete.`]
   ];
   return Array.from({ length: requiredDays }, (_, index) => {
     const issue = unique[index % unique.length];
@@ -264,6 +280,11 @@ function repairable(code, message) {
 
 function normalize(value) {
   return String(value || "").normalize("NFKC").toLowerCase();
+}
+
+function bandHigh(value) {
+  const values = String(value || "").match(/\d+(?:\.\d+)?/g)?.map(Number).filter(Number.isFinite) || [];
+  return values.length ? Math.max(...values) : Number.NaN;
 }
 
 function escapeRegExp(value) {

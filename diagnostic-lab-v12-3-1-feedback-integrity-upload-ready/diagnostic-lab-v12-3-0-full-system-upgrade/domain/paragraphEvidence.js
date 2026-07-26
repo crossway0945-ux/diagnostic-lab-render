@@ -76,7 +76,23 @@ export function buildSentenceCoverageAudit(writing, taskType, feedbackCards = []
 }
 
 function splitExactSentences(value) {
-  return String(value || "").match(/[^.!?]+(?:[.!?]+["'\u2019\u201D]?|$)/gu)?.map((item) => item.trim()).filter(Boolean) || [];
+  const text = String(value || "");
+  const sentences = [];
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (!/[.!?]/.test(text[index])) continue;
+    let end = index + 1;
+    while (/["'\u2019\u201D)\]]/.test(text[end] || "")) end += 1;
+    if (end < text.length && !/\s/u.test(text[end])) continue;
+    const sentence = text.slice(start, end).trim();
+    if (sentence) sentences.push(sentence);
+    while (/\s/u.test(text[end] || "")) end += 1;
+    start = end;
+    index = end - 1;
+  }
+  const tail = text.slice(start).trim();
+  if (tail) sentences.push(tail);
+  return sentences;
 }
 
 function paragraphRole(paragraphs, index, taskType) {

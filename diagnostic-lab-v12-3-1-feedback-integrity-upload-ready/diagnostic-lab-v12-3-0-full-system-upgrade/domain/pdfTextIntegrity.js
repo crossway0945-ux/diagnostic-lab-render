@@ -2,17 +2,41 @@ import { unicodeIntegrityIssues } from "./textIntegrity.js";
 
 const MALFORMED_DECIMAL_BAND = /\bBand\s+[0-9]\.\s+[05]\b/i;
 const MISSING_SPACE_AFTER_TERMINAL = /[\p{Ll}\p{N}][.!?][\p{Lu}]/u;
+const INTERNAL_REPORT_LANGUAGE = /\b(?:source|target|evidence)\s+offsets?\b|\bexact source span\b|\bvalidated (?:span|occurrence|issue)\b|\b(?:body_topic_sentence|thesis_route|cause_route|solution_route|view_route|paragraph_closing_sentence)\b/i;
+const SEMANTIC_HEADINGS = Object.freeze([
+  "Estimated Band Range",
+  "Executive Summary",
+  "IELTS Criteria Breakdown",
+  "Detailed Feedback",
+  "Repair Plan"
+]);
 
-export function pdfTextIntegrityIssues({ extractedText = "", savedReportText = "", minimumParity = 0.96 } = {}) {
+export function pdfTextIntegrityIssues({ extractedText = "", savedReportText = "", minimumParity = 0.96, semanticAnchors = [] } = {}) {
   const extracted = String(extractedText || "");
   const expected = String(savedReportText || "");
   const issues = [...unicodeIntegrityIssues(extracted, { studentFacing: true })];
   if (MALFORMED_DECIMAL_BAND.test(extracted)) issues.push("MALFORMED_DECIMAL_BAND");
   if (MISSING_SPACE_AFTER_TERMINAL.test(extracted)) issues.push("MISSING_SPACE_AFTER_TERMINAL_PUNCTUATION");
   if (containsCorruptedHyphenation(extracted)) issues.push("CORRUPTED_HYPHENATION");
+  if (INTERNAL_REPORT_LANGUAGE.test(extracted)) issues.push("PDF_INTERNAL_REPORT_LANGUAGE");
   const parity = textParity(expected, extracted);
   if (expected.trim() && parity.ratio < minimumParity) issues.push("PDF_SAVED_REPORT_TEXT_PARITY_FAILED");
-  return { issues: [...new Set(issues)], parity };
+  const semanticParity = semanticReportParity(expected, extracted, semanticAnchors);
+  if (!semanticParity.pass) issues.push("PDF_WEB_SEMANTIC_PARITY_FAILED");
+  return { issues: [...new Set(issues)], parity, semanticParity };
+}
+
+export function semanticReportParity(expected = "", actual = "", semanticAnchors = []) {
+  const source = String(expected || "");
+  const rendered = String(actual || "");
+  const explicit = Array.isArray(semanticAnchors) ? semanticAnchors.map(String).filter(Boolean) : [];
+  const anchors = [...new Set([
+    ...explicit,
+    ...SEMANTIC_HEADINGS.filter((heading) => source.toLowerCase().includes(heading.toLowerCase())),
+    ...(source.match(/\b(?:Task Response|Task Achievement|Coherence & Cohesion|Lexical Resource|Grammatical Range & Accuracy)\b/gi) || [])
+  ])];
+  const missing = anchors.filter((anchor) => !normalizeComparable(rendered).includes(normalizeComparable(anchor)));
+  return { pass: missing.length === 0, checked: anchors.length, missing };
 }
 
 export function assertPdfTextIntegrity(input = {}) {
@@ -54,6 +78,10 @@ function comparableTokens(value) {
     .replace(/[\u2010-\u2015\u2212]/gu, "-")
     .toLowerCase()
     .match(/[\p{L}\p{N}]+(?:[.'-][\p{L}\p{N}]+)*/gu) || [];
+}
+
+function normalizeComparable(value) {
+  return String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function tokenCounts(tokens) {

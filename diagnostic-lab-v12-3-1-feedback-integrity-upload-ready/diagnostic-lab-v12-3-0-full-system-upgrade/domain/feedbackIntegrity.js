@@ -150,7 +150,10 @@ export function buildFeedbackIntegrityModel({
   topIssues = [],
   paragraphFeedback = [],
   mainScoreLimitingFactor = "",
-  mostUrgentRepair = ""
+  mostUrgentRepair = "",
+  routeAssessment = null,
+  criteriaScores = {},
+  frameworkScores = {}
 } = {}) {
   const paragraphs = segmentStudentResponse(writing, taskType);
   const records = paragraphs.flatMap((paragraph) => paragraph.sentences.map((sentence, sentenceIndex) => ({
@@ -199,7 +202,7 @@ export function buildFeedbackIntegrityModel({
       feedbackCardId: `card-${canonicalIssues.findIndex((candidate) => candidate.issueId === issue.issueId) + 1}`
     }));
   const conclusionFunction = assessConclusionFunction(paragraphs, taskType);
-  const paragraphCoverage = buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType, conclusionFunction });
+  const paragraphCoverage = buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType, conclusionFunction, routeAssessment });
   const thesisDimensions = assessThesisDimensions({ taskType, essayType, prompt, paragraphs, canonicalIssues });
   const model = {
     issues: canonicalIssues,
@@ -207,6 +210,9 @@ export function buildFeedbackIntegrityModel({
     paragraphCoverage,
     conclusionFunction,
     thesisDimensions,
+    routeAssessment,
+    criteriaScores,
+    frameworkScores,
     repairs: [
       ...canonicalIssues.flatMap((issue) => (issue.integrityRepairs || []).map((repair) => ({ ...repair, issueId: issue.issueId }))),
       ...executiveSummary.repairedClaims.map((repair) => ({ code: "SUMMARY_CLAIM_REPAIRED", ...repair }))
@@ -498,9 +504,9 @@ function buildDeterministicEvidenceCandidates(records = []) {
       severity: "Moderate",
       exactEvidence: record.exactText,
       exactSentence: record.exactText,
-      diagnosis: `${diagnosis} This validated occurrence is in ${record.location}.`,
-      whyItLimitsBand: `${diagnosis} The repair is required at the validated span in ${record.location}.`,
-      studentAction: `In ${record.location}, replace "${defect.targetSpan}" with "${defect.correctedSpan}" at the validated source offset.`,
+      diagnosis: `${diagnosis} This occurrence is in ${record.location}.`,
+      whyItLimitsBand: `${diagnosis} This local repair is required in ${record.location}.`,
+      studentAction: `In ${record.location}, replace "${defect.targetSpan}" with "${defect.correctedSpan}".`,
       targetedRevision: corrected,
       whyRevisionIsStronger: `In ${record.location}, the revision changes "${defect.targetSpan}" to "${defect.correctedSpan}" while preserving the sentence's original information and reporting function.`,
       revisionType: "Minimal Correction",
@@ -928,7 +934,7 @@ function projectTopIssue(issue) {
 }
 
 function selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType, executiveText = "") {
-  const limit = taskType === "Task 2" ? 5 : 3;
+  const limit = 3;
   const selected = [];
   for (const top of Array.isArray(topIssues) ? topIssues : []) {
     const match = canonicalIssues.find((issue) => !selected.includes(issue.issueId) && (
@@ -1053,7 +1059,7 @@ export function executiveParagraphLabels(text) {
   return [...new Set(labels)];
 }
 
-function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType, conclusionFunction = null }) {
+function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType, conclusionFunction = null, routeAssessment = null }) {
   const guidance = Array.isArray(paragraphFeedback) ? paragraphFeedback : [];
   return paragraphs.map((paragraph) => {
     const issues = canonicalIssues.filter((issue) => issue.paragraphLabel === paragraph.role);
@@ -1066,7 +1072,11 @@ function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback
       (Array.isArray(issue.unresolvedTargets) && issue.unresolvedTargets.length > 0)
     );
     const languageOnly = issues.length > 0 && issues.every((issue) => LANGUAGE_ISSUE_CATEGORIES.includes(issue.issueCategory));
-    const routeIssue = issues.some((issue) => ["Body Route Alignment", "Thesis Route Clarity", "Position Clarity"].includes(issue.issueCategory));
+    const routeIssue = canonicalRouteRepairNeeded(paragraph.role, routeAssessment) ||
+      issues.some((issue) =>
+        ["Body Route Alignment", "Thesis Route Clarity", "Position Clarity"].includes(issue.issueCategory) &&
+        issue.evidenceAssertionType === "route_gap"
+      );
     const base = capParagraphStatus(paragraphStatus(primary?.severity), developmentGap);
     const status = issues.length
       ? paragraphDimensionStatus(issues, paragraph.role, conclusionFunction)
@@ -1089,6 +1099,20 @@ function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback
       exactEvidence: paragraph.sentences[0]?.exactText || paragraph.exactText
     };
   });
+}
+
+function canonicalRouteRepairNeeded(paragraphRole, routeAssessment) {
+  if (!routeAssessment || typeof routeAssessment !== "object") return false;
+  const failed = (value) => ["absent", "contradicted"].includes(String(value || ""));
+  if (paragraphRole === "Introduction") return failed(routeAssessment.thesisRouteStatus);
+  if (paragraphRole === "Conclusion") {
+    const conclusion = (routeAssessment.requirements || []).find((item) => item.id === "conclusion");
+    return failed(conclusion?.status);
+  }
+  const bodyIndex = Number(String(paragraphRole || "").match(/Body Paragraph\s+(\d+)/i)?.[1] || 0);
+  if (!bodyIndex) return false;
+  const route = (routeAssessment.bodyRoutes || []).find((item) => Number(item.index) === bodyIndex);
+  return failed(route?.alignmentStatus || route?.status);
 }
 
 function findEvidenceRecord(evidence, records) {
@@ -1414,6 +1438,15 @@ function escapeRegExp(value) {
 
 function sentenceRoleDescription(role) {
   const labels = {
+    background: "Introduces background context for the task.",
+    paraphrase: "Paraphrases the task in the introduction.",
+    position: "States the writer's position.",
+    thesis_route: "States the required response routes.",
+    cause_route: "States the cause route developed by the response.",
+    solution_route: "States the solution route developed by the response.",
+    view_route: "States the views that the response will discuss.",
+    answer_to_question_1: "Answers the first explicit question.",
+    answer_to_question_2: "Answers the second explicit question.",
     introduction_background: "Introduces background context for the task.",
     introduction_paraphrase: "Paraphrases the task in the introduction.",
     thesis: "States the response position or controlling route.",

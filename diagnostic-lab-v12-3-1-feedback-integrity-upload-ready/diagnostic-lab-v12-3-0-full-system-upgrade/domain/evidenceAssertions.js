@@ -493,87 +493,18 @@ export function repairDeterministicEvidenceDefects(evidence = "") {
 }
 
 export function detectAgreementDefects(evidence = "", absoluteStart = 0) {
-  const text = String(evidence || "");
-  const defects = [];
-  const singular = /\b((?:the|this|that|each|every)\s+(?:[a-z-]+\s+){0,2}[a-z-]+)\s+(are|were|have)\b/giu;
-  for (const match of text.matchAll(singular)) {
-    const subject = match[1];
-    // A relative-clause pronoun controls its own verb. It must not be folded
-    // into the preceding noun phrase (for example, "the problems we have").
-    if (/\b(?:i|you|we|they|he|she|it|who|which|that)\b/i.test(subject)) continue;
-    if (/\b(?:people|children|men|women|data|criteria|media|police|cattle)\b/i.test(subject) || /s$/i.test(subject.trim())) continue;
-    const replacementVerb = ({ are: "is", were: "was", have: "has" })[match[2].toLowerCase()];
-    const relativeVerbStart = (match.index ?? 0) + match[0].lastIndexOf(match[2]);
-    defects.push({
-      assertionType: "agreement",
-      targetSpan: match[2],
-      targetOffsetStart: absoluteStart + relativeVerbStart,
-      targetOffsetEnd: absoluteStart + relativeVerbStart + match[2].length,
-      surroundingText: contextWindow(text, relativeVerbStart, relativeVerbStart + match[2].length),
-      expectedCorrection: replacementVerb,
-      correctedSpan: replacementVerb,
-      proof: `The singular subject "${subject}" requires "${replacementVerb}" rather than "${match[2]}".`
-    });
-  }
-  const plural = /\b((?:the|these|those|many|several|both|all)\s+(?:[a-z-]+\s+){0,2}(?:[a-z-]+s|people|children|men|women|data|criteria))\s+(is|was|has)\b/giu;
-  for (const match of text.matchAll(plural)) {
-    if (/\b(?:i|you|we|they|he|she|it|who|which|that)\b/i.test(match[1])) continue;
-    if (/\bof\b/i.test(match[1])) continue;
-    const replacementVerb = ({ is: "are", was: "were", has: "have" })[match[2].toLowerCase()];
-    const relativeVerbStart = (match.index ?? 0) + match[0].lastIndexOf(match[2]);
-    defects.push({
-      assertionType: "agreement",
-      targetSpan: match[2],
-      targetOffsetStart: absoluteStart + relativeVerbStart,
-      targetOffsetEnd: absoluteStart + relativeVerbStart + match[2].length,
-      surroundingText: contextWindow(text, relativeVerbStart, relativeVerbStart + match[2].length),
-      expectedCorrection: replacementVerb,
-      correctedSpan: replacementVerb,
-      proof: `The plural subject "${match[1]}" requires "${replacementVerb}" rather than "${match[2]}".`
-    });
-  }
-  const pronounAgreement = /\b(i|you|we|they|he|she|it)\s+(has|have)\b/giu;
-  for (const match of text.matchAll(pronounAgreement)) {
-    const subject = match[1].toLowerCase();
-    const verb = match[2].toLowerCase();
-    const expected = /^(?:he|she|it)$/.test(subject) ? "has" : "have";
-    if (verb === expected) continue;
-    const relativeVerbStart = (match.index ?? 0) + match[0].lastIndexOf(match[2]);
-    defects.push({
-      assertionType: "agreement",
-      targetSpan: match[2],
-      targetOffsetStart: absoluteStart + relativeVerbStart,
-      targetOffsetEnd: absoluteStart + relativeVerbStart + match[2].length,
-      surroundingText: contextWindow(text, relativeVerbStart, relativeVerbStart + match[2].length),
-      expectedCorrection: expected,
-      correctedSpan: expected,
-      proof: `The pronoun subject "${match[1]}" requires "${expected}" rather than "${match[2]}".`
-    });
-  }
-  const singularHeadWithBaseVerb = /\b((?:population|workforce|government|generation|industry|economy|technology|research|number|amount|quality|supply|market|country|company)(?:\s+of\s+(?:[a-z-]+\s+){0,3}[a-z-]+)?)\s+(continue|cause|create|increase|reduce|lead|result|provide|support|drive|help|allow|make|need|have|do)\b/giu;
-  for (const match of text.matchAll(singularHeadWithBaseVerb)) {
-    const verb = match[2];
-    const corrected = verb === "have" ? "has" : verb === "do" ? "does" : /[sxz]$|(?:ch|sh)$/.test(verb) ? `${verb}es` : `${verb}s`;
-    const relativeVerbStart = (match.index ?? 0) + match[0].lastIndexOf(verb);
-    defects.push({
-      assertionType: "agreement",
-      targetSpan: verb,
-      targetOffsetStart: absoluteStart + relativeVerbStart,
-      targetOffsetEnd: absoluteStart + relativeVerbStart + verb.length,
-      sourceOffsetStart: absoluteStart + relativeVerbStart,
-      sourceOffsetEnd: absoluteStart + relativeVerbStart + verb.length,
-      surroundingText: contextWindow(text, relativeVerbStart, relativeVerbStart + verb.length),
-      expectedCorrection: corrected,
-      correctedSpan: corrected,
-      proof: `The singular head "${match[1]}" requires the third-person singular verb "${corrected}".`
-    });
-  }
-  return uniqueAssertions(defects.map((item) => ({
-    ...item,
-    sourceOffsetStart: item.targetOffsetStart,
-    sourceOffsetEnd: item.targetOffsetEnd
-  })));
+  return detectSyntacticHeadAgreementDefects(evidence, absoluteStart)
+    .map((item) => ({
+      ...item,
+      surroundingText: contextWindow(
+        String(evidence || ""),
+        item.targetOffsetStart - absoluteStart,
+        item.targetOffsetEnd - absoluteStart
+      ),
+      validatorVersion: AGREEMENT_VALIDATOR_VERSION
+    }));
 }
+
 
 export function locateEvidenceSpan(writing = "", evidence = "") {
   const source = String(writing || "");
@@ -773,3 +704,7 @@ function normalizeForComparison(value) {
 function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+import {
+  AGREEMENT_VALIDATOR_VERSION,
+  detectSyntacticHeadAgreementDefects
+} from "./agreementValidator.js";

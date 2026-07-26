@@ -15,6 +15,10 @@ export const STUDENT_FORBIDDEN_PATTERNS = Object.freeze([
   /validation trace/i,
   /migration evidence/i,
   /internal scoring proof/i,
+  /\b(?:source|target|evidence)\s+offsets?\b/i,
+  /\bexact source span\b/i,
+  /\bvalidated (?:span|occurrence|issue)\b/i,
+  /\b(?:body_topic_sentence|thesis_route|cause_route|solution_route|view_route|paragraph_closing_sentence)\b/i,
   /Progress policy:/i,
   /legacy-[a-f0-9]/i,
   /Ctrl\s*\+\s*M/i

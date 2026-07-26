@@ -15,7 +15,7 @@ import { startAnalysisWorker } from "../services/analysisWorker.js";
 import { createRenderJobStore } from "../services/renderJobStore.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.6.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.7.0");
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;

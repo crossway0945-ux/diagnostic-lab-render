@@ -10,9 +10,9 @@ await mkdir(outputDir, { recursive: true });
 
 const fixtures = [
   {
-    student: "Sun V12.3.1 Final QA",
+    student: "Regression Thai V12.6.0 RC2",
     language: "th",
-    filename: "sun-thai-v12-3-1.pdf",
+    filename: "regression-thai-v12-6-0.pdf",
     prompt: "Towns and cities should be divided into zones so that all the schools are in one area, all the shopping malls are located together and all the industrial sites are situated close to each other.\n\nTo what extent do you agree that urban areas should be split into distinct zones?",
     writing: [
       "Some people may argue that towns and cities should be separated into zones, so all the same places are in the same area. However, I strongly disagree with the statement due to the lack of travel accessibility and traffic congestion.",
@@ -22,9 +22,9 @@ const fixtures = [
     ].join("\n\n")
   },
   {
-    student: "Yuki V12.3.1 Final QA",
+    student: "Regression English V12.6.0 RC2",
     language: "en",
-    filename: "yuki-english-v12-3-1.pdf",
+    filename: "regression-english-v12-6-0.pdf",
     prompt: "Some people think that spending a lot of money on space exploration is not worth it, and that this money should be used to solve problems on Earth instead. To what extent do you agree or disagree?",
     writing: [
       "Some people think that spending a lot of money on space exploration is not worth it, and that this money should be used to solve problems on Earth instead. While the opinion is valid, I partly disagree because space research also brings new technology, useful knowledge, and future opportunities that can help improve life on Earth in the long run.",

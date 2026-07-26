@@ -1,0 +1,122 @@
+{
+  "corpusVersion": "v12.6.0",
+  "purpose": "Topic-neutral semantic acceptance matrix for evidence integrity, route classification, revision fidelity and Task 1 visual coverage.",
+  "task2": [
+    { "id": "t2-opinion-strong", "family": "Opinion", "profile": "strong", "expectedRoutes": ["position", "reason"] },
+    { "id": "t2-opinion-weak", "family": "Opinion", "profile": "weak-language", "expectedRoutes": ["position", "reason"] },
+    { "id": "t2-partial-agreement", "family": "Opinion", "profile": "partial-agreement", "expectedRoutes": ["position", "reason"] },
+    { "id": "t2-discuss-both", "family": "Discuss Both Views", "profile": "balanced", "expectedRoutes": ["view", "position"] },
+    { "id": "t2-outweigh", "family": "Outweigh", "profile": "balanced", "expectedRoutes": ["advantage", "disadvantage", "position"] },
+    { "id": "t2-problem-solution", "family": "Problem and Solution", "profile": "balanced", "expectedRoutes": ["cause", "solution"] },
+    { "id": "t2-cause-solution", "family": "Problem and Solution", "profile": "cause-solution", "expectedRoutes": ["cause", "solution"] },
+    { "id": "t2-cause-effect", "family": "Cause and Effect", "profile": "balanced", "expectedRoutes": ["cause", "effect"] },
+    { "id": "t2-direct-questions", "family": "Direct Questions", "profile": "two-answers", "expectedRoutes": ["answer_1", "answer_2"] },
+    { "id": "t2-positive-negative", "family": "Positive or Negative Development", "profile": "negative", "expectedRoutes": ["position"] },
+    { "id": "t2-hybrid", "family": "Hybrid", "profile": "single-answer", "expectedRoutes": ["answer_1"] },
+    { "id": "t2-underlength", "family": "Opinion", "profile": "underlength", "expectedMajorIssue": "Prompt Coverage" },
+    { "id": "t2-incomplete-ending", "family": "Opinion", "profile": "unfinished", "expectedMajorIssue": "Sentence Completion" },
+    { "id": "t2-contradictory-route", "family": "Opinion", "profile": "contradictory", "expectedThesisStatus": "Route Conflicted" },
+    { "id": "t2-strong-route-weak-language", "family": "Problem and Solution", "profile": "language-weak", "expectedRouteStructure": "present" },
+    { "id": "t2-strong-language-weak-response", "family": "Opinion", "profile": "response-weak", "expectedMajorIssue": "Prompt Coverage" },
+    { "id": "t2-high-band-minor", "family": "Opinion", "profile": "minor-language-repair", "expectedRouteStructure": "present" },
+    { "id": "historical-a", "family": "Opinion", "profile": "historical-regression", "expectedInvariant": "no-false-punctuation" },
+    { "id": "historical-b", "family": "Problem and Solution", "profile": "historical-regression", "expectedInvariant": "revision-fidelity" },
+    { "id": "historical-c", "family": "Opinion", "profile": "historical-regression", "expectedInvariant": "summary-evidence-linkage" }
+  ],
+  "task1": [
+    { "id": "t1-line", "visualType": "Line Graph", "expectedRoles": ["introduction_paraphrase", "overview", "comparison", "data_sentence"] },
+    { "id": "t1-bar", "visualType": "Bar Chart", "expectedRoles": ["introduction_paraphrase", "overview", "comparison", "data_sentence"] },
+    { "id": "t1-pie", "visualType": "Pie Chart", "expectedRoles": ["introduction_paraphrase", "overview", "comparison", "data_sentence"] },
+    { "id": "t1-table", "visualType": "Table", "expectedRoles": ["introduction_paraphrase", "overview", "comparison", "data_sentence"] },
+    { "id": "t1-map", "visualType": "Map", "expectedRoles": ["introduction_paraphrase", "overview", "map_change"] },
+    { "id": "t1-map-invented-purpose", "visualType": "Map", "expectedMajorIssue": "Map Change Accuracy" },
+    { "id": "t1-map-wrong-transform", "visualType": "Map", "expectedMajorIssue": "Map Change Accuracy" },
+    { "id": "t1-process", "visualType": "Process Diagram", "expectedRoles": ["introduction_paraphrase", "overview", "process_stage", "process_endpoint"] },
+    { "id": "t1-process-wrong-endpoint", "visualType": "Process Diagram", "expectedMajorIssue": "Process Endpoint" },
+    { "id": "t1-natural-cycle", "visualType": "Natural Cycle", "expectedRoles": ["overview", "process_stage", "process_endpoint"] },
+    { "id": "t1-mechanism", "visualType": "Structural Diagram", "expectedRoles": ["overview", "process_stage"] },
+    { "id": "t1-mixed", "visualType": "Mixed Graph", "expectedMajorIssue": "Mixed-Visual Coverage" },
+    { "id": "t1-combination", "visualType": "Combination Graph", "expectedMajorIssue": "Mixed-Visual Coverage" },
+    { "id": "t1-multiple", "visualType": "Multiple Graphs", "expectedMajorIssue": "Mixed-Visual Coverage" },
+    { "id": "t1-missing-data", "visualType": "Table", "expectedMajorIssue": "Data Selection" },
+    { "id": "t1-inaccurate-data", "visualType": "Bar Chart", "expectedMajorIssue": "Data Accuracy" },
+    { "id": "t1-minor-data", "visualType": "Line Graph", "expectedMajorIssue": "Magnitude Precision" },
+    { "id": "t1-overview-omission", "visualType": "Pie Chart", "expectedMajorIssue": "Overview Quality" },
+    { "id": "t1-wrong-visual-noun", "visualType": "Table", "expectedMajorIssue": "Visual Understanding" },
+    { "id": "t1-objective-reporting", "visualType": "Map", "expectedMajorIssue": "Objective Reporting" }
+  ],
+  "providerCases": [
+    {
+      "id": "provider-opinion-neutral",
+      "taskType": "Task 2",
+      "essayType": "Opinion Essay",
+      "prompt": "Some employers allow staff to work remotely. To what extent do you agree that this arrangement benefits both organisations and workers?",
+      "writing": "Remote work can benefit organisations and employees when it is managed carefully. I agree because it can reduce operating costs and give workers greater control over commuting time.\n\nFirst, organisations can spend less on office space and utilities. When fewer employees need permanent desks, companies can redirect part of their budget to training and digital systems. This can improve productivity without reducing service quality.\n\nSecond, workers can use the time previously spent commuting for rest or family responsibilities. For example, an employee who saves an hour each day may begin work with more energy and concentrate for longer. This benefit is strongest when teams still have clear communication routines.\n\nIn conclusion, I agree that remote work can help both sides because it lowers some business costs and improves how employees use their time.",
+      "reportLanguages": ["en", "th"]
+    },
+    {
+      "id": "provider-problem-solution",
+      "taskType": "Task 2",
+      "essayType": "Problem & Solution",
+      "prompt": "Many communities produce more household waste than local services can process. What causes this problem, and what measures can address it?",
+      "writing": "The growing volume of household waste is mainly caused by disposable consumption and weak sorting systems, while coordinated collection and producer responsibility can reduce the pressure.\n\nOne cause is the increasing use of products designed to be discarded quickly. Households receive food, deliveries and everyday goods in several layers of packaging, so the amount thrown away rises even when the quantity consumed remains stable. This pattern is reinforced when reusable alternatives are inconvenient or more expensive.\n\nA practical solution is to make separation simple and consistent. Local authorities can provide clearly labelled containers and collect recyclable material on predictable days, while manufacturers can be required to finance the recovery of packaging. When residents understand the system and producers bear part of the cost, less mixed waste reaches disposal sites.\n\nIn conclusion, disposable packaging and inconvenient sorting increase household waste, but reliable collection and producer-funded recovery can address both causes.",
+      "reportLanguages": ["en"]
+    },
+    {
+      "id": "provider-discuss-both",
+      "taskType": "Task 2",
+      "essayType": "Discuss Both Views",
+      "prompt": "Some people believe university education should focus on employment skills, while others think it should provide broad intellectual development. Discuss both views and give your own opinion.",
+      "writing": "Some people want universities to concentrate on job skills, whereas others value broad intellectual development. Both aims matter, but I believe degree programmes should combine them rather than choose only one.\n\nSupporters of employment-focused courses argue that graduates need practical competence. Employers often expect new staff to use specialist software, interpret professional information and work effectively in teams. Courses that include projects and placements can therefore shorten the transition from study to work.\n\nThe opposing view is that universities should develop reasoning beyond one occupation. Industries change, so a narrow technical skill may lose value, while the ability to evaluate evidence and learn independently remains useful. Subjects outside a student's immediate career can also improve judgement and communication.\n\nIn my view, the strongest programmes connect these purposes. Students should learn the methods required in their field while also examining wider ideas and practising independent research. In conclusion, employability deserves serious attention, but broad intellectual development makes professional knowledge more adaptable.",
+      "reportLanguages": ["en"]
+    },
+    {
+      "id": "provider-task2-weak",
+      "taskType": "Task 2",
+      "essayType": "Opinion Essay",
+      "prompt": "Some cities charge private vehicles to enter busy central areas. To what extent do you agree with this policy?",
+      "writing": "Charging cars in city centres is discussed in many places. I agree because it can help cities.\n\nFirst, there are many cars and this is a problem. People drive at the same time and roads are busy. A charge may make some people choose another way.\n\nSecond, the money can be useful. The city can spend it on services, but this needs good management. For example, officials can improve stations.\n\nIn conclusion, I agree with the charge because fewer cars and more money are beneficial.",
+      "reportLanguages": ["en"]
+    },
+    {
+      "id": "provider-task2-strong",
+      "taskType": "Task 2",
+      "essayType": "Opinion Essay",
+      "prompt": "Some employers allow staff to choose when they begin and finish work. To what extent do you agree that flexible hours are beneficial?",
+      "writing": "Flexible working hours can benefit both employees and organisations when teams retain clear periods for cooperation. I strongly agree because this arrangement can reduce wasted commuting time and allow people to work when they are most effective.\n\nFirst, flexible start times can reduce the personal cost of travelling during the busiest periods. An employee who begins earlier may avoid crowded roads or services, arrive with more energy and finish in time for family responsibilities. Because the benefit concerns timing rather than fewer working hours, the organisation can preserve output while the worker gains greater control.\n\nSecond, flexibility can improve concentration. People differ in when they perform demanding tasks best, so a limited choice of schedule can help them reserve their most alert hours for complex work. For example, a team might require shared availability from late morning to mid-afternoon but permit individual work outside that window. This protects communication while allowing focused work.\n\nIn conclusion, I strongly agree that flexible hours are beneficial because they reduce avoidable travel pressure and help employees use their productive periods more effectively without removing organisational coordination.",
+      "reportLanguages": ["en", "th"]
+    },
+    {
+      "id": "provider-chart",
+      "taskType": "Task 1",
+      "visualType": "Bar Chart",
+      "prompt": "The bar chart compares recycling rates in three cities in 2010 and 2020. City A rose from 30% to 55%, City B rose from 50% to 60%, and City C fell from 40% to 35%.",
+      "writing": "The bar chart compares the percentages of waste recycled in three cities in 2010 and 2020.\n\nOverall, recycling increased in Cities A and B, whereas City C recorded a decline. City B had the highest rate in both years, although City A experienced the largest rise.\n\nIn 2010, City B recycled 50% of its waste, compared with 40% in City C and 30% in City A. The gap between the highest and lowest cities was therefore 20 percentage points.\n\nBy 2020, the figure for City B had climbed to 60%, while City A reached 55%. In contrast, City C fell by five percentage points to 35%, leaving it well below the other two cities.",
+      "reportLanguages": ["en"]
+    },
+    {
+      "id": "provider-map",
+      "taskType": "Task 1",
+      "visualType": "Map",
+      "prompt": "The maps show a riverside district in 1990 and 2020. A warehouse in the north was replaced by apartments, a small park in the east was expanded, a footbridge was built across the river, and the southern market remained unchanged.",
+      "writing": "The maps compare the layout of a riverside district in 1990 and 2020.\n\nOverall, the district became more residential and easier to cross, while its eastern green space grew. The market in the south was the only major feature that remained unchanged.\n\nIn the north, the warehouse shown in 1990 was replaced by an apartment complex by 2020. A footbridge was also constructed across the river, linking the northern area with the land on the opposite bank.\n\nMeanwhile, the small park in the east was expanded considerably. By contrast, the market continued to occupy the same southern site, and no replacement was shown there.",
+      "reportLanguages": ["en"]
+    },
+    {
+      "id": "provider-mixed",
+      "taskType": "Task 1",
+      "visualType": "Mixed Graph",
+      "prompt": "A line graph shows regional electricity demand rising from 20 GW in 2010 to 32 GW in 2020. A table shows generating capacity rising from 30 GW to 35 GW, while the renewable share increases from 15% to 40%.",
+      "writing": "The line graph compares regional electricity demand in 2010 and 2020, while the table presents generating capacity and the renewable share in the same years.\n\nOverall, both demand and capacity increased, but demand grew much faster and moved closer to the available capacity. Renewable sources also accounted for a substantially larger share in 2020.\n\nElectricity demand rose from 20 gigawatts in 2010 to 32 gigawatts in 2020, an increase of 12 gigawatts. Over the same period, generating capacity grew by only five gigawatts, from 30 to 35.\n\nConsequently, the spare margin narrowed from 10 gigawatts to three. The table also shows that the renewable share climbed from 15% to 40%, a rise of 25 percentage points.",
+      "reportLanguages": ["en"]
+    },
+    {
+      "id": "provider-process-neutral",
+      "taskType": "Task 1",
+      "visualType": "Process Diagram",
+      "prompt": "The diagram shows a linear manufacturing process from raw material collection to a packaged product.",
+      "writing": "The diagram illustrates the stages used to manufacture a packaged product from collected raw material.\n\nOverall, it is a linear process that begins with collection and ends when the finished item is packaged for delivery.\n\nFirst, the material is collected and cleaned before it is transferred to a processing chamber. It is then heated and shaped into the required form.\n\nFinally, the shaped items are cooled, inspected and placed into packages for delivery.",
+      "reportLanguages": ["en"]
+    }
+  ]
+}

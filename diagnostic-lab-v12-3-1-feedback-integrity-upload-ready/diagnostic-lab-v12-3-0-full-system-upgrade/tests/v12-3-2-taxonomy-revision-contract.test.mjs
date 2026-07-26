@@ -19,10 +19,10 @@ import { projectCanonicalTask2Framework } from "../domain/canonicalAnalysis.js";
 import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.5.0");
-assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.5");
-assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.4.0");
-assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.4.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.6.0");
+assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.6.0");
+assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.6.0");
+assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.6.0");
 
 // --- Single authoritative taxonomy contract ---
 for (const category of ["Tense Control", "Causal Mechanism", "Word Choice", "Subject–Verb Agreement", "Modal + Base Verb", "Pronoun Control", "Topic Sentence Strength", "Paragraph Closure", "Introduction Precision", "Mixed-Visual Coverage"]) {
@@ -45,8 +45,8 @@ assert.equal(detectDevelopmentSignal("a countable noun is used without the plura
 
 const task2Writing = [
   "Urban zoning is often presented as an efficient planning policy. However, I strongly disagree because it creates longer journeys and concentrated traffic.",
-  "First, strict zoning can make essential journeys unnecessarily long. Families may live far from schools and workplaces because these services are concentrated elsewhere. For example, students may travel for hours, so they arrive tired and learn less effectively. Therefore, this arrangement imposes avoidable travel costs on families.",
-  "Furthermore, putting similar destinations in one district can intensify congestion. Restaurants and shopping centres attract visitors at similar times. For example, commuters converge on the same roads during meal periods, so junctions become overloaded and delays spread to nearby neighbourhoods. Therefore, concentrated destinations can disrupt movement across the wider city.",
+  "First, the clusterization of a specific place can make essential journeys unnecessarily long. Families are living far from schools and workplaces because these services are concentrated elsewhere. For example, students may travel for hours, so they arrive tired and learn less effectively. Therefore, this arrangement requires an equipment for every family.",
+  "Furthermore, the place of similar destinations in one district can intensify congestion. The district follows effective policy when restaurants and shopping centres attract visitors at similar times. For example, commuters converge on the same roads during meal periods, resulting in a severe congestion. Therefore, concentrated destinations can disrupt movement across the wider city.",
   "In conclusion, I firmly disagree because strict zoning creates longer journeys and wider traffic congestion."
 ].join("\n\n");
 
@@ -81,7 +81,7 @@ const genuineArticleError = {
   exactSentence: body2[1],
   whyItLimitsBand: "The article is missing before the singular countable noun in this comparison.",
   kruPomDiagnosis: "Add the required article without changing the sentence's reporting function.",
-  targetedRevision: "Restaurants and shopping centres attract a wide range of visitors at similar times.",
+  targetedRevision: "The district follows an effective policy when restaurants and shopping centres attract visitors at similar times.",
   revisionType: "Minimal Correction",
   studentAction: "Check singular countable nouns for a required article."
 };
@@ -123,7 +123,7 @@ const genuineCountability = {
   exactSentence: body1[3],
   whyItLimitsBand: "A countable noun is used without the plural form.",
   kruPomDiagnosis: "Repair only the countability slip and keep the link-back function unchanged.",
-  targetedRevision: "Therefore, this arrangement imposes avoidable travel costs on families across the city.",
+  targetedRevision: "Therefore, this arrangement requires equipment for every family.",
   revisionType: "Minimal Correction",
   revisionIntegrity: { diagnosedCategories: ["countability"], originalIssueCategories: ["countability"] },
   studentAction: "Check countable nouns for the plural form."
@@ -138,7 +138,7 @@ const mechanismUnderCountabilityHeading = {
   exactSentence: body2[2],
   whyItLimitsBand: "The causal mechanism and the affected group are unclear, so the example does not yet prove the congestion claim. A countability slip also appears in this sentence.",
   kruPomDiagnosis: "Complete the causal chain from concentrated destinations to congestion and name who is affected.",
-  targetedRevision: `${body2[2]} This happens because journeys concentrate at the same peak periods, so traffic volume rises on surrounding roads and commuters across the district face longer delays.`,
+  targetedRevision: `${body2[2].replace("a severe congestion", "severe congestion")} This happens because journeys concentrate at the same peak periods, so traffic volume rises on surrounding roads and commuters across the district face longer delays.`,
   revisionType: "Route-Preserving Revision",
   revisionIntegrity: { diagnosedCategories: ["countability"], originalIssueCategories: ["countability"] },
   studentAction: "Complete the causal chain and name the affected group before polishing single words."
@@ -216,12 +216,14 @@ const partialModel = buildFeedbackIntegrityModel({
   topIssues: []
 });
 const partialIssue = partialModel.issues[0];
-assert.equal(partialIssue.revisionAlignmentStatus, "partial-repair");
+assert.equal(partialIssue.revisionAlignmentStatus, "withheld");
 assert.equal(partialIssue.revisionAlignmentPass, false);
+assert.equal(partialIssue.revisionWithheld, true);
+assert.equal(partialIssue.revisionType, "Revision Unavailable");
 assert.ok(partialIssue.unresolvedTargets.includes("mechanism"));
-assert.match(partialIssue.revisionLimitationNote, /still require your own rewrite/i);
+assert.match(partialIssue.revisionLimitationNote, /withheld|own rewrite/i);
 const partialAudit = auditFeedbackIntegrity(partialModel, task2Writing);
-assert.ok(partialAudit.some((finding) => finding.code === "REVISION_TARGETS_UNRESOLVED" && finding.severity === "repairable"));
+assert.ok(partialIssue.integrityRepairs.some((finding) => finding.code === "REVISION_WITHHELD"));
 assert.deepEqual(validateFeedbackIntegrity(partialModel, task2Writing), [], "a repairable revision gap must not block the report");
 
 // --- evaluateRevisionAlignment contract ---
@@ -279,7 +281,10 @@ assert.ok(
   storedAudit.some((finding) => finding.code === "CATEGORY_DIAGNOSIS_CONFLICT" && finding.severity === "repairable"),
   "a language category with a development diagnosis must be detected by the contract"
 );
-assert.deepEqual(validateFeedbackIntegrity(storedContractModel, task2Writing), []);
+assert.ok(
+  validateFeedbackIntegrity(storedContractModel, task2Writing).some((message) => /no validated evidence assertion/i.test(message)),
+  "a stored issue without a demonstrated evidence assertion must not pass the V12.6 contract"
+);
 
 const typeMismatchModel = {
   issues: [{
@@ -292,7 +297,7 @@ const typeMismatchModel = {
 };
 const typeMismatchAudit = auditFeedbackIntegrity(typeMismatchModel, task2Writing);
 assert.ok(typeMismatchAudit.some((finding) => finding.code === "REVISION_TYPE_MISMATCH" && finding.severity === "repairable"));
-assert.deepEqual(validateFeedbackIntegrity(typeMismatchModel, task2Writing), []);
+assert.ok(validateFeedbackIntegrity(typeMismatchModel, task2Writing).some((message) => /no validated evidence assertion/i.test(message)));
 
 // --- Body Paragraph Route Alignment display contract ---
 const alignedDisplay = projectRouteAlignmentDisplay({

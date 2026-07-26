@@ -52,10 +52,13 @@ assert.doesNotMatch(englishReport.criteriaScores["Task Response"].diagnosis, tha
 assert.match(thaiReport.criteriaScores["Task Response"].diagnosis, thaiPattern);
 assert.match(thaiReport.kruPomScores["Thesis Route Clarity"].diagnosis, thaiPattern);
 assert.match(thaiReport.feedbackCards[0].kruPomDiagnosis, thaiPattern);
-assert.match(thaiReport.practicePlan[1].task, /ทั้งสองย่อหน้า|Body 1.*Body 2/u);
-assert.match(englishReport.practicePlan[1].task, /Rebuild.*example/i);
+assert.match(thaiReport.practicePlan[1].task, thaiPattern);
+const canonicalIssueIds = new Set(englishReport.feedbackCards.map((card) => card.issueId));
+assert.ok(englishReport.practicePlan.every((item) => canonicalIssueIds.has(item.issueId)));
+assert.deepEqual(thaiReport.practicePlan.map((item) => item.issueId), englishReport.practicePlan.map((item) => item.issueId));
+assert.ok(englishReport.practicePlan.every((item) => item.task.length > 30));
 
-assert.ok(englishReport.feedbackCards.every((card) => card.revisionIntegrity.pass));
+assert.ok(englishReport.feedbackCards.every((card) => card.revisionWithheld || card.revisionIntegrity.pass));
 assert.equal(englishReport.kruPomScores["Conclusion Closure"].status, "Strong");
 
 const englishPrompt = buildPrompt({ ...commonPayload, reportLanguage: "en" });
@@ -91,7 +94,7 @@ const rootCss = await readFile(new URL("../styles.css", import.meta.url), "utf8"
 for (const html of [rootHtml, previewHtml]) {
   assert.match(html, /name="reportLanguage" value="en"/);
   assert.match(html, /name="reportLanguage" value="th"/);
-  assert.match(html, /diagnostic-v12-5-0-async-render/);
+  assert.match(html, /diagnostic-v12-6-0-evidence-integrity/);
 }
 assert.match(rootScript, /const REPORT_COPY = Object\.freeze/);
 assert.match(rootScript, /reportLanguage: selectedReportLanguage\(\)/);

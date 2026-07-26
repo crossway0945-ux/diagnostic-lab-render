@@ -1,7 +1,7 @@
 {
   "name": "ielts-writing-7-diagnostic-lab",
-  "version": "12.5.0",
-  "description": "V12.3 full-system IELTS Writing diagnostic upgrade with canonical evidence mapping, bilingual student-safe reports, revision-fidelity validation, and production deployment verification.",
+  "version": "12.6.0",
+  "description": "V12.6 global IELTS Writing diagnostic evidence integrity, canonical issue consistency, task-aware taxonomy, revision safety, and PDF text integrity release.",
   "type": "module",
   "scripts": {
     "dev": "node server.js",
@@ -9,6 +9,7 @@
     "build:static": "node scripts/build-static-preview.mjs",
     "check": "node scripts/check-source.mjs",
     "test": "node scripts/build-static-preview.mjs && node scripts/run-tests.mjs",
+    "qa:provider:v12.6": "node qa/run-real-provider-regression.mjs",
     "reset:diagnostic-data": "node scripts/reset-diagnostic-data.mjs"
   },
   "engines": {

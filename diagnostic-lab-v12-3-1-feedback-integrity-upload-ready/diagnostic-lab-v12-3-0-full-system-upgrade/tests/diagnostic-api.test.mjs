@@ -9,6 +9,7 @@ import { runDiagnosticReset } from "../services/diagnosticReset.js";
 import { buildPrompt } from "../services/promptBuilder.js";
 import { createStorage } from "../services/storage.js";
 import { analyzeTask2Safety } from "../services/task2Safety.js";
+import { unsupportedSummaryClaims } from "../domain/reportConsistency.js";
 import { countWords, getWordCountMetadata } from "../wordCount.js";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -393,7 +394,7 @@ async function testTeacherStudentSelectionReenablesAnalyzeButton() {
   const rootHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
   const previewHtml = await readFile(new URL("../netlify-static-preview/index.html", import.meta.url), "utf8");
   const selectionAvailabilitySync = /studentProfileSelect\.addEventListener\("change",[\s\S]*?updateSelectedStudentDisplay\(\);\s*updateAnalyzeAvailability\(\);\s*loadProgressHistory\(\);/;
-  const cacheBustedScript = "script.js?v=diagnostic-v12-5-0-async-render";
+  const cacheBustedScript = "script.js?v=diagnostic-v12-6-0-evidence-integrity";
 
   for (const source of [rootScript, previewScript]) {
     assert.match(source, selectionAvailabilitySync);
@@ -1749,8 +1750,12 @@ async function testEvaOutweighPositionAndCalibration() {
   assert.ok(maxBand(analysis.criteriaScores["Coherence & Cohesion"].range) <= 7.0);
   assert.ok(maxBand(analysis.criteriaScores["Lexical Resource"].range) <= 6.5);
   assert.ok(maxBand(analysis.criteriaScores["Grammatical Range & Accuracy"].range) <= 6.5);
-  assert.match(analysis.mainScoreLimitingFactor, /uneven development combined with frequent grammar and collocation errors/i);
-  assert.match(analysis.mostUrgentRepair, /one controlled causal chain in each body paragraph/i);
+  assert.deepEqual(unsupportedSummaryClaims(analysis.mainScoreLimitingFactor, analysis.feedbackCards), []);
+  assert.deepEqual(unsupportedSummaryClaims(analysis.mostUrgentRepair, analysis.feedbackCards), []);
+  assert.ok(analysis.feedbackCards.every((card) => card.evidenceValidationStatus === "validated"));
+  assert.ok(analysis.feedbackIntegrity?.linkage?.summaryIssueIds?.length);
+  assert.ok(analysis.feedbackIntegrity?.linkage?.urgentRepairIssueIds?.length);
+  assert.doesNotMatch(analysis.mainScoreLimitingFactor, /\bspelling\b|\barticle\b|\bexample\b|\brecurring\b/i);
   assert.doesNotMatch(analysis.mainScoreLimitingFactor, /position.*aligned|no serious Task Response cap/i);
   assert.equal(analysis.strictModeApplied, false);
 
@@ -1787,7 +1792,8 @@ async function testEvaOutweighPositionAndCalibration() {
     assert.equal(maxBand(repaired.estimatedBandRange), 6.5, "V11 deterministic criterion rules must ignore inflated provider ranges and preserve criterion arithmetic");
     assert.ok(maxBand(repaired.criteriaScores["Lexical Resource"].range) <= 6.5);
     assert.ok(maxBand(repaired.criteriaScores["Grammatical Range & Accuracy"].range) <= 6.5);
-    assert.match(repaired.mainScoreLimitingFactor, /uneven development combined with frequent grammar and collocation errors/i);
+    assert.deepEqual(unsupportedSummaryClaims(repaired.mainScoreLimitingFactor, repaired.feedbackCards), []);
+    assert.ok(repaired.feedbackIntegrity?.linkage?.summaryIssueIds?.length);
   } finally {
     resetEnv();
   }
@@ -2168,7 +2174,13 @@ async function testUnderlengthProviderPartialFeedbackIsRepaired() {
     );
     assert.equal(analysis.validationClassification.fatalIntegrity.length, 0);
     assert.ok(analysis.validationClassification.diagnosticIssues.some((issue) => issue.code === "ESSAY_BELOW_MINIMUM"));
-    assert.ok(analysis.feedbackCards.every((card) => card.exactSentence !== malformedEvidence));
+    const safelyWithheldCard = analysis.feedbackCards.find((card) => card.exactSentence === malformedEvidence);
+    assert.ok(safelyWithheldCard, "A valid diagnosis must survive even when the provider revision is unsafe.");
+    assert.doesNotMatch(safelyWithheldCard.targetedRevision, /^In addition\.$/);
+    assert.ok(
+      safelyWithheldCard.revisionWithheld || safelyWithheldCard.revisionIntegrity?.pass,
+      "The unsafe provider revision must be either repaired safely or withheld."
+    );
     const repeatedActionCount = analysis.feedbackCards.filter((card) => card.studentAction === repeatedAction).length;
     assert.ok(repeatedActionCount < 3);
     const thesisIssue = analysis.top3Issues.find((issue) => /thesis/i.test(issue.issueType));

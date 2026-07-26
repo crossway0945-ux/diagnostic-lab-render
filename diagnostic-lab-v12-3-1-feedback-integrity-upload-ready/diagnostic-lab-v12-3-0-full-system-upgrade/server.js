@@ -23,7 +23,7 @@ const storage = createStorage({ rootDir: __dirname });
 const jobStore = createAnalysisJobStore({ rootDir: __dirname });
 const failureLog = createAnalysisFailureLog({ rootDir: __dirname });
 const handleApiRequest = createApiHandler({ rootDir: __dirname, storage, jobStore, failureLog });
-const FRONTEND_ASSET_MANIFEST_VERSION = "frontend-bootstrap-v12.5.0";
+const FRONTEND_ASSET_MANIFEST_VERSION = "frontend-bootstrap-v12.6.0";
 
 // The public file set is resolved once at startup from the browser module graph (single source of
 // truth shared with the static-preview build). A new browser module becomes servable automatically.

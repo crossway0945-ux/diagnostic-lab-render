@@ -1,16 +1,17 @@
 export const ANALYSIS_VERSIONS = Object.freeze({
-  // V12.5.0 is the async-render orchestration/reliability release. It changes transport, provider
-  // lifecycle, durable jobs and recovery — NOT scoring, rubric, prompt, report/feedback schema,
-  // taxonomy or revision-validation logic — so those versions are unchanged by design. This keeps
-  // existing saved reports and duplicate hashing stable. Only appVersion moves to 12.5.0.
-  appVersion: "12.5.0",
-  engineVersion: "ielts-diagnostic-engine-v12.4.0",
+  // V12.6.0 upgrades canonical evidence, issue/report consistency, revision fidelity and PDF text
+  // integrity. The IELTS/Kru Pom scoring rubric stays frozen at v12.3.0, while every contract changed
+  // by this release gets its own v12.6.0 marker. Async transport remains the audited v12.5.0 layer.
+  appVersion: "12.6.0",
+  engineVersion: "ielts-diagnostic-engine-v12.6.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
-  promptVersion: "ielts-diagnostic-prompt-v12.3.1",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.4.0",
-  feedbackSchemaVersion: "feedback-integrity-v12.4.0",
-  issueTaxonomyVersion: "issue-taxonomy-v12.3.5",
-  revisionValidatorVersion: "revision-alignment-v12.4.0"
+  promptVersion: "ielts-diagnostic-prompt-v12.6.0",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.6.0",
+  feedbackSchemaVersion: "feedback-integrity-v12.6.0",
+  issueTaxonomyVersion: "issue-taxonomy-v12.6.0",
+  evidenceValidatorVersion: "evidence-assertion-v12.6.0",
+  revisionValidatorVersion: "revision-alignment-v12.6.0",
+  pdfTextIntegrityVersion: "pdf-text-integrity-v12.6.0"
 });
 
 // Orchestration/transport version for the async-render architecture. Deliberately kept OUT of

@@ -14,14 +14,16 @@ import {
 import { unicodeIntegrityIssues } from "../domain/textIntegrity.js";
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.5.0",
-  engineVersion: "ielts-diagnostic-engine-v12.4.0",
+  appVersion: "12.6.0",
+  engineVersion: "ielts-diagnostic-engine-v12.6.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
-  promptVersion: "ielts-diagnostic-prompt-v12.3.1",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.4.0",
-  feedbackSchemaVersion: "feedback-integrity-v12.4.0",
-  issueTaxonomyVersion: "issue-taxonomy-v12.3.5",
-  revisionValidatorVersion: "revision-alignment-v12.4.0"
+  promptVersion: "ielts-diagnostic-prompt-v12.6.0",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.6.0",
+  feedbackSchemaVersion: "feedback-integrity-v12.6.0",
+  issueTaxonomyVersion: "issue-taxonomy-v12.6.0",
+  evidenceValidatorVersion: "evidence-assertion-v12.6.0",
+  revisionValidatorVersion: "revision-alignment-v12.6.0",
+  pdfTextIntegrityVersion: "pdf-text-integrity-v12.6.0"
 });
 
 const visualCases = [
@@ -125,7 +127,7 @@ assert.match(cssSource, /@page\s*\{[\s\S]*?size:\s*A4/);
 assert.match(cssSource, /NotoSansThai-Variable\.ttf/);
 assert.match(cssSource, /break-inside:\s*avoid/);
 // rootDir must be the full live Render path, including the upload-ready wrapper folder.
-assert.match(renderConfig, /rootDir:\s*diagnostic-lab-v12-3-1-feedback-integrity-upload-ready\/diagnostic-lab-v12-3-0-full-system-upgrade/);
+assert.match(renderConfig, /rootDir:\s*\./);
 assert.match(renderConfig, /buildCommand:\s*npm install/);
 assert.match(renderConfig, /startCommand:\s*npm start/);
 assert.match(renderConfig, /healthCheckPath:\s*\/api\/health/);

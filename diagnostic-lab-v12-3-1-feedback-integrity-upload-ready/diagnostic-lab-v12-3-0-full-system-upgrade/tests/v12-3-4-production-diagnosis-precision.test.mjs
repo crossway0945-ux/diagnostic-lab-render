@@ -18,7 +18,7 @@ import { normalizeStudentFacingText } from "../domain/canonicalAnalysis.js";
 import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.5.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.6.0");
 
 const norm = (value) => String(value).normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}%]+/gu, " ").trim();
 const primaryOf = (text) => detectDevelopmentSignal(norm(text)) || detectLanguageSignal(norm(text)) || "";
@@ -269,7 +269,7 @@ assert.match(scriptSource, /LFC\[\\s\\u00a0\]\+CPC/);
 // D-7: render.yaml must point at the live Render root.
 // ---------------------------------------------------------------------------
 const renderConfig = await readFile(new URL("../render.yaml", import.meta.url), "utf8");
-assert.match(renderConfig, /rootDir:\s*diagnostic-lab-v12-3-1-feedback-integrity-upload-ready\/diagnostic-lab-v12-3-0-full-system-upgrade/);
+assert.match(renderConfig, /rootDir:\s*\./);
 assert.match(renderConfig, /buildCommand:\s*npm install/);
 assert.match(renderConfig, /startCommand:\s*npm start/);
 

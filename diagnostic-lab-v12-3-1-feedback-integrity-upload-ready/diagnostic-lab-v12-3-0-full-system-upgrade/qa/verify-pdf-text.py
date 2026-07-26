@@ -18,8 +18,8 @@ FORBIDDEN = (
     "providerBodyPreview",
 )
 CASES = (
-    ("sun-thai-v12-3-1.pdf", ("Sun V12.3.1 Final QA", "Causal Mechanism", "Body Paragraph 2, Sentence 3")),
-    ("yuki-english-v12-3-1.pdf", ("Yuki V12.3.1 Final QA", "Paragraph Coverage Summary", "Disclaimer")),
+    ("regression-thai-v12-6-0.pdf", ("Regression Thai V12.6.0", "Example Development", "Body Paragraph 2, Sentence 3")),
+    ("regression-english-v12-6-0.pdf", ("Regression English V12.6.0", "Paragraph Coverage Summary", "Disclaimer")),
 )
 
 sys.stdout.reconfigure(encoding="utf-8")

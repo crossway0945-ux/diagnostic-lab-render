@@ -1,0 +1,23 @@
+KRU POM IELTS WRITING 7+ DIAGNOSTIC LAB — V12.6.0
+
+ไฟล์ ZIP รุ่นนี้เป็นแบบ FLAT ROOT
+เมื่อเปิด ZIP จะต้องเห็น package.json, server.js และ render.yaml ทันที
+ห้ามมีโฟลเดอร์ครอบอีกหนึ่งชั้น
+
+GitHub upload location:
+/
+
+Render Dashboard:
+Root Directory: เว้นว่าง
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+
+คำว่า "เว้นว่าง" ไม่ได้หมายความว่า Render ไม่เชื่อมกับไฟล์ใด
+แต่หมายความว่า Render จะเริ่มจาก repository root ซึ่งเป็นตำแหน่งเดียวกับ package.json
+
+ถ้าใช้ render.yaml (Blueprint):
+rootDir: .
+
+เครื่องหมาย . ใน Blueprint มีความหมายเท่ากับ repository root
+ไม่ต้องพิมพ์ . ลงในช่อง Root Directory ของหน้า Render Dashboard

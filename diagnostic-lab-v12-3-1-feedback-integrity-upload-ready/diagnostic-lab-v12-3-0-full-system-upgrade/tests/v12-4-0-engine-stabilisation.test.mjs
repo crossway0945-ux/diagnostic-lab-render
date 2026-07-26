@@ -13,13 +13,14 @@ import {
 import { normalizeStudentFacingText } from "../domain/canonicalAnalysis.js";
 import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { buildStudentReportViewModel } from "../domain/reportViewModels.js";
+import { unsupportedSummaryClaims } from "../domain/reportConsistency.js";
 import { analyzeWriting, getAnalyzerHealth } from "../services/aiAnalyzer.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.5.0");
-assert.equal(ANALYSIS_VERSIONS.engineVersion, "ielts-diagnostic-engine-v12.4.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.6.0");
+assert.equal(ANALYSIS_VERSIONS.engineVersion, "ielts-diagnostic-engine-v12.6.0");
 assert.equal(ANALYSIS_VERSIONS.rubricVersion, "kru-pom-ielts-writing-v12.3.0", "rubric must not change in this release");
-assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.5", "taxonomy is unchanged in this release");
+assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.6.0", "taxonomy advances for global evidence integrity");
 
 // ---------------------------------------------------------------------------
 // Model migration scaffolding.
@@ -141,8 +142,8 @@ assert.equal(safeModel.issues[0].revisionWithheld, false);
 assert.notEqual(safeModel.issues[0].revisionType, "Revision Unavailable");
 
 // ---------------------------------------------------------------------------
-// Executive development coverage: a summary naming causal development guarantees a development
-// primary category even when every provider card is language-headed.
+// Executive consistency: an unsupported summary claim is repaired from the canonical issue graph;
+// summary prose must never force a different primary category onto the evidence.
 // ---------------------------------------------------------------------------
 const body2 = paragraphs[2].sentences.map((item) => item.exactText);
 const execModel = buildFeedbackIntegrityModel({
@@ -168,10 +169,12 @@ const execModel = buildFeedbackIntegrityModel({
   mostUrgentRepair: "Rebuild each example so it shows the full causal chain."
 });
 const upgraded = execModel.issues[0];
-assert.ok(["Causal Mechanism", "Example Development", "SAR Example Quality", "Explanation Depth"].includes(upgraded.issueCategory),
-  `executive limiter must force a development primary, got ${upgraded.issueCategory}`);
-assert.ok(upgraded.secondaryIssueCategories.includes("Collocation"), "the demoted language label survives as secondary");
-assert.ok(execModel.repairs.some((repair) => repair.code === "EXECUTIVE_DEVELOPMENT_COVERAGE"));
+assert.equal(upgraded.issueCategory, "Collocation", "an unsupported executive claim must not overwrite the evidence-backed primary taxonomy");
+assert.ok(!upgraded.secondaryIssueCategories.some((category) =>
+  ["Causal Mechanism", "Example Development", "SAR Example Quality", "Explanation Depth"].includes(category)
+));
+assert.deepEqual(unsupportedSummaryClaims(execModel.linkage.mainScoreLimitingFactor, execModel.issues), []);
+assert.ok(execModel.repairs.some((repair) => repair.code === "SUMMARY_CLAIM_REPAIRED"));
 
 // ---------------------------------------------------------------------------
 // Dimension-aware Paragraph Coverage statuses.
@@ -240,6 +243,8 @@ const studentJson = JSON.stringify(studentView);
 assert.doesNotMatch(studentJson, /wider group named in the prompt/);
 assert.doesNotMatch(studentJson, /Families live in different locations, which could be very far away from their homes/,
   "the reference-broken revision must never reach the student");
+assert.doesNotMatch(studentJson, /Every family lives in different places and distances/,
+  "the deterministic but still reference-unsafe revision must never reach the student");
 assert.doesNotMatch(studentJson, /facilities in towns and cities should not be divided/,
   "the policy-drift conclusion revision must never reach the student");
 assert.doesNotMatch(studentJson, /must-not-leak/, "internal fields must not leak into the student view");
@@ -251,7 +256,10 @@ assert.ok(b1s2);
 assert.equal(b1s2.revisionWithheld, true);
 assert.doesNotMatch(b1s2.targetedRevision, /Families live in different locations/,
   "the student-facing revision field must be clean");
-assert.match(b1s2.revisionIntegrity.revisedClaim, /Families live in different locations/,
-  "the rejected candidate is preserved in the internal audit trail only");
+assert.equal(
+  b1s2.revisionIntegrity.revisedClaim,
+  "Every family lives in different places and distances, which could be very far away from their house, so it would be very difficult to travel through long distance.",
+  "the rejected deterministic repair is preserved in the internal audit trail only"
+);
 
 console.log("V12.4.0 engine stabilisation: model-migration scaffolding, SAR terminology, unsafe-revision withholding, policy-drift rejection, executive development coverage and dimension-aware paragraph statuses passed.");

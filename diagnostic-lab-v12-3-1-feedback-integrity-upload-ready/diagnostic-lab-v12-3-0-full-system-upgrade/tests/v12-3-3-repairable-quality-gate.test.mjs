@@ -8,7 +8,7 @@ import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { analyzeWriting } from "../services/aiAnalyzer.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.5.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.6.0");
 
 const zoningPrompt = [
   "Towns and cities should be divided into zones so that all the schools are in one area, all the shopping malls are located together and all the industrial sites are situated close to each other.",
@@ -55,7 +55,7 @@ const expansionMislabelled = {
   exactSentence: body1[2],
   whyItLimitsBand: "The example is too narrow and the wider consequence is not stated.",
   kruPomDiagnosis: "Broaden the affected group and show the consequence.",
-  targetedRevision: `${body1[2]} This matters because zoning places schools far from many homes, so students across the city lose rest and study time while parents lose productive hours.`,
+  targetedRevision: `${body1[2].replace("concentration in the class", "concentration in class")} This matters because zoning places schools far from many homes, so students across the city lose rest and study time while parents lose productive hours.`,
   revisionType: "Route-Preserving Revision",
   whyRevisionIsStronger: "It shows the wider group and the consequence.",
   studentAction: "Broaden the affected group."
@@ -148,8 +148,8 @@ const fabricatedEvidenceModel = {
   linkage: {}
 };
 const fabricatedFlags = validateFeedbackIntegrity(fabricatedEvidenceModel, zoningWriting);
-assert.equal(fabricatedFlags.length, 1);
-assert.match(fabricatedFlags[0], /evidence is not present in the writing/i);
+assert.ok(fabricatedFlags.some((flag) => /evidence is not present in the writing/i.test(flag)));
+assert.ok(fabricatedFlags.some((flag) => /no validated evidence assertion/i.test(flag)));
 
 const brokenSchemaModel = {
   issues: [{

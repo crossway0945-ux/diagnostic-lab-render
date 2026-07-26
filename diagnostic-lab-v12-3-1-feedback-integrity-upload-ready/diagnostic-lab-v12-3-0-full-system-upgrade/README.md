@@ -47,11 +47,11 @@ OPENAI_MODEL=gpt-5.6-sol
 
 `OPENAI_MODEL` is required whenever `OPENAI_API_KEY` is set. The supplied environment template uses `gpt-5.6-sol`; confirm that this model is available to the production account before deployment. If the model is missing or unavailable, `/api/analyze` returns `PROVIDER_MODEL_ERROR` and quota is not deducted. `OPENAI_REASONING_EFFORT` accepts minimal, low, medium, high and max. Run `node scripts/provider-preflight.mjs` with the production key BEFORE switching OPENAI_MODEL; if the account lacks access to the model, keep the current model. Use `high` or `max` only if your hosting timeout and OpenAI account limits can handle slower, deeper checks. `PORT` is usually assigned automatically by the hosting platform. API keys are read only by `server.js` and must never be exposed in frontend code.
 
-`OPENAI_MAX_OUTPUT_TOKENS` (first attempt) and `OPENAI_RETRY_MAX_OUTPUT_TOKENS` (single larger retry) bound the diagnostic report length. High reasoning effort on GPT-5.6 consumes output budget as reasoning tokens before the report JSON is produced, so a low ceiling can truncate the report and surface `PROVIDER_MAX_OUTPUT_TOKENS` (no credit is deducted). The defaults were raised to 16000 / 24000 for GPT-5.6; tune them with the admin **Production Output Contract** check rather than by guessing.
+`OPENAI_MAX_OUTPUT_TOKENS` (first attempt) and `OPENAI_RETRY_MAX_OUTPUT_TOKENS` (single larger retry) bound the diagnostic report length. High reasoning effort on GPT-5.6 consumes output budget as reasoning tokens before the report JSON is produced, so a low ceiling can truncate the report and surface `PROVIDER_MAX_OUTPUT_TOKENS` (no credit is deducted). The Render production template sets 16000 / 24000 for GPT-5.6; tune them with the admin **Production Output Contract** check rather than by guessing.
 
 Observability (v12.4.1): `/api/health` reports `providerConnectivityStatus` (`unknown` until a real check runs) and never equates configuration with connectivity. A logged-in admin can run real checks from the **System Diagnostics** panel on `/admin` — Provider Connectivity, Production Output Contract (runs the real schema and pipeline on a synthetic essay, reporting the exact failing stage), Storage self-test, and a safe Recent Analysis Failures log. Every failed analysis returns a `requestId`; teachers/admins also see the `errorCode` and `failureStage`. None of these expose the API key, prompt, essay, or raw provider output.
 
-For production checking quality, keep `DIAGNOSTIC_REQUIRE_FULL_ENGINE=true`. This prevents the app from returning a weak local/basic report when the GPT-5.5 diagnostic engine is not connected.
+For production checking quality, keep `DIAGNOSTIC_REQUIRE_FULL_ENGINE=true`. This prevents the app from returning a weak local/basic report when the configured diagnostic provider is not connected.
 
 ## Current Architecture
 
@@ -200,9 +200,20 @@ The print report hides web UI controls such as sidebar navigation, login, button
 
 Recommended production path for this project. Use Render as the main web app and backend host, not Netlify Drop.
 
-The V11.7 ready-flat ZIP stores `package.json` at the ZIP root. After Windows Extract All, upload the single folder `diagnostic-lab-v11-7-bilingual-premium` directly to the GitHub repository root, confirm `diagnostic-lab-v11-7-bilingual-premium/package.json` exists, and set Render Root Directory to `diagnostic-lab-v11-7-bilingual-premium`. Do not upload an extra wrapper folder and do not include `.zip` in Root Directory.
+The V12.6.0 release ZIP is flat-root: `package.json` is directly at the ZIP root. Extract it, then upload the **contents** directly to the GitHub repository root. Confirm GitHub shows `/package.json`, `/server.js`, and `/render.yaml` without an enclosing release folder.
 
-This package includes `render.yaml`, `RENDER_ENV_TEMPLATE.txt`, and `RENDER_LAUNCH_GUIDE_THAI.md`.
+In Render dashboard settings use:
+
+```text
+Root Directory: [leave blank]
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+```
+
+Leaving Root Directory blank means Render runs from the connected repository root, where `package.json` is located. Blueprint users get the equivalent `rootDir: .` from `render.yaml`.
+
+This package includes `render.yaml`, `RENDER_ENV_TEMPLATE.txt`, `ROOT_DIRECTORY_V12_6.txt`, `UPLOAD_AND_RENDER_SETTINGS_V12_6_THAI.md`, and the V12.6.0 release manifest.
 
 1. Create a new Web Service.
 2. Connect the repository.
@@ -227,14 +238,15 @@ HOST=0.0.0.0
 DIAGNOSTIC_STORAGE_ADAPTER=local-json
 DIAGNOSTIC_DATA_DIR=/var/data
 DIAGNOSTIC_REQUIRE_FULL_ENGINE=true
-DIAGNOSTIC_ANALYSIS_MODE=sync
+DIAGNOSTIC_ANALYSIS_MODE=async-render
 DIAGNOSTIC_ENABLE_NETLIFY_BLOBS=false
 OPENAI_API_KEY=...
 OPENAI_MODEL=...
 OPENAI_BASE_URL=https://api.openai.com/v1/responses
-OPENAI_TIMEOUT_MS=180000
-OPENAI_MAX_OUTPUT_TOKENS=3500
-OPENAI_REASONING_EFFORT=low
+OPENAI_TIMEOUT_MS=600000
+OPENAI_MAX_OUTPUT_TOKENS=16000
+OPENAI_RETRY_MAX_OUTPUT_TOKENS=24000
+OPENAI_REASONING_EFFORT=high
 ```
 
 Add a persistent disk mounted at `/var/data`. Render will provide `PORT` automatically.

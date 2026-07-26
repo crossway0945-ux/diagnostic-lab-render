@@ -4,9 +4,9 @@ services:
     runtime: node
     plan: starter
     region: singapore
-    # Must match the Root Directory configured in the Render dashboard exactly.
-    # Verified live value: the app lives inside the upload-ready wrapper folder.
-    rootDir: diagnostic-lab-v12-3-1-feedback-integrity-upload-ready/diagnostic-lab-v12-3-0-full-system-upgrade
+    # The release ZIP is flat-root: package.json is at the repository root.
+    # In the Render dashboard leave Root Directory blank. Blueprint users resolve "." here.
+    rootDir: .
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health

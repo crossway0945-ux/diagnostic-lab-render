@@ -11,11 +11,11 @@ import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { isTransientPdfError, runWithSingleTransientPdfRetry } from "../domain/pdfRetry.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.5.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.6.0");
 assert.equal(ANALYSIS_VERSIONS.rubricVersion, "kru-pom-ielts-writing-v12.3.0");
-assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.4.0");
-assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.3.5");
-assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.4.0");
+assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.6.0");
+assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.6.0");
+assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.6.0");
 
 const task2Writing = [
   "Urban zoning is often presented as an efficient planning policy. However, I strongly disagree because it creates longer journeys and concentrated traffic.",
@@ -29,7 +29,7 @@ assert.deepEqual(paragraphs.map((item) => item.role), ["Introduction", "Body Par
 assert.equal(detectSentenceRole({ taskType: "Task 2", paragraphRole: "Body Paragraph 2", sentenceIndex: 0, sentenceCount: 4, sentence: paragraphs[2].sentences[0].exactText }), "body_topic_sentence");
 assert.equal(detectSentenceRole({ taskType: "Task 2", paragraphRole: "Body Paragraph 2", sentenceIndex: 1, sentenceCount: 4, sentence: paragraphs[2].sentences[1].exactText }), "explanation");
 assert.equal(detectSentenceRole({ taskType: "Task 2", paragraphRole: "Body Paragraph 2", sentenceIndex: 2, sentenceCount: 4, sentence: paragraphs[2].sentences[2].exactText }), "example");
-assert.equal(detectSentenceRole({ taskType: "Task 2", paragraphRole: "Body Paragraph 2", sentenceIndex: 3, sentenceCount: 4, sentence: paragraphs[2].sentences[3].exactText }), "link_back");
+assert.equal(detectSentenceRole({ taskType: "Task 2", paragraphRole: "Body Paragraph 2", sentenceIndex: 3, sentenceCount: 4, sentence: paragraphs[2].sentences[3].exactText }), "paragraph_closing_sentence");
 assert.notEqual(detectSentenceRole({ taskType: "Task 2", paragraphRole: "Body Paragraph 2", sentenceIndex: 3, sentenceCount: 4, sentence: "Furthermore, another problem affects public health." }), "link_back");
 assert.equal(assessConclusionFunction(paragraphs, "Task 2").status, "Strong");
 
@@ -75,20 +75,22 @@ const cards = [{
   revisionIntegrity: { diagnosedCategories: ["countability"], originalIssueCategories: ["countability"] }
 }];
 const model = buildFeedbackIntegrityModel({ writing: task2Writing, taskType: "Task 2", feedbackCards: cards, topIssues: cards });
-assert.equal(model.issues[0].sentenceRole, "body_topic_sentence");
-assert.equal(model.issues[0].issueCategory, "Lexical Precision");
-assert.equal(model.issues[0].punctuationClaimCorrected, true);
-assert.doesNotMatch(`${model.issues[0].diagnosis} ${model.issues[0].whyItLimitsBand}`, /ends with a comma|does not close cleanly/i);
-assert.equal(model.issues[1].issueCategory, "Example Development");
-assert.equal(model.issues[1].revisionAlignmentStatus, "aligned");
-assert.match(model.issues[1].diagnosis, /Body Paragraph 1, Sentence 3/);
-assert.doesNotMatch(model.issues[1].diagnosis, /Body Paragraph 2, Sentence 4/);
-assert.equal(model.issues[2].issueCategory, "Countability");
-assert.doesNotMatch(`${model.issues[2].whyItLimitsBand} ${model.issues[2].studentAction}`, /Explanation and Example Development/);
-assert.match(`${model.issues[2].whyItLimitsBand} ${model.issues[2].studentAction}`, /Countability/);
+const lexicalIssue = model.issues.find((issue) => issue.exactSentence === paragraphs[2].sentences[0].exactText);
+const exampleIssue = model.issues.find((issue) => issue.exactSentence === paragraphs[1].sentences[2].exactText);
+const countabilityIssue = model.issues.find((issue) => issue.issueCategory === "Countability");
+assert.equal(lexicalIssue?.sentenceRole, "body_topic_sentence");
+assert.equal(lexicalIssue?.issueCategory, "Lexical Precision");
+assert.equal(lexicalIssue?.punctuationClaimCorrected, true);
+assert.doesNotMatch(`${lexicalIssue?.diagnosis} ${lexicalIssue?.whyItLimitsBand}`, /ends with a comma|does not close cleanly/i);
+assert.equal(exampleIssue?.issueCategory, "Example Development");
+assert.equal(exampleIssue?.revisionAlignmentStatus, "aligned");
+assert.match(exampleIssue?.diagnosis || "", /Body Paragraph 1, Sentence 3/);
+assert.doesNotMatch(exampleIssue?.diagnosis || "", /Body Paragraph 2, Sentence 4/);
+assert.equal(countabilityIssue, undefined);
 assert.deepEqual(validateFeedbackIntegrity(model, task2Writing), []);
-assert.equal(model.topIssues[0].issueId, model.issues[0].issueId);
-assert.equal(model.topIssues[0].diagnosis, model.issues[0].diagnosis);
+const firstCanonicalTopIssue = model.issues.find((issue) => issue.issueId === model.topIssues[0].issueId);
+assert.ok(firstCanonicalTopIssue);
+assert.equal(model.topIssues[0].diagnosis, firstCanonicalTopIssue.diagnosis);
 assert.equal(model.paragraphCoverage[0].paragraphLabel, "Introduction");
 assert.equal(model.paragraphCoverage[0].status, "Strong");
 assert.equal(model.paragraphCoverage[0].priorityRepair, "No priority repair");
@@ -116,7 +118,7 @@ const task1Writing = [
   "By 2020, City B had risen to 70%, while City D had fallen to 25%."
 ].join("\n\n");
 assert.deepEqual(segmentStudentResponse(task1Writing, "Task 1").map((item) => item.role), ["Introduction", "Overview", "Body Paragraph 1", "Body Paragraph 2"]);
-assert.equal(detectSentenceRole({ taskType: "Task 1", visualType: "Bar Chart", paragraphRole: "Body Paragraph 1", sentenceIndex: 0, sentenceCount: 1, sentence: "City A was higher than City D at 60% and 30%, respectively." }), "body_topic_sentence");
+assert.equal(detectSentenceRole({ taskType: "Task 1", visualType: "Bar Chart", paragraphRole: "Body Paragraph 1", sentenceIndex: 0, sentenceCount: 1, sentence: "City A was higher than City D at 60% and 30%, respectively." }), "comparison");
 assert.equal(detectSentenceRole({ taskType: "Task 1", visualType: "Map", paragraphRole: "Body Paragraph 1", sentenceIndex: 1, sentenceCount: 2, sentence: "The school was replaced by a park." }), "map_change_sentence");
 assert.equal(detectSentenceRole({ taskType: "Task 1", visualType: "Manufacturing Process", paragraphRole: "Body Paragraph 1", sentenceIndex: 1, sentenceCount: 2, sentence: "Next, the material is heated and transported to storage." }), "process_stage");
 

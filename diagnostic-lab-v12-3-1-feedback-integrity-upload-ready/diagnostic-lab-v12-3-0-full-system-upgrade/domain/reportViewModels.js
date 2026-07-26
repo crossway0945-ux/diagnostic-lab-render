@@ -52,7 +52,8 @@ export function buildStudentReportViewModel(analysis = {}, progressSummary = {})
       label: taskType === "Task 1" ? "Task 1 Data Route" : "Position and Route",
       position: String(analysis.detectedPosition || ""),
       confidence: String(analysis.positionConfidence || ""),
-      summary: String(analysis.bodyRouteSummary || analysis.routeAssessment?.summary || "")
+      summary: String(analysis.bodyRouteSummary || analysis.routeAssessment?.summary || ""),
+      thesisDimensions: publicThesisDimensions(analysis.thesisDimensions || analysis.feedbackIntegrity?.thesisDimensions)
     },
     criteriaBreakdown: publicCriteria(analysis.criteriaScores),
     frameworkBreakdown: publicFramework(analysis.kruPomScores),
@@ -82,7 +83,12 @@ export function buildAdminReportQAViewModel(analysis = {}, context = {}) {
       appVersion: String(context.appVersion || analysis.appVersion || ""),
       engineVersion: String(context.engineVersion || analysis.engineVersion || ""),
       rubricVersion: String(context.rubricVersion || analysis.rubricVersion || ""),
-      reportSchemaVersion: String(context.reportSchemaVersion || analysis.reportSchemaVersion || "")
+      reportSchemaVersion: String(context.reportSchemaVersion || analysis.reportSchemaVersion || ""),
+      feedbackSchemaVersion: String(context.feedbackSchemaVersion || analysis.feedbackSchemaVersion || ""),
+      issueTaxonomyVersion: String(context.issueTaxonomyVersion || analysis.issueTaxonomyVersion || ""),
+      evidenceValidatorVersion: String(context.evidenceValidatorVersion || analysis.evidenceValidatorVersion || ""),
+      revisionValidatorVersion: String(context.revisionValidatorVersion || analysis.revisionValidatorVersion || ""),
+      pdfTextIntegrityVersion: String(context.pdfTextIntegrityVersion || analysis.pdfTextIntegrityVersion || "")
     },
     validation: clonePublicObject(context.validation),
     migration: clonePublicObject(context.migration),
@@ -106,6 +112,7 @@ function publicIssue(issue = {}) {
   return {
     issueId: String(issue.issueId || ""),
     issueCategory: String(issue.issueCategory || issue.issueType || issue.title || "Diagnostic Issue"),
+    secondaryCategories: Array.isArray(issue.secondaryIssueCategories) ? issue.secondaryIssueCategories.map(String) : [],
     issueType: String(issue.issueType || issue.title || "Diagnostic Issue"),
     title: String(issue.title || issue.issueType || "Diagnostic Issue"),
     severity: String(issue.severity || "Moderate"),
@@ -119,16 +126,41 @@ function publicIssue(issue = {}) {
 }
 
 function publicFeedback(card = {}) {
+  const revisionWithheld = Boolean(card.revisionWithheld) ||
+    String(card.revisionAlignmentStatus || "") === "withheld" ||
+    String(card.revisionType || "") === "Revision Unavailable";
   return {
     issueId: String(card.issueId || ""),
     issueCategory: String(card.issueCategory || card.issueType || "Diagnostic Issue"),
+    primaryCategory: String(card.primaryCategory || card.issueCategory || card.issueType || "Diagnostic Issue"),
+    secondaryCategories: Array.isArray(card.secondaryCategories || card.secondaryIssueCategories)
+      ? (card.secondaryCategories || card.secondaryIssueCategories).map(String)
+      : [],
     issueType: String(card.issueType || "Diagnostic Issue"),
     severity: String(card.severity || "Moderate"),
     criteria: Array.isArray(card.criteria) ? card.criteria.map(String) : [],
     framework: Array.isArray(card.framework) ? card.framework.map(String) : [],
     paragraphLocation: String(card.paragraphLocation || ""),
+    sourceParagraphId: String(card.sourceParagraphId || card.paragraphId || ""),
+    sourceSentenceId: String(card.sourceSentenceId || ""),
     sentenceRole: String(card.sentenceRole || "unknown"),
+    secondarySentenceRoles: Array.isArray(card.secondarySentenceRoles) ? card.secondarySentenceRoles.map(String) : [],
     exactSentence: String(card.exactSentence || ""),
+    normalizedEvidence: String(card.normalizedEvidence || ""),
+    evidenceStartOffset: Number(card.evidenceStartOffset ?? -1),
+    evidenceEndOffset: Number(card.evidenceEndOffset ?? -1),
+    targetSpan: String(card.targetSpan || ""),
+    targetStartOffset: Number(card.targetStartOffset ?? -1),
+    targetEndOffset: Number(card.targetEndOffset ?? -1),
+    evidenceAssertionType: String(card.evidenceAssertionType || ""),
+    detectedDefect: revisionWithheld
+      ? "The exact evidence was validated; the unverified correction was withheld."
+      : String(card.detectedDefect || ""),
+    expectedCorrection: revisionWithheld ? "" : String(card.expectedCorrection || ""),
+    evidenceValidationStatus: String(card.evidenceValidationStatus || ""),
+    evidenceValidationReason: revisionWithheld
+      ? "The exact evidence was validated; the unverified correction was withheld."
+      : String(card.evidenceValidationReason || ""),
     sentenceFunction: String(card.sentenceFunction || ""),
     whyItLimitsBand: String(card.whyItLimitsBand || ""),
     kruPomDiagnosis: String(card.kruPomDiagnosis || ""),
@@ -140,6 +172,7 @@ function publicFeedback(card = {}) {
     repairedTargets: Array.isArray(card.repairedTargets) ? card.repairedTargets.map(String) : [],
     unresolvedTargets: Array.isArray(card.unresolvedTargets) ? card.unresolvedTargets.map(String) : [],
     revisionAlignmentStatus: String(card.revisionAlignmentStatus || ""),
+    summaryPriority: Number(card.summaryPriority || 0),
     evidenceScope: String(card.evidenceScope || "single-location"),
     evidenceCount: Number(card.evidenceCount || 1),
     evidenceLocations: Array.isArray(card.evidenceLocations) ? card.evidenceLocations.map((item) => ({
@@ -157,7 +190,25 @@ function publicParagraphCoverage(item = {}) {
     status: String(item.status || "Strong"),
     diagnosis: String(item.diagnosis || ""),
     priorityRepair: String(item.priorityRepair || "No priority repair"),
+    priorityIssueId: String(item.priorityIssueId || ""),
+    dimensions: clonePublicObject(item.dimensions),
     issueIds: Array.isArray(item.issueIds) ? item.issueIds.map(String) : []
+  };
+}
+
+function publicThesisDimensions(value = {}) {
+  return {
+    applicable: Boolean(value?.applicable),
+    status: String(value?.status || ""),
+    taskFamily: String(value?.taskFamily || ""),
+    routeRequired: Array.isArray(value?.routeRequired) ? value.routeRequired.map(String) : [],
+    routePresent: clonePublicObject(value?.routePresent),
+    routeOrderClear: Boolean(value?.routeOrderClear),
+    causalHierarchyClear: Boolean(value?.causalHierarchyClear),
+    lexicalNamingAccurate: Boolean(value?.lexicalNamingAccurate),
+    bodyRouteTraceable: Boolean(value?.bodyRouteTraceable),
+    positionRequired: Boolean(value?.positionRequired),
+    positionPresent: Boolean(value?.positionPresent)
   };
 }
 

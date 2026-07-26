@@ -21,6 +21,8 @@ import {
 import { buildSentenceCoverageAudit } from "../domain/paragraphEvidence.js";
 import { buildStudentReportViewModel } from "../domain/reportViewModels.js";
 import { auditFeedbackIntegrity, buildFeedbackIntegrityModel, projectRouteAlignmentDisplay, validateFeedbackIntegrity } from "../domain/feedbackIntegrity.js";
+import { buildEvidenceBasedRepairPlan } from "../domain/reportConsistency.js";
+import { repairDeterministicEvidenceDefects } from "../domain/evidenceAssertions.js";
 import { assertUnicodeIntegrity, normalizeVisibleTree } from "../domain/textIntegrity.js";
 export {
   classifyTask1Visual,
@@ -267,6 +269,7 @@ export async function runProductionContractCheck() {
 async function analyzeWithOpenAI(payload) {
   const config = getOpenAiConfig(payload);
   const prompt = buildPrompt(payload);
+  let retryAttempted = false;
   // Exactly one bounded retry is attempted, and only for these recoverable first-attempt failures.
   // PROVIDER_MAX_OUTPUT_TOKENS gets the dedicated larger retry ceiling; a parse/validation retry only
   // needs a modest bump. A non-token incomplete reason is NOT retried with more tokens (it will not
@@ -274,6 +277,7 @@ async function analyzeWithOpenAI(payload) {
   const RETRYABLE_FIRST_ATTEMPT = ["PROVIDER_JSON_PARSE_ERROR", "REPORT_OUTPUT_VALIDATION_FAILED", "PROVIDER_MAX_OUTPUT_TOKENS"];
   const result = await runOpenAiAnalysisAttempt({ config, payload, prompt, isRetry: false }).catch(async (error) => {
     if (!RETRYABLE_FIRST_ATTEMPT.includes(error?.errorCode)) throw error;
+    retryAttempted = true;
     try {
       return await runOpenAiAnalysisAttempt({
         config: {
@@ -301,7 +305,8 @@ async function analyzeWithOpenAI(payload) {
   return {
     ...result,
     providerModel: config.model,
-    providerReasoningEffort: config.reasoningEffort
+    providerReasoningEffort: config.reasoningEffort,
+    providerRetryAttempted: retryAttempted
   };
 }
 
@@ -2713,7 +2718,7 @@ function ensureTask2SafetyCards(cards, payload, safety) {
     }
   }
 
-  if (safety.unfinishedEndingDetected && safety.evidence.ending && !used.has(normalizeEvidenceText(safety.evidence.ending))) {
+  if (safety.unfinishedEndingDetected && safety.evidence.ending) {
     const completionRevision = safety.stanceRequired
       ? "Complete the conclusion only after selecting one explicit position and making both body paragraphs prove it."
       : `Complete the conclusion by summarising the same ${safety.essayRoute} routes developed in the body; do not add an opinion unless the prompt asks for one.`;
@@ -2835,7 +2840,7 @@ function addFullResponseLanguageCards(output, used, safety) {
       sentenceFunction: "This sentence contributes to the paragraph's explanation or closure.",
       whyItLimitsBand: issue.explanation,
       kruPomDiagnosis: `${issue.category} is a genuine language-control issue, not merely an optional high-band refinement.`,
-      targetedRevision: repairDeterministicLanguageSentence(issue.exactSentence),
+      targetedRevision: repairDeterministicLanguageSentence(issue.exactSentence, issue),
       revisionType: "Minimal Correction",
       whyRevisionIsStronger: "The revision corrects the visible language-control problems in the quoted sentence without changing its argumentative route.",
       studentAction: `Search the full response for the same ${issue.category} pattern and correct every recurrence before adding optional refinements.`
@@ -2860,58 +2865,40 @@ function buildTeacherGuidedBody2Revision(sentence) {
   return repairDeterministicLanguageSentence(sentence);
 }
 
-function repairDeterministicLanguageSentence(sentence) {
-  return String(sentence || "")
-    .replace(/\binstabillity\b/gi, "instability")
-    .replace(/\bprovde\b/gi, "provide")
-    .replace(/\bheavily disagree\b/gi, "strongly disagree")
-    .replace(/\byoung majority\b/gi, "majority of young people")
-    .replace(/\bopportunities for occupations\b/gi, "employment opportunities")
-    .replace(/\boperate in solving\b/gi, "help address")
-    .replace(/\bsignificant and certain impacts?\b/gi, "significant effects")
-    .replace(/\bsecrets? in the space\b/gi, "mysteries of space")
-    .replace(/\bdaily travels?\b/gi, "daily travel")
-    .replace(/\bexceeding amounts?\b/gi, "excessive amounts")
-    .replace(/\beconomic industry\b/gi, "economy")
-    .replace(/\bastrology\b/gi, "astronomy")
-    .replace(/\bclusterization\b/gi, "concentration")
-    .replace(/\bthe difficulty of travel(?:ing|ling)\b/gi, "difficulty travelling")
-    .replace(/\ban issue of travel(?:ing|ling)\b/gi, "travel difficulties")
-    .replace(/\bconcentration in the class\b/gi, "concentration in class")
-    .replace(/\bcongestion of traffic\b/gi, "traffic congestion")
-    .replace(/\btravel through (?:a )?long distance\b/gi, "travel long distances")
-    .replace(/\b(?:a|an) (?:large|heavy|major|severe)?\s*traffic congestion\b/gi, "severe traffic congestion")
-    .replace(/\b(?:a|an) (?:equipment|information|advice|research|homework)\b/gi, "$1")
-    .replace(/\bEvery family is living\b/g, "Families live")
-    .replace(/\bevery family is living\b/g, "families live")
-    .replace(/\bdifferent places and distances\b/gi, "different locations")
-    .replace(/\btheir house\b/gi, "their homes")
-    .replace(/\bsome periods? of time\b/gi, "certain times")
-    .replace(/\bsome places\b/gi, "some destinations")
-    .replace(/\b(?:a )?specific place\b/gi, "a particular facility")
-    .replace(/\bcertain place\b/gi, "particular facility")
-    // Removed two phrase rewrites that changed the policy subject of a conclusion ("specific places
-    // like towns and cities" -> "facilities in towns and cities"): a deterministic repair may fix
-    // language only, never shift what the task's policy applies to. Meaning-level rewrites must come
-    // from the analysis engine and pass the revision-quality validator.
+function repairDeterministicLanguageSentence(sentence, issue = {}) {
+  let repaired = repairDeterministicEvidenceDefects(String(sentence || ""));
+  if (/tense control/i.test(String(issue.category || ""))) {
+    repaired = repaired.replace(
+      /\b((?:every|each)\s+(?:[a-z-]+\s+){0,4}[a-z-]+)\s+is\s+([a-z-]+ing)\b/giu,
+      (_, subject, participle) => `${subject} ${thirdPersonSingular(participleToBase(participle))}`
+    );
+  }
+  return repaired
     .replace(/\bshould (used|increased|decreased|provided|supplied|charged|paid|made|given|done|taken|written|built)\b/gi, "should be $1")
     .replace(/\bcould (used|increased|decreased|provided|supplied|charged|paid|made|given|done|taken|written|built)\b/gi, "could be $1")
     .replace(/\bwould (used|increased|decreased|provided|supplied|charged|paid|made|given|done|taken|written|built)\b/gi, "would be $1")
-    .replace(/\bfuture (age?ing crisis)\b/gi, "the future $1")
-    .replace(/\bquality of workforce\b/gi, "quality of the workforce")
-    .replace(/\bas large workforce\b/gi, "as a large workforce")
     .replace(/\bpopulation(\s+of\s+[^.!?]{0,45})\s+continue\s+to\b/gi, "population$1 continues to")
-    .replace(/\boccupations\s+,\s*which\b/gi, "occupations, which")
-    .replace(/\bspace\s*,?\s*which\b/gi, "space, which")
-    // Removed: a rewrite that spliced "…in one area this could contribute…" produced a broken clause
-    // and shifted the policy subject away from the task. Meaning-level repairs must come from the
-    // analysis engine and pass the revision-quality validator, not from a blind regex substitution.
     .replace(/\s+([,.;!?])/g, "$1")
     .replace(/([,;:])(?=\S)/g, "$1 ")
     .replace(/([.!?])(?=[A-Z])/g, "$1 ")
     .replace(/,\s*$/g, ".")
     .replace(/ {2,}/g, " ")
     .trim();
+}
+
+function participleToBase(value) {
+  const word = String(value || "").toLowerCase();
+  if (/ying$/.test(word) && !/[aeiou]ying$/.test(word)) return `${word.slice(0, -4)}ie`;
+  if (/(?:v|c)ing$/.test(word)) return `${word.slice(0, -3)}e`;
+  if (/([b-df-hj-np-tv-z])\1ing$/.test(word)) return word.slice(0, -4);
+  return word.replace(/ing$/, "");
+}
+
+function thirdPersonSingular(value) {
+  const word = String(value || "");
+  if (/[^aeiou]y$/i.test(word)) return `${word.slice(0, -1)}ies`;
+  if (/(?:s|x|z|ch|sh|o)$/i.test(word)) return `${word}es`;
+  return `${word}s`;
 }
 function buildMeaningErrorRevision(error) {
   const evidence = String(error?.exactEvidence || "").trim();
@@ -3281,17 +3268,11 @@ function isReleaseReadyFeedbackCard(card = {}, payload = {}, safety = null) {
   }
 
   if (payload.taskType === "Task 2") {
-    if (!REVISION_TYPES.includes(card.revisionType) || hasUnsafePartialTask2Revision(card)) return false;
-    if (!validateTask2RevisionIntegrity({
-      exactSentence: card.exactSentence,
-      targetedRevision: card.targetedRevision,
-      revisionType: card.revisionType
-    }).pass) return false;
-    if (
-      safety?.positionConfidence === "low" &&
-      /\bi\s+(?:strongly|firmly|generally|partly|partially)?\s*(?:agree|disagree)\b/i.test(card.targetedRevision || "") &&
-      card.revisionType !== "Teacher-Guided Expansion"
-    ) return false;
+    // Preserve an evidence-backed diagnosis even when its proposed model sentence is unsafe.
+    // Canonical evidence processing performs bounded validation and converts that one revision to
+    // the controlled "Revision Unavailable" state; discarding the whole card here would hide major
+    // route/completion defects and contradict the safety contract.
+    if (!REVISION_TYPES.includes(card.revisionType)) return false;
   }
 
   if (payload.taskType === "Task 1" && isTask1IntroductionCard(card, payload)) {
@@ -3544,10 +3525,8 @@ function localizePracticePlan(items = [], payload = {}) {
   if (normalizeReportLanguage(payload.reportLanguage) !== "th") return items;
   return items.map((item, index) => ({
     ...item,
-    title: `วันที่ ${item.day || index + 1}: ฝึกซ่อมประเด็นหลัก`,
-    task: index === 1
-      ? "ฝึกซ่อมหลักฐานและกลไกของทั้งสองย่อหน้า Body 1 และ Body 2 แล้วตรวจว่าแต่ละตัวอย่างสนับสนุน Thesis จริง"
-      : `ฝึกจากประเด็น ${item.title || item.focus || "สำคัญของรายงาน"} โดยใช้ประโยคจริงจากงานและตรวจความหมายหลังแก้ทุกครั้ง`
+    title: `วันที่ ${item.day || index + 1}: ${item.title || "ฝึกซ่อมประเด็นหลัก"}`,
+    task: `ฝึกจากประเด็นที่ตรวจพบจริง: ${item.task || item.action || "ตรวจหลักฐานและซ่อมเฉพาะจุดที่วินิจฉัย"}`
   }));
 }
 function normalizeAnalysis(analysis, payload) {
@@ -3587,7 +3566,6 @@ function normalizeAnalysis(analysis, payload) {
   );
   const mainScoreLimitingFactor = recoverExecutiveField(reconciledMainScoreLimitingFactor, feedbackCards, "summary");
   const mostUrgentRepair = recoverExecutiveField(guardedAnalysis.mostUrgentRepair, feedbackCards, "repair");
-  const localizedExecutive = localizeExecutiveFields(payload, mainScoreLimitingFactor, mostUrgentRepair);
   const top3Issues = normalizeTopIssues(
     selectDeterministicTopIssueCards(feedbackCards, payload),
     feedbackCards,
@@ -3595,30 +3573,20 @@ function normalizeAnalysis(analysis, payload) {
   );
   const paragraphFeedback = normalizeParagraphFeedback(guardedAnalysis.paragraphFeedback, payload, feedbackCards);
   const sentenceCoverageAudit = buildSentenceCoverageAudit(payload.writing, payload.taskType, feedbackCards, paragraphFeedback);
-  const practicePlan = payload.taskType === "Task 2"
-    ? buildCanonicalTask2PracticePlan(payload, feedbackCards)
-    : enrichPracticePlan(
-        Array.isArray(guardedAnalysis.practicePlan) && guardedAnalysis.practicePlan.length
-          ? guardedAnalysis.practicePlan
-          : buildPracticePlan(payload.taskType, feedbackCards),
-        payload,
-        feedbackCards
-      );
-  const studentFeedbackCards = localizeFeedbackCards(feedbackCards, payload);
-  const studentTopIssues = localizeTopIssues(top3Issues, payload);
   const studentParagraphFeedback = localizeParagraphGuidance(paragraphFeedback, payload);
-  const studentPracticePlan = localizePracticePlan(practicePlan, payload);
   const feedbackIntegrity = buildFeedbackIntegrityModel({
     writing: payload.writing,
     taskType: payload.taskType,
+    essayType: payload.publicEssayType || guardedAnalysis.essayType || payload.essayType,
     visualType: payload.publicVisualType || guardedAnalysis.visualType || payload.visualType,
     reportLanguage: normalizeReportLanguage(payload.reportLanguage),
     prompt: payload.prompt,
-    feedbackCards: studentFeedbackCards,
-    topIssues: studentTopIssues,
-    paragraphFeedback: studentParagraphFeedback,
-    mainScoreLimitingFactor: localizedExecutive.mainScoreLimitingFactor,
-    mostUrgentRepair: localizedExecutive.mostUrgentRepair
+    positionConfidence: guardedAnalysis.positionConfidence,
+    feedbackCards,
+    topIssues: top3Issues,
+    paragraphFeedback,
+    mainScoreLimitingFactor,
+    mostUrgentRepair
   });
   const feedbackIntegrityAudit = auditFeedbackIntegrity(feedbackIntegrity, payload.writing);
   const feedbackIntegrityValidationIssues = feedbackIntegrityAudit
@@ -3630,6 +3598,20 @@ function normalizeAnalysis(analysis, payload) {
       .filter((finding) => finding.severity === "repairable")
       .map((finding) => ({ code: finding.code, message: finding.message, disclosed: false }))
   ];
+  const evidenceBasedPracticePlan = buildEvidenceBasedRepairPlan(
+    feedbackIntegrity.issues,
+    normalizeReportLanguage(payload.reportLanguage),
+    payload.taskType === "Task 2" ? 7 : Math.min(7, Math.max(1, feedbackIntegrity.issues.length)),
+    { taskType: payload.taskType, visualType: payload.visualType }
+  );
+  const studentFeedbackCards = localizeFeedbackCards(feedbackIntegrity.issues, payload);
+  const studentTopIssues = localizeTopIssues(feedbackIntegrity.topIssues, payload);
+  const studentPracticePlan = localizePracticePlan(evidenceBasedPracticePlan, payload);
+  const canonicalExecutive = localizeExecutiveFields(
+    payload,
+    feedbackIntegrity.linkage.mainScoreLimitingFactor,
+    feedbackIntegrity.linkage.mostUrgentRepair
+  );
 
   const normalized = {
     taskType: payload.taskType,
@@ -3669,8 +3651,8 @@ function normalizeAnalysis(analysis, payload) {
     generatedAt: guardedAnalysis.generatedAt || new Date().toISOString(),
     analysisMode: guardedAnalysis.analysisMode || "Full diagnostic engine",
     estimatedBandRange: guardedAnalysis.estimatedBandRange || "6.0-6.5",
-    mainScoreLimitingFactor: localizedExecutive.mainScoreLimitingFactor,
-    mostUrgentRepair: localizedExecutive.mostUrgentRepair,
+    mainScoreLimitingFactor: canonicalExecutive.mainScoreLimitingFactor,
+    mostUrgentRepair: canonicalExecutive.mostUrgentRepair,
     criteriaScores: localizeCriterionScores(guardedAnalysis.criteriaScores || {}, payload),
     kruPomScores: localizeFrameworkScores(guardedAnalysis.kruPomScores || {}, payload),
     canonicalTask2Analysis: guardedAnalysis.canonicalTask2Analysis || null,
@@ -3731,10 +3713,11 @@ function normalizeAnalysis(analysis, payload) {
     severitySummary: guardedAnalysis.severitySummary || "",
     highBandLimiters: Array.isArray(guardedAnalysis.highBandLimiters) ? guardedAnalysis.highBandLimiters : [],
     topRepairPriority: guardedAnalysis.topRepairPriority || guardedAnalysis.mostUrgentRepair || "",
-    top3Issues: feedbackIntegrity.topIssues,
-    feedbackCards: feedbackIntegrity.issues,
+    top3Issues: studentTopIssues,
+    feedbackCards: studentFeedbackCards,
     paragraphFeedback: studentParagraphFeedback,
     paragraphCoverage: feedbackIntegrity.paragraphCoverage,
+    thesisDimensions: feedbackIntegrity.thesisDimensions,
     feedbackIntegrity,
     feedbackIntegrityValidationIssues,
     feedbackIntegrityRepairs,
@@ -3754,8 +3737,8 @@ function normalizeAnalysis(analysis, payload) {
   const canonicalAnalysis = buildCanonicalAnalysis({
     payload,
     analysis: normalized,
-    feedbackCards: feedbackIntegrity.issues,
-    topIssues: feedbackIntegrity.topIssues,
+    feedbackCards: studentFeedbackCards,
+    topIssues: studentTopIssues,
     paragraphFeedback: studentParagraphFeedback,
     repairPlan: studentPracticePlan
   });
@@ -3989,6 +3972,18 @@ function collectTask2ReportOutputIssues(analysis, payload) {
 
   for (const [index, card] of analysis.feedbackCards.entries()) {
     if (!allowedRevisionTypes.has(card.revisionType)) issues.push(`Feedback card ${index + 1} has an invalid or missing revision type.`);
+    if (card.revisionWithheld || card.revisionType === "Revision Unavailable") {
+      if (
+        card.revisionWithheld !== true ||
+        card.revisionType !== "Revision Unavailable" ||
+        card.revisionAlignmentStatus !== "withheld" ||
+        String(card.targetedRevision || "").trim().length < 30 ||
+        normalizeEvidenceText(card.targetedRevision) === normalizeEvidenceText(card.exactSentence)
+      ) {
+        issues.push(`Feedback card ${index + 1} has an invalid controlled revision-withheld state.`);
+      }
+      continue;
+    }
     if (hasUnsafePartialTask2Revision(card)) issues.push(`Feedback card ${index + 1} Targeted Revision preserves obvious grammar errors from the quoted student sentence.`);
     const revisionIntegrity = card.revisionIntegrity || validateTask2RevisionIntegrity({
       exactSentence: card.exactSentence,
@@ -3998,7 +3993,9 @@ function collectTask2ReportOutputIssues(analysis, payload) {
     if (!revisionIntegrity.pass) {
       issues.push(`Feedback card ${index + 1} Targeted Revision fails deterministic revision integrity (${revisionIntegrity.revisionIssueCategoriesRemaining.join(", ") || "route, revision type, grammar, or sentence completion"}).`);
     }
-    if (safety.positionConfidence === "low" && /\bi\s+(?:strongly|firmly|generally|partly|partially)?\s*(?:agree|disagree)\b/i.test(card.targetedRevision || "") && card.revisionType !== "Teacher-Guided Expansion") {
+    if (safety.positionConfidence === "low" &&
+      declaresDefiniteStance(card.targetedRevision) &&
+      card.revisionType !== "Teacher-Guided Expansion") {
       issues.push(`Feedback card ${index + 1} silently chooses a position instead of labelling it as teacher-guided.`);
     }
   }
@@ -4054,6 +4051,12 @@ function collectTask2ReportOutputIssues(analysis, payload) {
   issues.push(...validateCanonicalAnalysis(canonical));
   issues.push(...findRepeatedGenericFields(analysis.feedbackCards));
   return Array.from(new Set(issues));
+}
+
+function declaresDefiniteStance(value = "") {
+  const text = String(value || "");
+  if (/\bwhether\s+i\s+agree\s+or\s+disagree\b|\bagree\s+or\s+disagree\b/i.test(text)) return false;
+  return /\bi\s+(?:strongly|firmly|generally|partly|partially)?\s*(?:agree|disagree)\b/i.test(text);
 }
 
 function hasUnsafePartialTask2Revision(card = {}) {
@@ -4535,6 +4538,3 @@ function splitSentences(text) {
   if (!compact) return [];
   return compact.match(/[^.!?]+[.!?]+["”']?|[^.!?]+$/g)?.map((sentence) => sentence.trim()).filter(Boolean) || [compact];
 }
-
-
-

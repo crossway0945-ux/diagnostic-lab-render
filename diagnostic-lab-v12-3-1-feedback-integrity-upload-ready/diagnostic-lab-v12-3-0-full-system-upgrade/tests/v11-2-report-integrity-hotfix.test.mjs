@@ -67,7 +67,12 @@ assert.match(`${report.practicePlan[0].title} ${report.practicePlan[0].task}`, /
 assert.doesNotMatch(`${report.practicePlan[0].title} ${report.practicePlan[0].task}`, /map the task routes|check the conclusion/i);
 
 for (const card of report.feedbackCards) {
-  assert.equal(card.revisionIntegrity?.pass, true, `${card.issueType} must pass revision integrity`);
+  if (card.revisionWithheld) {
+    assert.equal(card.revisionType, "Revision Unavailable", `${card.issueType} must use the controlled withheld state`);
+    assert.ok(card.studentAction?.length > 20, `${card.issueType} must retain a specific Student Action`);
+  } else {
+    assert.equal(card.revisionIntegrity?.pass, true, `${card.issueType} must pass revision integrity`);
+  }
 }
 const body1Card = report.feedbackCards.find((card) => /Every family is living/i.test(card.exactSentence));
 assert.ok(body1Card);
@@ -146,14 +151,16 @@ assert.equal(progress.changeIndicator, "new");
 assert.equal(progress.repeatedIssue, "");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.5.0",
-  engineVersion: "ielts-diagnostic-engine-v12.4.0",
+  appVersion: "12.6.0",
+  engineVersion: "ielts-diagnostic-engine-v12.6.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
-  promptVersion: "ielts-diagnostic-prompt-v12.3.1",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.4.0",
-  feedbackSchemaVersion: "feedback-integrity-v12.4.0",
-  issueTaxonomyVersion: "issue-taxonomy-v12.3.5",
-  revisionValidatorVersion: "revision-alignment-v12.4.0"
+  promptVersion: "ielts-diagnostic-prompt-v12.6.0",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.6.0",
+  feedbackSchemaVersion: "feedback-integrity-v12.6.0",
+  issueTaxonomyVersion: "issue-taxonomy-v12.6.0",
+  evidenceValidatorVersion: "evidence-assertion-v12.6.0",
+  revisionValidatorVersion: "revision-alignment-v12.6.0",
+  pdfTextIntegrityVersion: "pdf-text-integrity-v12.6.0"
 });
 
 const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");

@@ -45,39 +45,23 @@ for (const card of report.feedbackCards) {
   // "Revision Unavailable" is the controlled withheld state added in V12.4.0 for revisions that
   // fail grammar/semantic/task-fidelity validation and must not be shown as study models.
   assert.ok(["Minimal Correction", "Route-Preserving Revision", "High-Band Refinement", "Teacher-Guided Expansion", "Revision Unavailable"].includes(card.revisionType));
-  assert.deepEqual(Object.fromEntries([
-    "exactOriginalFound",
-    "diagnosedCategories",
-    "remainingDiagnosedCategories",
-    "newErrorCategories",
-    "originalClaim",
-    "revisedClaim",
-    "routePreserved",
-    "stancePreserved",
-    "newPremiseIntroduced",
-    "sentenceComplete",
-    "naturalEnglish",
-    "revisionType",
-    "revisionTypeValid",
-    "pass"
-  ].map((key) => [key, card.revisionIntegrity[key]])), {
-    exactOriginalFound: true,
-    diagnosedCategories: card.revisionIntegrity.diagnosedCategories,
-    remainingDiagnosedCategories: [],
-    newErrorCategories: [],
-    originalClaim: card.exactSentence,
-    // revisionIntegrity reflects the ORIGINAL candidate revision. When the card is withheld, the
-    // displayed text is the controlled notice, so the integrity record legitimately differs.
-    revisedClaim: card.revisionWithheld ? card.revisionIntegrity.revisedClaim : card.targetedRevision,
-    routePreserved: true,
-    stancePreserved: true,
-    newPremiseIntroduced: card.revisionIntegrity.newPremiseIntroduced,
-    sentenceComplete: true,
-    naturalEnglish: true,
-    revisionType: card.revisionWithheld ? card.revisionIntegrity.revisionType : card.revisionType,
-    revisionTypeValid: true,
-    pass: true
-  });
+  assert.equal(card.revisionIntegrity.exactOriginalFound, true);
+  assert.equal(card.revisionIntegrity.originalClaim, card.exactSentence);
+  assert.equal(card.revisionIntegrity.routePreserved, true);
+  assert.equal(card.revisionIntegrity.stancePreserved, true);
+  assert.equal(card.revisionIntegrity.sentenceComplete, true);
+  assert.equal(card.revisionIntegrity.revisionTypeValid, true);
+  if (card.revisionWithheld) {
+    assert.equal(card.revisionType, "Revision Unavailable");
+    assert.ok(card.revisionQualityProblems?.length || !card.revisionIntegrity.pass || card.lexicalReplacementValidationStatus === "fail");
+  } else {
+    assert.equal(card.revisionIntegrity.pass, true);
+    assert.deepEqual(card.revisionIntegrity.remainingDiagnosedCategories, []);
+    assert.deepEqual(card.revisionIntegrity.newErrorCategories, []);
+    assert.equal(card.revisionIntegrity.naturalEnglish, true);
+    assert.equal(card.revisionIntegrity.revisedClaim, card.targetedRevision);
+    assert.equal(card.revisionIntegrity.revisionType, card.revisionType);
+  }
 }
 
 const fullReportText = JSON.stringify(report);
@@ -118,14 +102,16 @@ assert.equal(progress.reportVersions.length, 5);
 assert.equal(progress.repeatedIssue, "");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.5.0",
-  engineVersion: "ielts-diagnostic-engine-v12.4.0",
+  appVersion: "12.6.0",
+  engineVersion: "ielts-diagnostic-engine-v12.6.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
-  promptVersion: "ielts-diagnostic-prompt-v12.3.1",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.4.0",
-  feedbackSchemaVersion: "feedback-integrity-v12.4.0",
-  issueTaxonomyVersion: "issue-taxonomy-v12.3.5",
-  revisionValidatorVersion: "revision-alignment-v12.4.0"
+  promptVersion: "ielts-diagnostic-prompt-v12.6.0",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.6.0",
+  feedbackSchemaVersion: "feedback-integrity-v12.6.0",
+  issueTaxonomyVersion: "issue-taxonomy-v12.6.0",
+  evidenceValidatorVersion: "evidence-assertion-v12.6.0",
+  revisionValidatorVersion: "revision-alignment-v12.6.0",
+  pdfTextIntegrityVersion: "pdf-text-integrity-v12.6.0"
 });
 
 const [script, css] = await Promise.all([

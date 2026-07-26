@@ -118,14 +118,16 @@ assert.deepEqual(progress.reportVersions.map((version) => version.progressEligib
 assert.notEqual(progress.repeatedIssue, "Same-work rerun marker");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.5.0",
-  engineVersion: "ielts-diagnostic-engine-v12.4.0",
+  appVersion: "12.6.0",
+  engineVersion: "ielts-diagnostic-engine-v12.6.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
-  promptVersion: "ielts-diagnostic-prompt-v12.3.1",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.4.0",
-  feedbackSchemaVersion: "feedback-integrity-v12.4.0",
-  issueTaxonomyVersion: "issue-taxonomy-v12.3.5",
-  revisionValidatorVersion: "revision-alignment-v12.4.0"
+  promptVersion: "ielts-diagnostic-prompt-v12.6.0",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.6.0",
+  feedbackSchemaVersion: "feedback-integrity-v12.6.0",
+  issueTaxonomyVersion: "issue-taxonomy-v12.6.0",
+  evidenceValidatorVersion: "evidence-assertion-v12.6.0",
+  revisionValidatorVersion: "revision-alignment-v12.6.0",
+  pdfTextIntegrityVersion: "pdf-text-integrity-v12.6.0"
 });
 
 const [script, css] = await Promise.all([

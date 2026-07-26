@@ -59,6 +59,16 @@ Next-time strategy requirement:
 - Every model revision must be grammatically complete, punctuated accurately, natural, and consistent with the Kru Pom teaching pattern. It may reorganise the student's wording, but it must preserve the same direction of meaning unless labelled Teacher-Guided Expansion.
 `;
 
+const globalEvidenceIntegrityGuardrails = `
+Global evidence-integrity contract:
+- Every issue must quote exact evidence that contains or functionally demonstrates the diagnosed defect. Never attach a punctuation diagnosis to a different sentence.
+- Identify one primary defect category from the evidence, sentence role, repair target and band impact. Put other genuinely relevant categories in secondary categories; do not duplicate a card under another heading.
+- Keep structural route status separate from lexical naming accuracy. A traceable route with one inaccurate noun is structurally present and needs a lexical repair.
+- Student Action must name the local repair. Claim recurrence only when multiple verified evidence locations are supplied.
+- A Targeted Revision must repair the diagnosed span, preserve task meaning and route, and use Minimal Correction, Route-Preserving Revision, Teacher-Guided Expansion or Model Paragraph according to the content actually added.
+- Every defect type named in the Executive Summary or repair plan must be supported by a detailed issue. Do not claim spelling, punctuation, articles, agreement, mechanism or closure without linked evidence.
+`;
+
 const task1StrictScoringGuardrails = `
 Strict Task 1 scoring guardrails:
 - Before assigning any final score, run a Critical Error Gate using: visualType, overviewAccuracyStatus, mainTrendRecognition, dataSelectionQuality, dataAccuracyRisk, groupingLogic, unsafeGeneralisationDetected, majorOmissionDetected, contradictionDetected, taskAchievementCapReason, recommendedTaskAchievementRange, and strictModeApplied.
@@ -340,6 +350,7 @@ Evaluate Kru Pom Diagnostic Framework:
 ${task2Schema.requiredFramework.join(", ")}
 
 ${task2StrictScoringGuardrails}
+${globalEvidenceIntegrityGuardrails}
 
 ${nextTimeStrategyGuidance}
 
@@ -488,6 +499,7 @@ Task 1-specific rules:
 - If image is available, compare report statements against the image and quote exact inaccurate report sentences.
 
 ${task1StrictScoringGuardrails}
+${globalEvidenceIntegrityGuardrails}
 
 ${task1IntroductionParaphraseGuidance}
 

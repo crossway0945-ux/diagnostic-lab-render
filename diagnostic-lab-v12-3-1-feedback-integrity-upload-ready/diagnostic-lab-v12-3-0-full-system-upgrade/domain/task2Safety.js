@@ -1060,7 +1060,7 @@ function buildProblemSolutionRouteAssessment(context) {
     const sentences = splitSentences(paragraph);
     const causeScore = countMatches(paragraph, /\b(?:cause[sd]?|because|due to|result(?:s|ed)? from|reason|led to|number of cars|car ownership|commut|daily travel|congestion)\b/gi);
     const problemScore = countMatches(paragraph, /\b(?:problem|effect|consequence|congestion|pollution|delay|accident|pressure|traffic jam)\b/gi);
-    const solutionScore = countMatches(paragraph, /\b(?:solution|measure|government should|could|need to|public transport|carpool|parking|tax|invest|encourage|reduce|improve)\b/gi);
+    const solutionScore = countMatches(paragraph, /\b(?:solution|measure|government should|could|need to|transit|transport(?:ation)?|carpool|parking|tax|invest|encourage|reduce|improve)\b/gi);
     const label = solutionScore > Math.max(causeScore, problemScore)
       ? "develops solutions"
       : asksCauses ? "develops causes" : asksProblems ? "develops problems" : index === 0 ? "develops causes/problems" : "develops solutions";
@@ -1584,7 +1584,7 @@ function classifyOpinionBodyRoute({ paragraph, index, prompt, position, introduc
     };
   }
 
-  const disagreementReason = writerDisagrees && /\b(?:difficulty|difficult|inconvenien|far away|traffic congestion|longer journeys?|pressure|harm|problem|worsen|limit|reduce access)\b/i.test(text);
+  const disagreementReason = writerDisagrees && /\b(?:difficulty|difficult|inconvenien|far away|congestion|longer journeys?|pressure|harm|problem|worsen|limit|reduce access)\b/i.test(text);
   if (supportingSignals || thesisOverlap >= 2 || disagreementReason || (negativeProposition && writerDisagrees)) {
     return {
       label: `develops a reason aligned with the writer's ${writerDisagrees ? "disagreement" : writerAgrees ? "agreement" : "main position"}`,
@@ -1943,7 +1943,7 @@ function collectDeterministicLanguageIssues(source, records) {
     lexicalRule(/\b(?:the difficulty|an issue|the issue)\s+of\s+travel(?:ing|ling)\b|\bconcentration in the class\b|\bcongestion of traffic\b/gi, "collocation", "clear-error", "The noun and preposition combination is unnatural."),
     lexicalRule(/\b(?:some|same|certain|specific)\s+(?:place|places|thing|things|area|areas|period|periods|way|ways)\b/gi, "vague noun choice", "awkward-but-understandable", "The noun phrase is understandable but too vague for precise academic explanation."),
     lexicalRule(/\b(?:all the same places|specific places like towns and cities)\b/gi, "reference wording", "awkward-but-understandable", "The reference category is unclear or imprecise."),
-    lexicalRule(/\b(?:a|an)\s+(?:(?:large|heavy|major|severe)\s+)?(?:traffic congestion|congestion|equipment|information|advice|research|homework)\b/gi, "countability", "clear-error", "The noun is normally uncountable in this meaning."),
+    lexicalRule(/\b(?:a|an)\s+(?:(?:large|heavy|major|severe|traffic)\s+){0,2}(?:congestion|equipment|information|advice|research|homework)\b/gi, "countability", "clear-error", "The noun is normally uncountable in this meaning."),
     lexicalRule(/\btravel\s+through\s+(?:a\s+)?long distance\b/gi, "collocation", "clear-error", "The travel-distance phrase uses an unnatural preposition and noun pattern."),
     grammarRule(/\bpopulation\s+of\s+[^.!?]{0,45}\bcontinue\s+to\b/gi, "subject-verb agreement", "clear-error", "The subject and verb do not agree."),
     grammarRule(/\b(?<!a\s)(?<!the\s)future\s+age?ing\s+crisis\b/gi, "articles", "clear-error", "The singular countable noun phrase requires an article."),

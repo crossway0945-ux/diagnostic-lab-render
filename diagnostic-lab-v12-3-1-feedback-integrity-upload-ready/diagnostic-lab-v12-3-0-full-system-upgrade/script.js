@@ -1901,6 +1901,7 @@ function sanitizePrintText(value) {
     .replace(/\u2192/g, "->")
     .replace(/\bLFC[\s\u00a0]+CPC\b/g, "LFC-CPC")
     .replace(/\bTESL\b/g, "TEEL")
+    .replace(/\bBand\s+([0-9])\.\s+([05])\b/gi, "Band $1.$2")
     .replace(/([^.!?]*\b(?:SAR|Situation[^.!?]{0,120}Result|Result[^.!?]{0,120}Situation)\b[^.!?]*?)\bAnalysis\b/g, "$1Action")
     .replace(/([\u201d"\u2019'\w]),(?=[\u201c"\u2018'\w])/g, "$1, ")
     .replace(/([.,;:!?])[ \t]+(["'\u201d\u2019])/g, "$1$2")
@@ -2973,4 +2974,3 @@ function buildSampleAnalysis() {
     disclaimer: "This diagnostic report provides an estimated band range based on IELTS Writing criteria and Kru Pom IELTS writing framework. It is not an official IELTS score and does not replace assessment by certified IELTS examiners."
   };
 }
-

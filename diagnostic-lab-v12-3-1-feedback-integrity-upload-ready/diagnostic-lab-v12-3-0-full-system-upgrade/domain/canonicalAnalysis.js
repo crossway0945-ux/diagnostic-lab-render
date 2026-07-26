@@ -122,6 +122,7 @@ export function buildCanonicalAnalysis({
       paragraphFeedback,
       paragraphCoverage: analysis.feedbackIntegrity?.paragraphCoverage || [],
       feedbackIntegrity: analysis.feedbackIntegrity || null,
+      thesisDimensions: analysis.feedbackIntegrity?.thesisDimensions || analysis.thesisDimensions || null,
       repairPlan
     };
   }
@@ -195,6 +196,7 @@ export function buildCanonicalAnalysis({
     paragraphFeedback,
     paragraphCoverage: analysis.feedbackIntegrity?.paragraphCoverage || [],
     feedbackIntegrity: analysis.feedbackIntegrity || null,
+    thesisDimensions: analysis.feedbackIntegrity?.thesisDimensions || analysis.thesisDimensions || null,
     overallScore,
     repairPlan,
     executiveSummary: {
@@ -304,6 +306,7 @@ export function projectCanonicalAnalysis(canonical, legacy = {}) {
     paragraphFeedback: canonical.paragraphFeedback || [],
     paragraphCoverage: canonical.paragraphCoverage || [],
     feedbackIntegrity: canonical.feedbackIntegrity || null,
+    thesisDimensions: canonical.thesisDimensions || canonical.feedbackIntegrity?.thesisDimensions || null,
     practicePlan: canonical.repairPlan || [],
     capMetadata: canonical.capMetadata,
     overallBandCap: Number.isFinite(canonical.capMetadata?.overallCap) ? Number(canonical.capMetadata.overallCap).toFixed(1) : "",
@@ -341,6 +344,7 @@ export function normalizeStudentFacingText(value) {
     .replace(/[ \t]+([,.;:!?])/g, "$1")
     // Restore the space after a comma last, so the close-quote rules above cannot collapse it again.
     .replace(/([”"’'\w]),(?=[“"‘'\w])/g, "$1, ")
+    .replace(/\bBand\s+([0-9])\.\s+([05])\b/gi, "Band $1.$2")
     .replace(/ {2,}/g, " ")
     .trim();
 }
@@ -480,4 +484,3 @@ function severityRank(value) {
     Critical: 5
   }[value] ?? 3;
 }
-

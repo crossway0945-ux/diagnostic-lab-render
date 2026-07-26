@@ -203,9 +203,9 @@ export function checkRevisionLanguageSafety(revision = "") {
 
 // Analytical elements that make a revision an expansion rather than a rewording.
 //
-// Only countable, non-synonymous dimensions are used. Consequence and causal wording are excluded
-// on purpose: swapping "encounter an issue" for "face difficulties" changes the words but adds no
-// analysis, and treating that as an expansion would mislabel every ordinary rewording.
+// Only countable, non-synonymous dimensions are used. A causal/result marker counts only when the
+// corresponding analytical element was absent from the original; ordinary synonym replacement
+// therefore remains a route-preserving rebuild.
 const GROUP_NOUN_STEM = "(?:people|public|famil(?:y|ies)|parents?|students?|residents?|workers?|commuters?|shoppers?|drivers?|households?|communit(?:y|ies)|citizens?|customers?|passengers?|employees?|business(?:es)?|neighbou?rhoods?|districts?|countr(?:y|ies)|cit(?:y|ies))";
 const PLURAL_GROUP = new RegExp(`\\b(?:people|public|families|parents|students|residents|workers|commuters|shoppers|drivers|households|communities|citizens|customers|passengers|employees|businesses|neighbou?rhoods|districts|countries|cities)\\b`, "i");
 const QUANTIFIED_GROUP = new RegExp(`\\b(?:every|all|each|most|many|numerous|several|some)\\s+(?:[a-z-]+\\s+){0,2}${GROUP_NOUN_STEM}\\b`, "i");
@@ -224,7 +224,13 @@ const ANALYTICAL_ELEMENTS = Object.freeze([
   // Scope escalation: the revision names a population where the original described one case.
   ["affected group", (text) => hasGroupScope(text)],
   // A stated condition or time frame the original never supplied.
-  ["condition or timing", (text) => /\b(?:during|at peak|peak (?:hours?|periods?|times?)|each day|every day|rush hour|in the morning|at the same time|over time|throughout the day)\b/i.test(text)]
+  ["condition or timing", (text) => /\b(?:during|at peak|peak (?:hours?|periods?|times?)|each day|every day|rush hour|in the morning|at the same time|over time|throughout the day)\b/i.test(text)],
+  // New implementation/behaviour links make a solution explanatory rather than merely restated.
+  ["implementation mechanism", (text) => /\b(?:enforce|enforcement|monitor|inspection|penalt|fine|incentiv|fund|implement|compliance with|changes? behaviou?r|encourages?|deters?|prevents?)\w*/i.test(text)],
+  // A new explicit causal bridge extends the proposition when the original did not contain it.
+  ["causal mechanism", (text) => /\b(?:because|since|thereby|which (?:causes|means|allows|prevents|leads)|leading to|resulting in|causes? .* to|forces? .* to)\b/i.test(text)],
+  // A newly stated downstream result or consequence is analytical content, not surface rewording.
+  ["result or consequence", (text) => /\b(?:as a result|consequently|therefore|thus|hence|resulting in|leads? to|reduces?|increases?|prevents?|improves?|worsens?)\b/i.test(text)]
 ]);
 
 /**

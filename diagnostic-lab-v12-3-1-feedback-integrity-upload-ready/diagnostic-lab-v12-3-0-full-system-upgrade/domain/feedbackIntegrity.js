@@ -1,5 +1,30 @@
 import { segmentStudentResponse } from "./paragraphEvidence.js";
 import { checkRevisionTypeFidelity, validateRevisionQuality } from "./revisionQuality.js";
+import { CANONICAL_SENTENCE_ROLES, classifySentenceRole } from "./sentenceRoles.js";
+import {
+  buildEvidenceAssertion,
+  detectAgreementDefects,
+  detectArticleDefects,
+  detectCountabilityDefects,
+  detectPunctuationSpacingDefects,
+  repairDeterministicEvidenceDefects
+} from "./evidenceAssertions.js";
+import {
+  buildSpecificStudentAction,
+  issuePriority,
+  mergeDuplicateIssues,
+  selectPrimaryIssueCategory,
+  validatedDimensionMapping,
+  validateLexicalReplacement,
+  validateStudentActionSpecificity
+} from "./issueGraph.js";
+import { assessThesisDimensions } from "./thesisDimensions.js";
+import { validateTask2RevisionIntegrity } from "./task2Safety.js";
+import {
+  auditReportConsistency,
+  paragraphDimensionStatus,
+  reconcileExecutiveSummary
+} from "./reportConsistency.js";
 
 export const SENTENCE_ROLES = Object.freeze([
   "introduction_background",
@@ -19,12 +44,18 @@ export const SENTENCE_ROLES = Object.freeze([
   "conclusion_summary",
   "conclusion_new_idea",
   "fragment",
-  "unknown"
+  "unknown",
+  ...CANONICAL_SENTENCE_ROLES.filter((role) => ![
+    "fragment", "unknown", "overview", "body_topic_sentence", "explanation", "example",
+    "comparison", "data_sentence", "process_stage", "link_back", "conclusion_position",
+    "conclusion_summary", "conclusion_new_idea"
+  ].includes(role))
 ]);
 
 export const ISSUE_TAXONOMY = Object.freeze([
-  "Position Clarity", "Thesis Route Clarity", "Prompt Coverage", "Body Route Alignment",
-  "Topic Sentence Strength", "Topic Sentence Precision", "Policy Mechanism Accuracy",
+  "Task Understanding", "Position Clarity", "Thesis Route Clarity", "Cause Route Clarity",
+  "Solution Route Clarity", "Prompt Coverage", "Body Route Alignment",
+  "Topic Sentence Strength", "Topic Sentence Precision", "Policy Mechanism Accuracy", "Solution Mechanism",
   "Explanation Depth", "Causal Mechanism", "Example Development",
   "SAR Example Quality", "Link Back Control", "Paragraph Closure",
   "Paragraph Unity", "Conclusion Closure", "Meaning Control", "Visual Understanding",
@@ -33,7 +64,7 @@ export const ISSUE_TAXONOMY = Object.freeze([
   "Comparison Precision", "Objective Reporting", "Process Sequence", "Process Endpoint",
   "Map Change Accuracy", "Magnitude Precision", "Lexical Precision", "Word Choice", "Collocation", "Word Form",
   "Reference Control", "Pronoun Control", "Countability", "Article Control", "Preposition Control",
-  "Tense Control", "Subject–Verb Agreement", "Modal + Base Verb",
+  "Tense Control", "Subject–Verb Agreement", "Subject-Verb Agreement", "Agreement", "Modal + Base Verb",
   "Grammar and Sentence Control", "Punctuation", "Sentence Completion", "Academic Tone", "Concision"
 ]);
 
@@ -46,19 +77,21 @@ export const TASK1_ONLY_CATEGORIES = Object.freeze([
 ]);
 
 export const TASK2_ONLY_CATEGORIES = Object.freeze([
-  "Position Clarity", "Thesis Route Clarity", "Body Route Alignment", "Topic Sentence Strength",
+  "Task Understanding", "Position Clarity", "Thesis Route Clarity", "Cause Route Clarity",
+  "Solution Route Clarity", "Body Route Alignment", "Topic Sentence Strength",
   "Topic Sentence Precision", "Policy Mechanism Accuracy", "Explanation Depth", "Causal Mechanism",
-  "Example Development", "SAR Example Quality", "Link Back Control", "Paragraph Closure",
+  "Solution Mechanism", "Example Development", "SAR Example Quality", "Link Back Control", "Paragraph Closure",
   "Paragraph Unity", "Conclusion Closure"
 ]);
 
 export const DEVELOPMENT_ISSUE_CATEGORIES = Object.freeze([
-  "Explanation Depth", "Causal Mechanism", "Example Development", "SAR Example Quality"
+  "Explanation Depth", "Causal Mechanism", "Solution Mechanism", "Example Development", "SAR Example Quality"
 ]);
 
 export const LANGUAGE_ISSUE_CATEGORIES = Object.freeze([
   "Lexical Precision", "Word Choice", "Collocation", "Word Form", "Reference Control", "Pronoun Control",
   "Countability", "Article Control", "Preposition Control", "Tense Control", "Subject–Verb Agreement",
+  "Subject-Verb Agreement", "Agreement",
   "Modal + Base Verb", "Grammar and Sentence Control", "Punctuation", "Sentence Completion",
   "Academic Tone", "Concision"
 ]);
@@ -108,9 +141,11 @@ const STOP_WORDS = new Set("a an the and or but of to in on at for with by from 
 export function buildFeedbackIntegrityModel({
   writing = "",
   taskType = "Task 2",
+  essayType = "",
   visualType = "",
   reportLanguage = "",
   prompt = "",
+  positionConfidence = "",
   feedbackCards = [],
   topIssues = [],
   paragraphFeedback = [],
@@ -128,37 +163,65 @@ export function buildFeedbackIntegrityModel({
     previousSentence: paragraph.sentences[sentenceIndex - 1]?.exactText || "",
     nextSentence: paragraph.sentences[sentenceIndex + 1]?.exactText || ""
   })));
-  const canonicalIssues = (Array.isArray(feedbackCards) ? feedbackCards : [])
-    .map((card, index) => canonicalizeIssue(card, index, { writing, taskType, visualType, reportLanguage, prompt, paragraphs, records }))
+  const candidateCards = [
+    ...(Array.isArray(feedbackCards) ? feedbackCards : []),
+    ...buildDeterministicEvidenceCandidates(records)
+  ];
+  const candidateIssues = candidateCards
+    .map((card, index) => canonicalizeIssue(card, index, {
+      writing,
+      taskType,
+      visualType,
+      reportLanguage,
+      prompt,
+      positionConfidence,
+      paragraphs,
+      records
+    }))
     .filter(Boolean);
-  ensureExecutiveDevelopmentCoverage(canonicalIssues, `${mainScoreLimitingFactor} ${mostUrgentRepair}`, taskType);
+  const canonicalIssues = mergeDuplicateIssues(candidateIssues);
   const topIssueIds = selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType, `${mainScoreLimitingFactor} ${mostUrgentRepair}`);
+  for (const issue of canonicalIssues) {
+    const topIndex = topIssueIds.indexOf(issue.issueId);
+    issue.summaryPriority = topIndex >= 0 ? topIndex + 1 : 0;
+  }
+  const executiveSummary = reconcileExecutiveSummary({
+    mainScoreLimitingFactor,
+    mostUrgentRepair,
+    issues: canonicalIssues,
+    topIssueIds
+  });
   const canonicalTopIssues = topIssueIds
     .map((issueId) => canonicalIssues.find((issue) => issue.issueId === issueId))
     .filter(Boolean)
-    .map((issue) => projectTopIssue(issue));
+    .map((issue) => ({
+      ...projectTopIssue(issue),
+      feedbackCardId: `card-${canonicalIssues.findIndex((candidate) => candidate.issueId === issue.issueId) + 1}`
+    }));
   const conclusionFunction = assessConclusionFunction(paragraphs, taskType);
   const paragraphCoverage = buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType, conclusionFunction });
-  const majorIds = canonicalIssues
-    .filter((issue) => ["Critical", "Major", "Serious", "Moderate"].includes(issue.severity))
-    .map((issue) => issue.issueId);
-  const summaryIssueIds = (majorIds.length ? majorIds : topIssueIds).slice(0, 3);
-  const urgentRepairIssueIds = (majorIds.length ? majorIds : topIssueIds).slice(0, 2);
-  return {
+  const thesisDimensions = assessThesisDimensions({ taskType, essayType, prompt, paragraphs, canonicalIssues });
+  const model = {
     issues: canonicalIssues,
     topIssues: canonicalTopIssues,
     paragraphCoverage,
     conclusionFunction,
-    repairs: canonicalIssues.flatMap((issue) => (issue.integrityRepairs || []).map((repair) => ({ ...repair, issueId: issue.issueId }))),
+    thesisDimensions,
+    repairs: [
+      ...canonicalIssues.flatMap((issue) => (issue.integrityRepairs || []).map((repair) => ({ ...repair, issueId: issue.issueId }))),
+      ...executiveSummary.repairedClaims.map((repair) => ({ code: "SUMMARY_CLAIM_REPAIRED", ...repair }))
+    ],
     linkage: {
-      summaryIssueIds,
-      urgentRepairIssueIds,
+      summaryIssueIds: executiveSummary.mainIssueIds,
+      urgentRepairIssueIds: executiveSummary.urgentIssueIds,
       topIssueIds,
       detailedIssueIds: canonicalIssues.map((issue) => issue.issueId),
-      mainScoreLimitingFactor: String(mainScoreLimitingFactor || ""),
-      mostUrgentRepair: String(mostUrgentRepair || "")
+      mainScoreLimitingFactor: executiveSummary.mainScoreLimitingFactor,
+      mostUrgentRepair: executiveSummary.mostUrgentRepair
     }
   };
+  model.consistencyAudit = auditReportConsistency(model);
+  return model;
 }
 
 export function detectSentenceRole({
@@ -168,39 +231,37 @@ export function detectSentenceRole({
   sentenceIndex = 0,
   sentenceCount = 1,
   sentence = "",
-  previousSentence = ""
+  previousSentence = "",
+  nextSentence = "",
+  prompt = ""
 } = {}) {
-  const text = String(sentence || "").trim();
-  const role = String(paragraphRole || "");
-  const finalSentence = sentenceIndex === Math.max(0, sentenceCount - 1);
-  if (!text) return "unknown";
-  if (!SENTENCE_COMPLETE.test(text) && wordCount(text) < 6) return "fragment";
-
-  if (/^Introduction$/i.test(role)) {
-    if (/\b(?:i (?:strongly |firmly |partly |partially )?(?:agree|disagree|believe)|this essay (?:argues|will)|the following (?:report|essay)|while .+ i (?:believe|argue))\b/i.test(text)) return "thesis";
-    return sentenceIndex === 0 ? "introduction_paraphrase" : "introduction_background";
-  }
-  if (/^Overview$/i.test(role)) return "overview";
-  if (/^Task 1 Conclusion$/i.test(role)) return CONCLUSION_MARKER.test(text) ? "conclusion_summary" : "unknown";
-  if (/^Conclusion$/i.test(role)) {
-    if (sentenceIndex > 0 && introducesConclusionNewIdea(text, previousSentence)) return "conclusion_new_idea";
-    if (/\b(?:agree|disagree|believe|support|oppose|outweigh|positive|negative)\b/i.test(text)) return "conclusion_position";
-    return "conclusion_summary";
-  }
-  if (/^Body Paragraph/i.test(role)) {
-    if (sentenceIndex === 0) return "body_topic_sentence";
-    if (EXAMPLE_MARKER.test(text)) return "example";
-    if (taskType === "Task 1") {
-      if (/map|plan/i.test(visualType) && MAP_MARKER.test(text)) return "map_change_sentence";
-      if (/process|diagram|cycle|mechanism/i.test(visualType) && PROCESS_MARKER.test(text)) return "process_stage";
-      if (COMPARISON_MARKER.test(text)) return "comparison";
-      if (DATA_MARKER.test(text)) return "data_sentence";
-    }
-    if (finalSentence && RESULT_MARKER.test(text) && refersBackToParagraph(text)) return "link_back";
-    if (finalSentence && !introducesNewRoute(text)) return "paragraph_closing_sentence";
-    return "explanation";
-  }
-  return "unknown";
+  const canonical = classifySentenceRole({
+    taskType,
+    visualType,
+    paragraphRole,
+    sentenceIndex,
+    sentenceCount,
+    sentence,
+    previousSentence,
+    nextSentence,
+    prompt
+  }).primaryRole;
+  // Historical public callers use these legacy labels. Canonical issue objects retain the new
+  // task-aware labels and no longer depend on this compatibility projection.
+  return ({
+    paraphrase: "introduction_paraphrase",
+    background: "introduction_background",
+    position: "thesis",
+    thesis_route: "thesis",
+    cause_route: "thesis",
+    solution_route: "thesis",
+    view_route: "thesis",
+    answer_to_question_1: "thesis",
+    answer_to_question_2: "thesis",
+    paragraph_closure: "paragraph_closing_sentence",
+    map_change: "map_change_sentence",
+    unnecessary_conclusion: "conclusion_summary"
+  })[canonical] || canonical;
 }
 
 export function assessConclusionFunction(paragraphs = [], taskType = "Task 2") {
@@ -406,6 +467,9 @@ export function auditFeedbackIntegrity(model = {}, writing = "") {
   ]) {
     if (!detailedById.has(issueId)) add("repairable", "LINKED_ISSUE_MISSING", `Linked issue ${issueId} is missing from detailed feedback.`);
   }
+  for (const finding of model.consistencyAudit || auditReportConsistency(model)) {
+    add(finding.severity, finding.code, finding.message);
+  }
   const seen = new Set();
   return findings.filter((finding) => {
     if (seen.has(finding.message)) return false;
@@ -420,6 +484,63 @@ export function validateFeedbackIntegrity(model = {}, writing = "") {
     .map((finding) => finding.message);
 }
 
+function buildDeterministicEvidenceCandidates(records = []) {
+  const candidates = [];
+  const addDefect = (record, defect, category, diagnosis, fullyCorrectedText = "") => {
+    const relativeStart = Math.max(0, Number(defect.targetOffsetStart) - Number(record.startOffset || 0));
+    const relativeEnd = Math.max(relativeStart, Number(defect.targetOffsetEnd) - Number(record.startOffset || 0));
+    const corrected = fullyCorrectedText ||
+      `${record.exactText.slice(0, relativeStart)}${defect.correctedSpan}${record.exactText.slice(relativeEnd)}`;
+    if (!defect.targetSpan || corrected === record.exactText) return;
+    candidates.push({
+      issueCategory: category,
+      issueType: category,
+      severity: "Moderate",
+      exactEvidence: record.exactText,
+      exactSentence: record.exactText,
+      diagnosis: `${diagnosis} This validated occurrence is in ${record.location}.`,
+      whyItLimitsBand: `${diagnosis} The repair is required at the validated span in ${record.location}.`,
+      studentAction: `In ${record.location}, replace "${defect.targetSpan}" with "${defect.correctedSpan}" at the validated source offset.`,
+      targetedRevision: corrected,
+      whyRevisionIsStronger: `In ${record.location}, the revision changes "${defect.targetSpan}" to "${defect.correctedSpan}" while preserving the sentence's original information and reporting function.`,
+      revisionType: "Minimal Correction",
+      evidenceAssertionType: defect.assertionType,
+      deterministicEvidence: true
+    });
+  };
+
+  for (const record of records) {
+    const absoluteStart = Number(record.startOffset || 0);
+    const punctuationDefects = detectPunctuationSpacingDefects(record.exactText, absoluteStart).map((defect) => ({
+      ...defect,
+      targetOffsetStart: defect.sourceOffsetStart,
+      targetOffsetEnd: defect.sourceOffsetEnd
+    }));
+    const countabilityDefects = detectCountabilityDefects(record.exactText, absoluteStart);
+    const articleDefects = detectArticleDefects(record.exactText, absoluteStart)
+      .filter((item) => item.assertionType !== "countability");
+    const agreementDefects = detectAgreementDefects(record.exactText, absoluteStart);
+    const fullyCorrectedText = repairDeterministicEvidenceDefects(record.exactText);
+    for (const defect of punctuationDefects) {
+      addDefect(record, {
+        ...defect,
+        targetOffsetStart: defect.sourceOffsetStart,
+        targetOffsetEnd: defect.sourceOffsetEnd
+      }, "Punctuation", defect.proof, fullyCorrectedText);
+    }
+    for (const defect of countabilityDefects) {
+      addDefect(record, defect, "Countability", defect.proof, fullyCorrectedText);
+    }
+    for (const defect of articleDefects) {
+      addDefect(record, defect, "Article Control", defect.proof, fullyCorrectedText);
+    }
+    for (const defect of agreementDefects) {
+      addDefect(record, defect, "Subject-Verb Agreement", defect.proof, fullyCorrectedText);
+    }
+  }
+  return candidates;
+}
+
 function canonicalizeIssue(card, index, context) {
   if (!card || typeof card !== "object") return null;
   const exactEvidence = String(card.exactEvidence || card.exactSentence || "").trim();
@@ -427,18 +548,43 @@ function canonicalizeIssue(card, index, context) {
   const record = findEvidenceRecord(exactEvidence, context.records);
   if (!record) return null;
   const canonicalEvidence = String(context.writing || "").includes(exactEvidence) ? exactEvidence : record.exactText;
-  const sentenceRole = detectSentenceRole({
+  const sentenceRoleResult = classifySentenceRole({
     taskType: context.taskType,
     visualType: context.visualType,
     paragraphRole: record.paragraphRole,
     sentenceIndex: record.sentenceIndex,
     sentenceCount: record.paragraphSentenceCount,
     sentence: record.exactText,
-    previousSentence: record.previousSentence
+    previousSentence: record.previousSentence,
+    nextSentence: record.nextSentence,
+    prompt: context.prompt
   });
+  const sentenceRole = sentenceRoleResult.primaryRole;
   const repairs = [];
   const originalIssueCategory = normalizeIssueCategory(card.issueCategory || card.issueType, card, context.taskType);
-  let issueCategory = correctIssueCategoryForRole(originalIssueCategory, sentenceRole, card);
+  const evidenceAssertion = buildEvidenceAssertion({
+    card,
+    issueCategory: originalIssueCategory,
+    evidence: canonicalEvidence,
+    writing: context.writing,
+    sentenceRole,
+    taskType: context.taskType,
+    visualType: context.visualType,
+    hasVisualEvidence: context.taskType !== "Task 1" || Boolean(context.visualType || context.prompt)
+  });
+  if (!evidenceAssertion.demonstrated) {
+    if (process.env.DIAGNOSTIC_DEBUG_EVIDENCE === "true") {
+      console.error("[evidence-rejected]", evidenceAssertion.rejectionCode, originalIssueCategory, sentenceRole, card.issueType, card.evidenceAssertionType);
+    }
+    return null;
+  }
+  const taxonomy = selectPrimaryIssueCategory({
+    issue: { ...card, issueCategory: originalIssueCategory },
+    assertion: evidenceAssertion,
+    taskType: context.taskType,
+    sentenceRole
+  });
+  let issueCategory = taxonomy.primaryCategory;
   const originalPunctuationClaimValid = validatePunctuationClaim(card, canonicalEvidence);
   const roleConflictCorrected = originalIssueCategory !== issueCategory;
   const roleSafeDiagnosis = roleConflictCorrected
@@ -462,7 +608,7 @@ function canonicalizeIssue(card, index, context) {
     ),
     studentAction: sanitizeLocationClaims(alignIssueCategoryClaims(String(card.studentAction || ""), card, category, secondary), record.location)
   });
-  let secondaryIssueCategories = buildSecondary(issueCategory);
+  let secondaryIssueCategories = [...new Set([...taxonomy.secondaryCategories, ...buildSecondary(issueCategory)])];
   let texts = renderIssueTexts(issueCategory, secondaryIssueCategories);
   // Self-repair: the rendered diagnosis is the text the student reads, so the category must match it.
   const renderedDevelopmentSignal = detectDevelopmentSignal(
@@ -476,7 +622,7 @@ function canonicalizeIssue(card, index, context) {
     texts = renderIssueTexts(issueCategory, secondaryIssueCategories);
   }
   secondaryIssueCategories = secondaryIssueCategories.filter((label) => label !== issueCategory);
-  const { diagnosis, whyItLimitsBand, studentAction } = texts;
+  const { diagnosis, whyItLimitsBand } = texts;
   const revisionSurfaceChanged = String(card.targetedRevision || "").normalize("NFKC").replace(/\s+/g, " ").trim() !== canonicalEvidence.normalize("NFKC").replace(/\s+/g, " ").trim();
   if (issueCategory === "Punctuation" && !revisionSurfaceChanged && originalPunctuationClaimValid) return null;
   const evidenceLocations = normalizeEvidenceLocations(card, record, context.records);
@@ -560,6 +706,20 @@ function canonicalizeIssue(card, index, context) {
     revisionType,
     taskType: context.taskType
   });
+  const lexicalReplacement = ["Lexical Precision", "Word Choice", "Meaning Control", "Collocation", "Word Form"].includes(issueCategory)
+    ? validateLexicalReplacement({ evidence: canonicalEvidence, revision: card.targetedRevision, assertion: evidenceAssertion })
+    : { pass: true, problems: [] };
+  const task2RevisionIntegrity = context.taskType === "Task 2"
+    ? validateTask2RevisionIntegrity({
+        exactSentence: canonicalEvidence,
+        targetedRevision: card.targetedRevision,
+        revisionType,
+        originalIssueCategories: [issueCategory]
+      })
+    : { pass: true, revisionIssueCategoriesRemaining: [], newErrorCategories: [] };
+  for (const message of lexicalReplacement.problems) {
+    repairs.push({ code: "LEXICAL_REPLACEMENT_UNSAFE", message, paragraphLocation: record.location });
+  }
   if (revisionQuality.revisionTypeValidationStatus === "fail" && revisionQuality.substantialAddition && revisionType !== "Model Paragraph") {
     repairs.push({ code: "REVISION_TYPE_FIDELITY", from: revisionType || "(unset)", to: "Teacher-Guided Expansion", paragraphLocation: record.location });
     revisionType = "Teacher-Guided Expansion";
@@ -572,12 +732,15 @@ function canonicalizeIssue(card, index, context) {
   // safety is never shown to a student. The diagnosis, evidence and score are all preserved; only
   // the unsafe model sentence is withheld and replaced by a controlled instruction. Showing broken
   // or meaning-shifted language as a study model is worse than showing no model sentence.
+  const unresolvedStanceIntroduced = context.taskType === "Task 2" &&
+    String(context.positionConfidence || "").toLowerCase() === "low" &&
+    declaresDefiniteStance(card.targetedRevision);
   const revisionWithheld = ["fail"].some((status) => [
     revisionQuality.grammarValidationStatus,
     revisionQuality.semanticValidationStatus,
     revisionQuality.taskFidelityStatus,
     revisionQuality.languageSafetyStatus
-  ].includes(status));
+  ].includes(status)) || !lexicalReplacement.pass || !task2RevisionIntegrity.pass || unresolvedStanceIntroduced;
   let displayedRevision = String(card.targetedRevision || "");
   let displayedRevisionType = revisionType;
   if (revisionWithheld) {
@@ -613,19 +776,64 @@ function canonicalizeIssue(card, index, context) {
       disclosed: Boolean(revisionLimitationNote)
     });
   }
+  const dimensionMapping = validatedDimensionMapping(
+    issueCategory,
+    context.taskType,
+    card.criteriaAffected || card.affectedCriteria || card.criteria,
+    card.frameworkComponents || card.framework
+  );
+  const studentFacingAssertion = revisionWithheld
+    ? { ...evidenceAssertion, correctedSpan: "", expectedCorrection: "" }
+    : evidenceAssertion;
+  const displayedEvidenceProof = revisionWithheld
+    ? "The exact evidence and source offsets were validated. The proposed correction was withheld after revision-safety checks."
+    : evidenceAssertion.proof;
+  const specificStudentAction = buildSpecificStudentAction({
+    ...card,
+    issueCategory,
+    evidenceAssertion: studentFacingAssertion,
+    evidenceCount: evidenceLocations.length,
+    sentenceRole,
+    paragraphLocation: record.location,
+    paragraphLabel: record.paragraphRole
+  });
+  const studentActionValidation = validateStudentActionSpecificity({
+    issueCategory,
+    evidenceAssertion,
+    evidenceCount: evidenceLocations.length,
+    studentAction: specificStudentAction
+  });
   return {
     ...card,
     issueId,
     taskType: context.taskType,
     paragraphId: `paragraph-${record.paragraphNumber}`,
+    sourceParagraphId: `paragraph-${record.paragraphNumber}`,
+    sourceSentenceId: record.sentenceId || `paragraph-${record.paragraphNumber}-sentence-${record.sentenceNumber}`,
     paragraphLabel: record.paragraphRole,
     paragraphLocation: record.location,
     sentenceIndex: record.sentenceNumber,
     exactSentence: canonicalEvidence,
     exactEvidence: canonicalEvidence,
+    normalizedEvidence: normalizeText(canonicalEvidence),
+    evidenceStartOffset: evidenceAssertion.sourceOffsetStart,
+    evidenceEndOffset: evidenceAssertion.sourceOffsetEnd,
+    targetSpan: evidenceAssertion.targetSpan,
+    targetStartOffset: evidenceAssertion.targetOffsetStart,
+    targetEndOffset: evidenceAssertion.targetOffsetEnd,
+    evidenceAssertionType: evidenceAssertion.assertionType,
+    detectedDefect: displayedEvidenceProof,
+    expectedCorrection: revisionWithheld ? "" : evidenceAssertion.expectedCorrection,
+    evidenceValidationStatus: "validated",
+    evidenceValidationReason: displayedEvidenceProof,
+    evidenceAssertion,
     sentenceRole,
+    secondarySentenceRoles: sentenceRoleResult.secondaryRoles,
+    sentenceRoleConfidence: sentenceRoleResult.confidence,
     issueCategory,
+    primaryCategory: issueCategory,
     secondaryIssueCategories,
+    secondaryCategories: secondaryIssueCategories,
     issueType: String(card.issueType || issueCategory),
     severity,
     issueSubtype: String(card.issueSubtype || ""),
@@ -633,12 +841,13 @@ function canonicalizeIssue(card, index, context) {
     coreDiagnosis: diagnosis,
     whyItLimitsBand,
     kruPomDiagnosis: diagnosis,
-    studentAction,
+    studentAction: specificStudentAction,
+    studentActionValidation,
     sentenceFunction: sentenceRoleDescription(sentenceRole),
-    criteriaAffected: normalizeStringArray(card.criteriaAffected || card.affectedCriteria || card.criteria),
-    criteria: normalizeStringArray(card.criteriaAffected || card.affectedCriteria || card.criteria),
-    frameworkComponents: normalizeStringArray(card.frameworkComponents || card.framework),
-    framework: normalizeStringArray(card.frameworkComponents || card.framework),
+    criteriaAffected: dimensionMapping.criteria,
+    criteria: dimensionMapping.criteria,
+    frameworkComponents: dimensionMapping.framework,
+    framework: dimensionMapping.framework,
     evidenceScope,
     evidenceCount: evidenceLocations.length,
     primaryEvidenceLocation: evidenceLocations[0]?.paragraphLocation || record.location,
@@ -660,7 +869,10 @@ function canonicalizeIssue(card, index, context) {
     taskFidelityStatus: revisionQuality.taskFidelityStatus,
     languageSafetyStatus: revisionQuality.languageSafetyStatus,
     revisionTypeValidationStatus: revisionQuality.revisionTypeValidationStatus,
+    revisionIntegrity: task2RevisionIntegrity,
     revisionQualityProblems: revisionQuality.problems,
+    lexicalReplacementValidationStatus: lexicalReplacement.pass ? "pass" : "fail",
+    lexicalReplacementProblems: lexicalReplacement.problems,
     revisionLimitationNote,
     whyRevisionIsStronger: revisionWithheld
       ? (String(context.reportLanguage || "").toLowerCase() === "th"
@@ -670,7 +882,8 @@ function canonicalizeIssue(card, index, context) {
         ? appendLimitationNote(card.whyRevisionIsStronger, revisionLimitationNote)
         : card.whyRevisionIsStronger,
     integrityRepairs: repairs,
-    feedbackCardId: `card-${index + 1}`
+    feedbackCardId: `card-${index + 1}`,
+    summaryPriority: 0
   };
 }
 
@@ -689,6 +902,12 @@ function appendLimitationNote(value, note) {
   if (!note) return text;
   if (text.includes(note)) return text;
   return text ? `${text} ${note}` : note;
+}
+
+function declaresDefiniteStance(value = "") {
+  const text = String(value || "");
+  if (/\bwhether\s+i\s+agree\s+or\s+disagree\b|\bagree\s+or\s+disagree\b/i.test(text)) return false;
+  return /\bi\s+(?:strongly|firmly|generally|partly|partially)?\s*(?:agree|disagree)\b/i.test(text);
 }
 
 function projectTopIssue(issue) {
@@ -720,10 +939,33 @@ function selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType, execut
     if (match) selected.push(match.issueId);
     if (selected.length >= limit) break;
   }
-  const ranked = [...canonicalIssues].sort((left, right) => severityRank(right.severity) - severityRank(left.severity));
+  const ranked = [...canonicalIssues].sort((left, right) => issuePriority(right) - issuePriority(left));
   for (const issue of ranked) {
     if (!selected.includes(issue.issueId)) selected.push(issue.issueId);
     if (selected.length >= limit) break;
+  }
+
+  // A major or critical task-level integrity issue may not be displaced merely because several
+  // provider Top Issues point to easier language defects on the same sentence. Canonical priority
+  // decides the slot; this is category/role based and independent of topic wording.
+  const mandatory = ranked.filter((issue) =>
+    issuePriority(issue) >= 920 &&
+    ["Major", "Critical", "Serious", "Needs Work"].includes(String(issue.severity || ""))
+  );
+  for (const candidate of mandatory) {
+    if (selected.includes(candidate.issueId)) continue;
+    if (selected.length < limit) {
+      selected.push(candidate.issueId);
+      continue;
+    }
+    let weakestIndex = 0;
+    for (let index = 1; index < selected.length; index += 1) {
+      if (issuePriority(issueByIdOrList(selected[index], canonicalIssues)) <
+        issuePriority(issueByIdOrList(selected[weakestIndex], canonicalIssues))) weakestIndex = index;
+    }
+    if (issuePriority(candidate) > issuePriority(issueByIdOrList(selected[weakestIndex], canonicalIssues))) {
+      selected[weakestIndex] = candidate.issueId;
+    }
   }
 
   // Coverage guarantee: a paragraph the Executive Summary names as a score limiter must appear in
@@ -760,6 +1002,10 @@ function selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType, execut
     if (weakestIndex >= 0 && weakestRank <= severityRank(candidate.severity)) selected[weakestIndex] = candidate.issueId;
   }
   return selected;
+}
+
+function issueByIdOrList(issueId, issues = []) {
+  return issues.find((issue) => issue.issueId === issueId) || {};
 }
 
 // When the Executive Summary names a development weakness (causal mechanism, example development,
@@ -811,7 +1057,7 @@ function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback
   const guidance = Array.isArray(paragraphFeedback) ? paragraphFeedback : [];
   return paragraphs.map((paragraph) => {
     const issues = canonicalIssues.filter((issue) => issue.paragraphLabel === paragraph.role);
-    const primary = [...issues].sort((left, right) => severityRank(right.severity) - severityRank(left.severity))[0];
+    const primary = [...issues].sort((left, right) => issuePriority(right) - issuePriority(left))[0];
     const legacy = guidance.find((item) => normalizeText(item.paragraphLocation).startsWith(normalizeText(paragraph.role)));
     // Status must reflect the weakest dimension in the paragraph. A paragraph carrying an unrepaired
     // development gap cannot be presented as "Mostly Controlled" while the summary calls it vague.
@@ -822,7 +1068,9 @@ function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback
     const languageOnly = issues.length > 0 && issues.every((issue) => LANGUAGE_ISSUE_CATEGORIES.includes(issue.issueCategory));
     const routeIssue = issues.some((issue) => ["Body Route Alignment", "Thesis Route Clarity", "Position Clarity"].includes(issue.issueCategory));
     const base = capParagraphStatus(paragraphStatus(primary?.severity), developmentGap);
-    const status = dimensionAwareParagraphStatus({ role: paragraph.role, base, languageOnly, developmentGap, routeIssue, conclusionFunction });
+    const status = issues.length
+      ? paragraphDimensionStatus(issues, paragraph.role, conclusionFunction)
+      : dimensionAwareParagraphStatus({ role: paragraph.role, base, languageOnly, developmentGap, routeIssue, conclusionFunction });
     return {
       paragraphId: `paragraph-${paragraph.paragraphNumber}`,
       paragraphLabel: paragraph.role,
@@ -830,7 +1078,14 @@ function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback
       status,
       diagnosis: primary?.diagnosis || strongParagraphDiagnosis(paragraph.role, taskType, legacy),
       priorityRepair: primary?.studentAction || "No priority repair",
+      priorityIssueId: primary?.issueId || "",
       issueIds: issues.map((issue) => issue.issueId),
+      dimensions: {
+        route: routeIssue ? "repair-needed" : "controlled",
+        development: developmentGap ? "repair-needed" : "controlled",
+        example: issues.some((issue) => ["Example Development", "SAR Example Quality"].includes(issue.issueCategory)) ? "repair-needed" : "controlled",
+        language: languageOnly || issues.some((issue) => LANGUAGE_ISSUE_CATEGORIES.includes(issue.issueCategory)) ? "repair-needed" : "controlled"
+      },
       exactEvidence: paragraph.sentences[0]?.exactText || paragraph.exactText
     };
   });

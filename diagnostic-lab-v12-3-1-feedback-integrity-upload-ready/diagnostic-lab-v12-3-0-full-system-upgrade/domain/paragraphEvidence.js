@@ -12,16 +12,37 @@ export function segmentStudentResponse(writing, taskType = "Task 2") {
     if (lines.length >= 3) paragraphs = lines;
   }
   if (!paragraphs.length) paragraphs = [text];
+  let paragraphSearchStart = 0;
   return paragraphs.map((paragraph, paragraphIndex) => {
-    const sentences = splitExactSentences(paragraph).map((sentence, sentenceIndex) => ({
-      sentenceNumber: sentenceIndex + 1,
-      exactText: sentence,
-      location: `${paragraphRole(paragraphs, paragraphIndex, taskType)}, Sentence ${sentenceIndex + 1}`
-    }));
+    const paragraphStartOffset = text.indexOf(paragraph, paragraphSearchStart);
+    const resolvedParagraphStart = paragraphStartOffset >= 0 ? paragraphStartOffset : paragraphSearchStart;
+    paragraphSearchStart = resolvedParagraphStart + paragraph.length;
+    let sentenceSearchStart = 0;
+    const sentences = splitExactSentences(paragraph).map((sentence, sentenceIndex) => {
+      const relativeStart = paragraph.indexOf(sentence, sentenceSearchStart);
+      const resolvedRelativeStart = relativeStart >= 0 ? relativeStart : sentenceSearchStart;
+      sentenceSearchStart = resolvedRelativeStart + sentence.length;
+      const startOffset = resolvedParagraphStart + resolvedRelativeStart;
+      return {
+        sentenceNumber: sentenceIndex + 1,
+        sentenceId: `paragraph-${paragraphIndex + 1}-sentence-${sentenceIndex + 1}`,
+        exactText: sentence,
+        normalizedText: normalizeComparable(sentence),
+        startOffset,
+        endOffset: startOffset + sentence.length,
+        offsetBasis: "normalized-visible-writing",
+        location: `${paragraphRole(paragraphs, paragraphIndex, taskType)}, Sentence ${sentenceIndex + 1}`
+      };
+    });
     return {
       paragraphNumber: paragraphIndex + 1,
+      paragraphId: `paragraph-${paragraphIndex + 1}`,
       role: paragraphRole(paragraphs, paragraphIndex, taskType),
       exactText: paragraph,
+      normalizedText: normalizeComparable(paragraph),
+      startOffset: resolvedParagraphStart,
+      endOffset: resolvedParagraphStart + paragraph.length,
+      offsetBasis: "normalized-visible-writing",
       sentences
     };
   });

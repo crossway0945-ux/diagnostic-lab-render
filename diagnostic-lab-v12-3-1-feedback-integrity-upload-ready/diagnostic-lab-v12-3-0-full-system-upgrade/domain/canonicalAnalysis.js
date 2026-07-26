@@ -72,7 +72,15 @@ export function buildCanonicalAnalysis({
       ? { status: functionalConclusion.status, diagnosis: functionalConclusion.reason }
       : base.frameworkAssessment?.conclusionClosure;
     const frameworkAssessment = { ...base.frameworkAssessment, conclusionClosure };
-    const display = projectCanonicalTask2Framework({ ...base, frameworkAssessment }, payload.reportLanguage || base.metadata?.reportLanguage);
+    const paragraphCoverage = analysis.feedbackIntegrity?.paragraphCoverage || [];
+    const thesisDimensions = analysis.feedbackIntegrity?.thesisDimensions || analysis.thesisDimensions || null;
+    const display = projectCanonicalTask2Framework({
+      ...base,
+      frameworkAssessment,
+      paragraphCoverage,
+      thesisDimensions,
+      frameworkScores: analysis.feedbackIntegrity?.frameworkScores || {}
+    }, payload.reportLanguage || base.metadata?.reportLanguage);
     return {
       ...base,
       metadata: {
@@ -120,9 +128,9 @@ export function buildCanonicalAnalysis({
       evidenceIssues: feedbackCards,
       topIssues,
       paragraphFeedback,
-      paragraphCoverage: analysis.feedbackIntegrity?.paragraphCoverage || [],
+      paragraphCoverage,
       feedbackIntegrity: analysis.feedbackIntegrity || null,
-      thesisDimensions: analysis.feedbackIntegrity?.thesisDimensions || analysis.thesisDimensions || null,
+      thesisDimensions,
       repairPlan
     };
   }
@@ -221,8 +229,22 @@ export function projectCanonicalTask2Framework(canonical = {}, reportLanguage = 
   const positionClear = Boolean(route.position && !/unclear|contradictory/.test(route.position));
   const thai = String(reportLanguage || canonical.metadata?.reportLanguage || "").toLowerCase() === "th";
   const bodySummary = (route.bodyRoutes || []).map((item) => `Body ${item.index}: ${item.label}`).join(" | ");
-  const conclusionDiagnosis = conclusionStatus === "Strong"
-    ? (thai ? "Conclusion รักษาจุดยืนและปิดเส้นทางเหตุผลเดิมได้อย่างสม่ำเสมอและควบคุมภาษาได้" : "The conclusion preserves the position and closes the established routes with controlled wording.")
+  const thesisDimensions = canonical.thesisDimensions || {};
+  const integrityFramework = canonical.frameworkScores || {};
+  const thesisStructurallyClear = Boolean(thesisDimensions.structurallyClear) ||
+    /strong|aligned/i.test(thesisStatus);
+  const introductionCoverage = (canonical.paragraphCoverage || []).find((item) => item.paragraphLabel === "Introduction");
+  const conclusionCoverage = (canonical.paragraphCoverage || []).find((item) => item.paragraphLabel === "Conclusion");
+  const thesisLanguageRepair = introductionCoverage?.dimensions?.language === "repair-needed" ||
+    thesisDimensions.lexicalNamingAccurate === false;
+  const conclusionLanguageRepair = conclusionCoverage?.dimensions?.language === "repair-needed";
+  const conclusionDisplayStatus = conclusionStatus === "Strong" && conclusionLanguageRepair
+    ? "Functionally Strong - Language Repair Needed"
+    : conclusionStatus;
+  const conclusionDiagnosis = conclusionStatus === "Strong" && conclusionLanguageRepair
+    ? (thai ? "Conclusion ปิด route ได้ครบและไม่เพิ่ม idea ใหม่ แต่ยังต้องซ่อม lexical หรือ grammar precision" : "The conclusion closes the established routes without a new idea, but lexical or grammatical precision still needs repair.")
+    : conclusionStatus === "Strong"
+    ? (thai ? "Conclusion รักษาจุดยืนและปิดเส้นทางเหตุผลเดิมได้อย่างสม่ำเสมอ" : "The conclusion preserves the established routes and closes the response without a new idea.")
     : conclusionStatus === "Moderate"
       ? (thai ? "Conclusion รักษา route หลักไว้ได้ แต่ยังมีปัญหาเรื่อง policy reference, clause control หรือ lexical precision ที่ต้องซ่อม" : "The conclusion preserves the main route but still needs a policy-reference, clause-control or lexical-precision repair.")
       : (thai ? "Conclusion ขาด ไม่สมบูรณ์ ขัดแย้ง หรือยังปิด route ที่โจทย์ต้องการไม่ได้" : "The conclusion is missing, unfinished, contradictory, or does not close the required route.");
@@ -247,10 +269,14 @@ export function projectCanonicalTask2Framework(canonical = {}, reportLanguage = 
             : (thai ? "Position ที่โจทย์ต้องการยังไม่ชัดพอ" : "The required position is not stated clearly enough.")
         }
       : { status: "Not Applicable", diagnosis: thai ? "โจทย์ประเภทนี้ไม่ต้องการ agree/disagree position" : "This task type does not require an agree/disagree position." },
-    "Thesis Route Clarity": {
-      status: thesisStatus,
-      diagnosis: positionClear
-        ? (thai ? `Introduction วาง ${route.position} และกำหนด body route ที่ตรวจสอบได้` : `The introduction states ${route.position} and establishes a traceable body route.`)
+    "Thesis Route Clarity": integrityFramework["Thesis Route Clarity"] || {
+      status: thesisStructurallyClear && thesisLanguageRepair
+        ? "Structurally Strong - Lexical Precision Repair Needed"
+        : thesisStatus,
+      diagnosis: thesisStructurallyClear
+        ? (canonical.taskRequirements?.stanceRequired
+          ? (thai ? `Introduction วาง ${route.position} และกำหนด body route ที่ตรวจสอบได้` : `The introduction states ${route.position} and establishes a traceable body route.`)
+          : (thai ? "Thesis วาง route ที่โจทย์กำหนดครบและเชื่อมกับ body ได้ โดยประเมิน lexical precision แยกต่างหาก" : "The thesis establishes the required routes and connects them to the body paragraphs; lexical precision is evaluated separately."))
         : (thai ? "Thesis ยังวางเส้นทางที่โจทย์ต้องการไม่ชัดพอ" : "The thesis does not yet establish the required route clearly.")
     },
     "Body Paragraph Route Alignment": projectRouteAlignmentDisplay({
@@ -258,11 +284,11 @@ export function projectCanonicalTask2Framework(canonical = {}, reportLanguage = 
       diagnosis: bodySummary || (thai ? "ยังไม่มีหลักฐาน body route ที่เพียงพอ" : "There is not enough evidence to map the body routes."),
       thai
     }),
-    "Explanation Depth": {
+    "Explanation Depth": integrityFramework["Explanation Depth"] || {
       status: framework.explanationDepth?.status || routeStatus,
       diagnosis: thai ? "ประเมินจาก claim, causal mechanism, example และผลที่ตามมา ไม่ได้ตัดสินจากการมี template phrase" : "Depth is judged from the claim, causal mechanism, example and consequence rather than from a template phrase."
     },
-    "SAR Example Quality": {
+    "SAR Example Quality": integrityFramework["SAR Example Quality"] || {
       status: framework.sarExampleQuality?.status || routeStatus,
       diagnosis: thai ? "ประเมิน relevance, credibility, mechanism, result และ scope ของแต่ละตัวอย่าง" : "Each example is judged for relevance, credibility, mechanism, result and appropriate scope."
     },
@@ -270,8 +296,8 @@ export function projectCanonicalTask2Framework(canonical = {}, reportLanguage = 
       status: framework.linkBackControl?.status || routeStatus,
       diagnosis: thai ? "ประเมินว่าปลายย่อหน้ายังคง controlling idea ได้หรือไม่ โดยไม่บังคับประโยค Link-Back แบบสูตร" : "Paragraph closure is judged by whether the controlling idea remains clear; a formulaic link-back sentence is not required."
     },
-    "Conclusion Closure": { status: conclusionStatus, diagnosis: conclusionDiagnosis },
-    "LFC CPC Control": {
+    "Conclusion Closure": integrityFramework["Conclusion Closure"] || { status: conclusionDisplayStatus, diagnosis: conclusionDiagnosis },
+    "LFC CPC Control": integrityFramework["LFC CPC Control"] || integrityFramework["LFC-CPC Control"] || {
       status: framework.lfcCpcControl?.status || routeStatus,
       diagnosis: thai ? "ประเมิน logic, flow, cohesion และ clear/concise/precise/comprehensive control จากงานจริง" : "Logic, flow, cohesion and clear/concise/precise/comprehensive control are judged from the response itself."
     }

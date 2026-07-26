@@ -4,6 +4,7 @@ import {
   TASK2_ROUTE_CLASSIFIER_VERSION,
   buildTaskAwareRouteModel
 } from "./task2RouteModel.js";
+import { validateSentenceCompleteness } from "./sentenceCompleteness.js";
 
 const POSITION_PATTERN = /\b(?:i\s+(?:(strongly|firmly|completely|fully|heavily|generally|partly|partially|consequently|therefore|ultimately)\s+)?(agree|disagree)|in my (?:view|opinion)[^.!?]{0,80}\b(agree|disagree)|i believe[^.!?]{0,80}\b(?:should|must|ought|outweigh|more (?:important|significant|beneficial)))\b/i;
 const SUPPORT_PATTERN = /\b(?:agree|support|benefit|advantage|basic right|human right|should (?:receive|be provided)|free of charge|without (?:a )?charge|protect|improve|enable|allow|essential)\b/i;
@@ -2542,7 +2543,7 @@ export function freezeTask2ScoringSnapshot({
   ])));
   const overall = Object.freeze({ ...(overallBandRange || {}) });
   return Object.freeze({
-    version: "score-freeze-v12.7.0",
+    version: "score-freeze-v12.8.0",
     routeClassifierVersion,
     routeStatus: String(routeStatus || ""),
     criterionScores: criteria,
@@ -2895,18 +2896,29 @@ export function validateTask2RevisionIntegrity({
   const originalProfile = buildTask2LanguageProfile(exact);
   const revisionProfile = buildTask2LanguageProfile(fidelity.targetedRevision);
   const detectedOriginalCategories = uniqueRevisionIssueCategories(originalProfile.validatedIssues);
-  const expectedCategories = Array.from(new Set([
-    ...detectedOriginalCategories,
-    ...(Array.isArray(originalIssueCategories) ? originalIssueCategories : [])
-  ].map((item) => String(item || "").trim().toLowerCase()).filter(Boolean)));
+  const suppliedTargetCategories = (Array.isArray(originalIssueCategories) ? originalIssueCategories : [])
+    .map((item) => String(item || "").trim().toLowerCase())
+    .filter(Boolean);
+  // One card repairs one dominant defect. Other independently validated defects in the same source
+  // sentence may remain for their own cards; they are not "new errors" and must not force a combined
+  // multi-defect revision.
+  const expectedCategories = Array.from(new Set(
+    suppliedTargetCategories.length ? suppliedTargetCategories : detectedOriginalCategories
+  ));
   const remainingIssues = (revisionProfile.validatedIssues || []).filter((item) =>
     ["clear-error", "awkward-but-understandable"].includes(item.classification) &&
     (!expectedCategories.length || expectedCategories.includes(String(item.category || "").toLowerCase()))
   );
   const revisionIssueCategoriesRemaining = uniqueRevisionIssueCategories(remainingIssues);
+  const independentIssueCategoriesRemaining = uniqueRevisionIssueCategories((revisionProfile.validatedIssues || []).filter((item) => {
+    const category = String(item.category || "").toLowerCase();
+    return ["clear-error", "awkward-but-understandable"].includes(item.classification) &&
+      detectedOriginalCategories.includes(category) &&
+      !expectedCategories.includes(category);
+  }));
   const newErrorCategories = uniqueRevisionIssueCategories((revisionProfile.validatedIssues || []).filter((item) =>
     ["clear-error", "awkward-but-understandable"].includes(item.classification) &&
-    !expectedCategories.includes(String(item.category || "").toLowerCase())
+    !detectedOriginalCategories.includes(String(item.category || "").toLowerCase())
   ));
   const originalStance = revisionStance(exact);
   const revisedStance = revisionStance(fidelity.targetedRevision);
@@ -2924,13 +2936,11 @@ export function validateTask2RevisionIntegrity({
   const revisionTypeValid = REVISION_TYPES.includes(fidelity.revisionType) && (
     !newPremiseIntroduced || fidelity.revisionType === "Teacher-Guided Expansion"
   );
-  const grammarValid = !(revisionProfile.validatedIssues || []).some((item) =>
-    item.criterion === "Grammatical Range & Accuracy" && item.classification === "clear-error"
+  const grammarValid = !newErrorCategories.some((category) =>
+    /grammar|sentence|agreement|article|countability|reference|tense|preposition|punctuation|modal/.test(category)
   );
-  const sentenceComplete = /[.!?]["')\]]*$/u.test(fidelity.targetedRevision) && !/[,;:]\s*$/u.test(fidelity.targetedRevision);
-  const naturalEnglish = !(revisionProfile.validatedIssues || []).some((item) =>
-    ["clear-error", "awkward-but-understandable"].includes(item.classification)
-  );
+  const sentenceComplete = validateSentenceCompleteness(fidelity.targetedRevision).complete;
+  const naturalEnglish = newErrorCategories.length === 0;
   const stancePreserved = !stanceChanged;
 
   return {
@@ -2940,6 +2950,7 @@ export function validateTask2RevisionIntegrity({
     newErrorCategories,
     originalIssueCategories: expectedCategories,
     revisionIssueCategoriesRemaining,
+    independentIssueCategoriesRemaining,
     originalClaim: exact,
     revisedClaim: fidelity.targetedRevision,
     routePreserved,

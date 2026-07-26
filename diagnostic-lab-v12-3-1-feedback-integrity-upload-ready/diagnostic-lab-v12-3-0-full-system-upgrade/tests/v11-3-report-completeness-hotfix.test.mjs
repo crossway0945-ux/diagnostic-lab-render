@@ -47,14 +47,19 @@ for (const card of report.feedbackCards) {
   assert.ok(["Minimal Correction", "Route-Preserving Revision", "High-Band Refinement", "Teacher-Guided Expansion", "Revision Unavailable"].includes(card.revisionType));
   assert.equal(card.revisionIntegrity.exactOriginalFound, true);
   assert.equal(card.revisionIntegrity.originalClaim, card.exactSentence);
-  assert.equal(card.revisionIntegrity.routePreserved, true);
-  assert.equal(card.revisionIntegrity.stancePreserved, true);
-  assert.equal(card.revisionIntegrity.sentenceComplete, true);
-  assert.equal(card.revisionIntegrity.revisionTypeValid, true);
   if (card.revisionWithheld) {
     assert.equal(card.revisionType, "Revision Unavailable");
-    assert.ok(card.revisionQualityProblems?.length || !card.revisionIntegrity.pass || card.lexicalReplacementValidationStatus === "fail");
+    assert.ok(
+      card.revisionQualityProblems?.length ||
+      !card.revisionIntegrity.pass ||
+      card.lexicalReplacementValidationStatus === "fail" ||
+      card.integrityRepairs?.some((finding) => finding.code === "REVISION_WITHHELD")
+    );
   } else {
+    assert.equal(card.revisionIntegrity.routePreserved, true);
+    assert.equal(card.revisionIntegrity.stancePreserved, true);
+    assert.equal(card.revisionIntegrity.sentenceComplete, true);
+    assert.equal(card.revisionIntegrity.revisionTypeValid, true);
     assert.equal(card.revisionIntegrity.pass, true);
     assert.deepEqual(card.revisionIntegrity.remainingDiagnosedCategories, []);
     assert.deepEqual(card.revisionIntegrity.newErrorCategories, []);
@@ -102,20 +107,20 @@ assert.equal(progress.reportVersions.length, 5);
 assert.equal(progress.repeatedIssue, "");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.7.0",
-  engineVersion: "ielts-diagnostic-engine-v12.7.0",
+  appVersion: "12.8.0",
+  engineVersion: "ielts-diagnostic-engine-v12.8.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
-  promptVersion: "ielts-diagnostic-prompt-v12.7.0",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.7.0",
-  feedbackSchemaVersion: "feedback-integrity-v12.7.0",
-  issueTaxonomyVersion: "issue-taxonomy-v12.7.0",
-  evidenceValidatorVersion: "evidence-assertion-v12.7.0",
-  revisionValidatorVersion: "revision-alignment-v12.7.0",
-  pdfTextIntegrityVersion: "pdf-text-integrity-v12.7.0",
-  routeClassifierVersion: "task-aware-route-model-v12.7.0",
+  promptVersion: "ielts-diagnostic-prompt-v12.8.0",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.8.0",
+  feedbackSchemaVersion: "feedback-integrity-v12.8.0",
+  issueTaxonomyVersion: "issue-taxonomy-v12.8.0",
+  evidenceValidatorVersion: "evidence-assertion-v12.8.0",
+  revisionValidatorVersion: "revision-alignment-v12.8.0",
+  pdfTextIntegrityVersion: "pdf-text-integrity-v12.8.0",
+  routeClassifierVersion: "task-aware-route-model-v12.8.0",
   grammarValidatorVersion: "syntactic-head-agreement-v12.7.0",
-  scoringOrchestrationVersion: "score-freeze-v12.7.0",
-  studentViewContractVersion: "student-report-allowlist-v12.7.0"
+  scoringOrchestrationVersion: "score-freeze-v12.8.0",
+  studentViewContractVersion: "student-report-allowlist-v12.8.0"
 });
 
 const [script, css] = await Promise.all([

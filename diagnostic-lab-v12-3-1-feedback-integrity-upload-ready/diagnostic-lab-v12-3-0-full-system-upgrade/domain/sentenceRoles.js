@@ -1,8 +1,10 @@
+import { validateSentenceCompleteness } from "./sentenceCompleteness.js";
+
 const COMPLETE_SENTENCE = /[.!?]["')\]]*$/u;
 const EXAMPLE_MARKER = /^(?:for example|for instance|as an example|to illustrate)\b/i;
 const CONCLUSION_MARKER = /^(?:in conclusion|to conclude|to sum up|in summary|overall)\b/i;
-const CAUSE_ROUTE = /\b(?:cause|causes|reason|reasons|driver|drivers|source|sources|factor|factors|stem(?:s|ming)? from|due to|because of|responsible for)\b/i;
-const SOLUTION_ROUTE = /\b(?:solution|solutions|solve|address|tackle|resolve|measure|measures|remedy|remedies|should|must|could be reduced|can be reduced)\b/i;
+const CAUSE_ROUTE = /\b(?:cause|causes|reason|reasons|driver|drivers|source|sources|factor|factors|stem(?:s|ming)? from|due to|because of|responsible for|through)\b/i;
+const SOLUTION_ROUTE = /\b(?:solution|solutions|solve|address|tackle|resolve|measure|measures|remedy|remedies|should|must|could be reduced|can be reduced|can reduce)\b/i;
 const VIEW_ROUTE = /\b(?:one view|the other view|some people|others argue|supporters|opponents|both views)\b/i;
 const POSITION = /\b(?:i (?:strongly |firmly |partly |partially )?(?:agree|disagree|believe|argue|support|oppose)|in my view|in my opinion|outweigh|positive development|negative development)\b/i;
 const THESIS_META_ROUTE = /\b(?:this|the)\s+(?:essay|response|report)\s+(?:will|aims? to)\s+(?:discuss|examine|consider|address|analyse|analyze)\b/i;
@@ -71,8 +73,9 @@ export function classifySentenceRole({
   const role = String(paragraphRole || "");
   const finalSentence = sentenceIndex === Math.max(0, Number(sentenceCount || 1) - 1);
   if (!text) return roleResult("unknown", [], "low", ["empty"]);
-  if (!COMPLETE_SENTENCE.test(text) && wordCount(text) < 6) {
-    return roleResult("fragment", [], "high", ["short_unfinished_span"]);
+  const completeness = validateSentenceCompleteness(text);
+  if (!completeness.complete) {
+    return roleResult("fragment", [], "high", completeness.reasons);
   }
 
   if (String(taskType) === "Task 1") {

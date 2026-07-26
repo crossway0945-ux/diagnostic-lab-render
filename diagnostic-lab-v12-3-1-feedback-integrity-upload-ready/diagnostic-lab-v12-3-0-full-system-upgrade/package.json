@@ -1,7 +1,7 @@
 {
   "name": "ielts-writing-7-diagnostic-lab",
-  "version": "12.7.0",
-  "description": "V12.7 canonical task-route, syntactic-head agreement, frozen scoring, student-view allowlist, and report consistency release.",
+  "version": "12.8.0",
+  "description": "V12.8 output-integrity release with sentence completeness, canonical issue alignment, semantic report consistency, and extracted-PDF text gates.",
   "type": "module",
   "scripts": {
     "dev": "node server.js",
@@ -9,7 +9,7 @@
     "build:static": "node scripts/build-static-preview.mjs",
     "check": "node scripts/check-source.mjs",
     "test": "node scripts/build-static-preview.mjs && node scripts/run-tests.mjs",
-    "qa:provider:v12.7": "node qa/run-real-provider-regression.mjs",
+    "qa:provider:v12.8": "node qa/run-real-provider-regression.mjs",
     "reset:diagnostic-data": "node scripts/reset-diagnostic-data.mjs"
   },
   "engines": {

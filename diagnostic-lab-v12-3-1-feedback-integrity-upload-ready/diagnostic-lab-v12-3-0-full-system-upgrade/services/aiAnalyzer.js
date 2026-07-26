@@ -825,7 +825,7 @@ function buildLocalTask1Analysis(payload) {
       exactSentence: firstSentence.sentence,
       sentenceFunction: "This sentence is trying to introduce the Task 1 visual.",
       whyItLimitsBand: "This introduction is understandable, but it is not fully controlled because it keeps too much of the prompt's sentence structure. This is not a serious Task Achievement failure by itself, but it limits report-tone control and lexical precision.",
-      kruPomDiagnosis: "Intro นี้ไม่ได้ผิดหลัก ๆ แต่ยังไม่ premium เพราะเปลี่ยนคำบางคำโดยยังคงโครงประโยคของโจทย์มากเกินไป ต้อง paraphrase แบบเปลี่ยน structure โดยไม่บิดความหมาย.",
+      kruPomDiagnosis: "The introduction is not fundamentally wrong, but it follows too much of the prompt's sentence structure. Paraphrase by changing the structure without distorting the meaning.",
       targetedRevision: buildTask1IntroTargetedRevision(payload),
       whyRevisionIsStronger: "This revision keeps necessary technical nouns, changes the sentence structure, uses visual-type-appropriate framing, and avoids forced synonym changes that could create meaning drift.",
       studentAction: "Keep key technical nouns when needed, but do not simply replace 'show' with 'illustrate'. Rewrite the sentence structure so the introduction sounds like your own concise report sentence."
@@ -841,10 +841,10 @@ function buildLocalTask1Analysis(payload) {
       paragraphLocation: firstSentence.location,
       exactSentence: firstSentence.sentence,
       sentenceFunction: "This sentence is trying to introduce the visual.",
-      whyItLimitsBand: "Introduction ควรบอกประเภท visual, data, and time/place scope ให้ครบ ถ้าเปิดกว้างเกินไป Task Achievement จะไม่ชัด.",
-      kruPomDiagnosis: "Task 1 intro ต้องตอบ What / Which data / Where or group / When ใน 1-2 ประโยค.",
+      whyItLimitsBand: "The introduction should identify the visual type, data and time/place scope. If it is too broad, Task Achievement is not clear.",
+      kruPomDiagnosis: "A Task 1 introduction should identify what is shown, which data is measured, the place or group, and the time period in one or two sentences.",
       targetedRevision: "The bar chart compares the percentage of students choosing four university subjects in 2010 and 2020.",
-      whyRevisionIsStronger: "เวอร์ชันใหม่บอก visual type, measurement, topic, and time period ชัดเจน.",
+      whyRevisionIsStronger: "The revision states the visual type, measurement, topic and time period clearly.",
       studentAction: "Check that your Task 1 introduction answers: What visual? Which data? Which group/place? Which time period?"
     });
   }
@@ -858,15 +858,15 @@ function buildLocalTask1Analysis(payload) {
       paragraphLocation: secondSentence.location,
       exactSentence: secondSentence.sentence,
       sentenceFunction: "This sentence appears where an overview should summarize the main visual pattern.",
-      whyItLimitsBand: "Task 1 ต้องมี overview ชัดเจน ถ้าไม่มี overview คะแนน Task Achievement จะถูกจำกัดมาก.",
-      kruPomDiagnosis: "Overview ไม่ใช่ conclusion และไม่ใช่ body detail. ต้องสรุปภาพใหญ่โดยไม่ใส่ raw data.",
+      whyItLimitsBand: "Task 1 requires a clear overview. Without one, Task Achievement is substantially limited.",
+      kruPomDiagnosis: "An overview is neither a conclusion nor a body-detail paragraph. It should summarise the main picture without raw data.",
       targetedRevision: "Overall, the most noticeable change was the rise in science-related choices, while arts became less popular over the period.",
-      whyRevisionIsStronger: "เวอร์ชันใหม่สรุปภาพใหญ่และ grouping โดยไม่ใส่ตัวเลขดิบ.",
+      whyRevisionIsStronger: "The revision summarises the main picture and grouping without raw figures.",
       studentAction: "Place a clear overview immediately after the introduction and summarize only the biggest patterns."
     });
   }
 
-  if (overview && /\d/.test(overview.sentence)) {
+  if (overview && hasRawOverviewData(overview.sentence)) {
     addCard(cards, used, {
       issueType: "Raw Data in Overview",
       severity: "Needs Work",
@@ -875,10 +875,10 @@ function buildLocalTask1Analysis(payload) {
       paragraphLocation: overview.location,
       exactSentence: overview.sentence,
       sentenceFunction: "This sentence is trying to summarize the overall picture.",
-      whyItLimitsBand: "Overview ควรสรุป trend/main feature ไม่ใช่ยกตัวเลขดิบ ถ้าใส่ตัวเลขมากเกินไปจะกลายเป็น body paragraph.",
-      kruPomDiagnosis: "แยก overview กับ body data ให้ชัด: overview = ภาพใหญ่, body = ตัวเลขและ comparison.",
+      whyItLimitsBand: "The overview should summarise trends or main features rather than list raw figures; excessive numbers turn it into a detail paragraph.",
+      kruPomDiagnosis: "Separate overview and body data clearly: the overview gives the main picture, while body paragraphs provide figures and comparisons.",
       targetedRevision: "Overall, the most popular subjects remained concentrated in practical fields, while arts-related choices declined over time.",
-      whyRevisionIsStronger: "เวอร์ชันใหม่ให้ main pattern โดยไม่ทำให้ overview หนักด้วยตัวเลข.",
+      whyRevisionIsStronger: "The revision presents the main pattern without overloading the overview with figures.",
       studentAction: "Remove raw numbers from the overview and move them into body paragraphs."
     });
   }
@@ -918,10 +918,10 @@ function buildLocalTask1Analysis(payload) {
       paragraphLocation: vagueGrouping.location,
       exactSentence: vagueGrouping.sentence,
       sentenceFunction: "This sentence is trying to summarize or compare trends.",
-      whyItLimitsBand: "คำว่า some subjects / many changes กว้างเกินไป ทำให้ examiner ไม่เห็นว่าคุณ group data จากภาพอย่างไร.",
-      kruPomDiagnosis: "Task 1 ต้อง group by meaningful pattern เช่น highest/lowest, increase/decrease, stable/fluctuating, or similar categories.",
+      whyItLimitsBand: "Phrases such as 'some subjects' or 'many changes' are too broad to show how the data has been grouped.",
+      kruPomDiagnosis: "Group Task 1 data by a meaningful pattern such as highest/lowest, increase/decrease, stable/fluctuating, or similar categories.",
       targetedRevision: "Overall, science and business attracted stronger interest by 2020, whereas arts showed a noticeable decline.",
-      whyRevisionIsStronger: "เวอร์ชันใหม่ระบุกลุ่มข้อมูลและทิศทางของการเปลี่ยนแปลงชัดกว่า.",
+      whyRevisionIsStronger: "The revision identifies the data groups and directions of change more clearly.",
       studentAction: "Name the categories you are grouping. Do not write 'some increased and some decreased' without saying which ones."
     });
   }
@@ -936,10 +936,10 @@ function buildLocalTask1Analysis(payload) {
       paragraphLocation: opinionSentence.location,
       exactSentence: opinionSentence.sentence,
       sentenceFunction: "This sentence is trying to explain the meaning of the data.",
-      whyItLimitsBand: "Task 1 Academic ต้องรายงานข้อมูลที่เห็น ไม่ควรใส่ opinion, explanation, prediction, or interpretation ที่ภาพไม่ได้บอก.",
-      kruPomDiagnosis: "นี่ไม่ใช่ grammar problem เป็น tone-control problem: ต้อง objective, not explanatory.",
+      whyItLimitsBand: "Task 1 Academic should report visible information without adding opinions, explanations, predictions or interpretations that the visual does not support.",
+      kruPomDiagnosis: "This is a tone-control issue rather than mainly a grammar issue: the report must remain objective rather than explanatory.",
       targetedRevision: "The proportion for science increased, while the figure for arts declined over the same period.",
-      whyRevisionIsStronger: "เวอร์ชันใหม่รายงานสิ่งที่เห็นจาก visual โดยไม่เดาเหตุผลของข้อมูล.",
+      whyRevisionIsStronger: "The revision reports what is visible without inventing a reason for the data.",
       studentAction: "Remove opinion words such as important, better, improvement, and because unless the visual directly supports them."
     });
   }
@@ -992,7 +992,20 @@ function isTask1IntroTooCloseToPrompt(prompt, introduction) {
 function isTask1IntroVisualTypeMismatch(payload, introduction) {
   const expected = canonicalTask1VisualType(payload.visualType || payload.prompt);
   const actual = canonicalTask1VisualType(introduction);
+  if (expected === "mixed graph") {
+    const visualTypes = new Set((String(introduction || "").toLowerCase().match(/\b(?:line graph|bar chart|pie chart|table|map|diagram|process)\b/g) || []));
+    if (visualTypes.size >= 2) return false;
+  }
   return Boolean(expected && actual && expected !== actual);
+}
+
+function hasRawOverviewData(value) {
+  const text = String(value || "");
+  if (/\b\d+(?:[.,]\d+)?\s*(?:%|percent(?:age)?|million|billion|gigawatts?|tonnes?|kg|kilograms?|minutes?|hours?)\b/i.test(text)) return true;
+  return (text.match(/\b\d+(?:[.,]\d+)?\b/g) || []).some((token) => {
+    const number = Number(token.replace(",", "."));
+    return Number.isFinite(number) && !(Number.isInteger(number) && number >= 1800 && number <= 2200);
+  });
 }
 
 
@@ -1081,7 +1094,10 @@ function buildTask1IntroTargetedRevision(payload) {
   const promptText = String(payload.prompt || "");
   const prompt = promptText.toLowerCase();
   if (/map/.test(visualType)) return buildMapIntroRevision(promptText);
-  if (/process|cycle|cyclical|natural|manufacturing/.test(visualType)) return buildProcessIntroRevision(promptText);
+  if (/process|cycle|cyclical|natural|manufacturing/.test(visualType) ||
+    /\bhow\b[^.?]{0,120}\b(?:made|produced|manufactured|recycled|processed|created)\b/.test(prompt)) {
+    return buildProcessIntroRevision(promptText);
+  }
   if (/diagram|structure|mechanism/.test(visualType)) return buildDiagramIntroRevision(promptText);
   if (/mixed|combination|multiple/.test(visualType) || countTask1VisualTypes(prompt) > 1) return buildMixedIntroRevision(promptText);
   if (/pie/.test(visualType)) return buildPieIntroRevision(promptText, payload);
@@ -1094,17 +1110,21 @@ function countTask1VisualTypes(value) {
   return new Set((String(value || "").toLowerCase().match(/\b(?:line graph|bar chart|pie chart|table|map|diagram|process)\b/g) || [])).size;
 }
 function buildMixedIntroRevision(prompt) {
-  const clean = compactTask1Prompt(prompt)
-    .replace(/\b(?:the\s+)?(?:line graph|bar chart|pie chart|table|map|diagram|process)(?:s)?\b/gi, " ")
-    .replace(/\b(?:below|above|shows?|show|compares?|compare|illustrates?|illustrate|presents?|present|depicts?|depict|gives?|give)\b/gi, " ")
-    .replace(/\binformation\s+about\b/gi, " ")
-    .replace(/\s*\.\s*(?:the\s+)?/g, "; ")
-    .replace(/\s+/g, " ")
-    .replace(/^[,;:\s]+|[,;:\s]+$/g, "")
-    .trim();
+  const parts = String(prompt || "")
+    .replace(/summari[sz]e the information.*$/i, "")
+    .split(/\bwhile\b|[.;]/i)
+    .map((part) => part
+      .replace(/\b(?:the\s+)?(?:line graph|bar chart|pie chart|table|map|diagram|process)(?:s)?\b/gi, " ")
+      .replace(/\b(?:below|above|shows?|show|compares?|compare|illustrates?|illustrate|presents?|present|depicts?|depict|gives?|give|provides?|provide)\b/gi, " ")
+      .replace(/\binformation\s+about\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .replace(/^[,;:\s]+|[,;:\s]+$/g, "")
+      .trim())
+    .filter(Boolean);
+  const clean = parts.join(" and ");
   const visualTypes = [...new Set((String(prompt || "").toLowerCase().match(/\b(?:line graph|bar chart|pie chart|table|map|diagram|process)\b/g) || []))];
   const label = visualTypes.length === 2 ? `${visualTypes[0]} and ${visualTypes[1]}` : "combined visuals";
-  return `The ${label} present related information about ${clean}, with each visual contributing a distinct comparison or description.`;
+  return `The ${label} present related information about ${clean}.`;
 }
 
 function buildLineIntroRevision(prompt) {
@@ -1159,8 +1179,20 @@ function buildMapIntroRevision(prompt) {
 }
 
 function buildProcessIntroRevision(prompt) {
-  const subject = compactTask1Prompt(prompt);
+  let subject = compactTask1Prompt(prompt);
   if (/life cycle/i.test(prompt)) return `The diagram depicts the life cycle of ${subject}.`;
+  const passive = subject.match(/^(.+?)\s+(?:is|are)\s+(recycled|produced|manufactured|processed|created|made)$/i);
+  if (passive) {
+    const gerund = {
+      recycled: "recycling",
+      produced: "producing",
+      manufactured: "manufacturing",
+      processed: "processing",
+      created: "creating",
+      made: "making"
+    }[passive[2].toLowerCase()];
+    subject = `${gerund} ${passive[1]}`;
+  }
   return `The diagram illustrates the stages involved in ${subject}.`;
 }
 
@@ -1614,7 +1646,7 @@ function buildAnalysisFromCards({ payload, cards, criteriaNames, frameworkNames,
     estimatedBandRange,
     mainScoreLimitingFactor: localizedExecutive.mainScoreLimitingFactor,
     mostUrgentRepair: localizedExecutive.mostUrgentRepair,
-    criteriaScores: buildCriteriaScores(criteriaNames, normalizedCards, estimatedBandRange),
+    criteriaScores: buildCriteriaScores(criteriaNames, normalizedCards, estimatedBandRange, payload.reportLanguage),
     kruPomScores: buildKruPomScores(frameworkNames, normalizedCards),
     top3Issues,
     feedbackCards: normalizedCards,
@@ -1625,8 +1657,9 @@ function buildAnalysisFromCards({ payload, cards, criteriaNames, frameworkNames,
   };
 }
 
-function buildCriteriaScores(criteriaNames, cards, fallbackRange) {
+function buildCriteriaScores(criteriaNames, cards, fallbackRange, reportLanguage = "en") {
   const result = {};
+  const thai = normalizeReportLanguage(reportLanguage) === "th";
 
   for (const name of criteriaNames) {
     const linkedCards = cards.filter((card) => (card.criteria || []).includes(name));
@@ -1637,10 +1670,10 @@ function buildCriteriaScores(criteriaNames, cards, fallbackRange) {
     result[name] = {
       range: critical ? "6.0-6.5" : needsWork ? "6.5" : fallbackRange,
       diagnosis: critical
-        ? "คะแนนส่วนนี้ถูกจำกัดเพราะมีปัญหาหลักที่เห็นจากประโยคจริงของนักเรียน"
+        ? (thai ? "คะแนนส่วนนี้ถูกจำกัดเพราะมีปัญหาหลักที่เห็นจากประโยคจริงของนักเรียน" : "This criterion is limited by a major issue demonstrated in the student's exact sentence.")
         : needsWork
-          ? "ส่วนนี้พอใช้ได้ แต่ยังต้องเพิ่มความแม่นยำและ control"
-          : "No major evidence issue was detected in this diagnostic pass.",
+          ? (thai ? "ส่วนนี้พอใช้ได้ แต่ยังต้องเพิ่มความแม่นยำและ control" : "This criterion is partly controlled but still needs greater precision and consistency.")
+          : (thai ? "ไม่พบปัญหาหลักที่ยืนยันได้จากหลักฐานในการตรวจครั้งนี้" : "No major evidence issue was detected in this diagnostic pass."),
       evidence
     };
   }

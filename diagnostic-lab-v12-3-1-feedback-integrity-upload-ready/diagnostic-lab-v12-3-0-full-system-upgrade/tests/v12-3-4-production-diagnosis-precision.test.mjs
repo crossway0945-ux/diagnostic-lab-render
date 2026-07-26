@@ -18,7 +18,7 @@ import { normalizeStudentFacingText } from "../domain/canonicalAnalysis.js";
 import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.7.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.0");
 
 const norm = (value) => String(value).normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}%]+/gu, " ").trim();
 const primaryOf = (text) => detectDevelopmentSignal(norm(text)) || detectLanguageSignal(norm(text)) || "";
@@ -216,12 +216,14 @@ for (const issue of model.issues) {
   assert.ok(!(claimsExpansion && deniesWriting), `contradictory revision rationale at ${issue.paragraphLocation}`);
 }
 
-// A word-swap on a development diagnosis keeps a non-expansion label AND discloses the shortfall.
+// A word-swap on a development diagnosis is withheld because it does not repair development.
 const body2Issue = byLocation("Body Paragraph 2, Sentence 3");
 assert.ok(["SAR Example Quality", "Example Development", "Causal Mechanism"].includes(body2Issue.issueCategory));
 assert.notEqual(body2Issue.revisionType, "Teacher-Guided Expansion", "a word swap must not be relabelled as teacher guidance");
-assert.equal(body2Issue.revisionAlignmentStatus, "partial-repair");
-assert.match(body2Issue.revisionLimitationNote, /still require your own rewrite/i);
+assert.equal(body2Issue.revisionAlignmentStatus, "withheld");
+assert.equal(body2Issue.revisionType, "Revision Unavailable");
+assert.equal(body2Issue.revisionWithheld, true);
+assert.match(body2Issue.revisionLimitationNote, /withheld|own rewrite/i);
 
 // ---------------------------------------------------------------------------
 // D-3: a paragraph named in the Executive Summary must hold a Top Issue slot.

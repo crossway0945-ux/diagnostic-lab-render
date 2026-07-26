@@ -1,4 +1,5 @@
 import { assertUnicodeIntegrity, normalizeVisibleTree } from "./textIntegrity.js";
+import { enforceViewModelConsistency } from "./reportConsistency.js";
 
 export const STUDENT_REPORT_ALLOWLIST = Object.freeze([
   "reportHeader",
@@ -94,6 +95,10 @@ export function buildStudentReportViewModel(analysis = {}, progressSummary = {})
     disclaimer: String(analysis.disclaimer || ""),
     footer: "Kru Pom IELTS | IELTS Writing 7+ Diagnostic Lab | Diagnostic estimate only"
   }));
+  // Enforced final cross-section consistency gate: repair contradictions in the fully assembled
+  // report (e.g. a Strong framework status whose explanation says a route is missing) before it is
+  // asserted, saved or rendered. Deterministic, from the frozen statuses — never reruns scoring.
+  enforceViewModelConsistency(viewModel);
   assertStudentReportViewModel(viewModel);
   return viewModel;
 }

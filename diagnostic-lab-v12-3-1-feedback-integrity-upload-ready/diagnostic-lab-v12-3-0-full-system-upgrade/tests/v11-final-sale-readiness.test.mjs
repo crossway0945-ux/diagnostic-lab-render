@@ -201,20 +201,20 @@ await check("canonical object validates", () => {
   assert.deepEqual(validateCanonicalAnalysis(canonical), []);
 });
 await check("V11 metadata is exact", () => assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.7.0",
-  engineVersion: "ielts-diagnostic-engine-v12.7.0",
+  appVersion: "12.8.0",
+  engineVersion: "ielts-diagnostic-engine-v12.8.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
-  promptVersion: "ielts-diagnostic-prompt-v12.7.0",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.7.0",
-  feedbackSchemaVersion: "feedback-integrity-v12.7.0",
-  issueTaxonomyVersion: "issue-taxonomy-v12.7.0",
-  evidenceValidatorVersion: "evidence-assertion-v12.7.0",
-  revisionValidatorVersion: "revision-alignment-v12.7.0",
-  pdfTextIntegrityVersion: "pdf-text-integrity-v12.7.0",
-  routeClassifierVersion: "task-aware-route-model-v12.7.0",
+  promptVersion: "ielts-diagnostic-prompt-v12.8.0",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.8.0",
+  feedbackSchemaVersion: "feedback-integrity-v12.8.0",
+  issueTaxonomyVersion: "issue-taxonomy-v12.8.0",
+  evidenceValidatorVersion: "evidence-assertion-v12.8.0",
+  revisionValidatorVersion: "revision-alignment-v12.8.0",
+  pdfTextIntegrityVersion: "pdf-text-integrity-v12.8.0",
+  routeClassifierVersion: "task-aware-route-model-v12.8.0",
   grammarValidatorVersion: "syntactic-head-agreement-v12.7.0",
-  scoringOrchestrationVersion: "score-freeze-v12.7.0",
-  studentViewContractVersion: "student-report-allowlist-v12.7.0"
+  scoringOrchestrationVersion: "score-freeze-v12.8.0",
+  studentViewContractVersion: "student-report-allowlist-v12.8.0"
 }));
 await check("deterministic word count is stable", () => assert.equal(countWords(sunSpaceWriting), countWords(sunSpaceWriting)));
 await check("fingerprint is student-scoped", () => {

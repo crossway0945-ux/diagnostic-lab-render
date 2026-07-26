@@ -63,7 +63,7 @@ assert.doesNotMatch(report.kruPomScores["Body Paragraph Route Alignment"].diagno
 
 assert.equal(report.practicePlan.length, 7);
 assert.deepEqual(report.practicePlan.map((item) => item.day), [1, 2, 3, 4, 5, 6, 7]);
-assert.match(`${report.practicePlan[0].title} ${report.practicePlan[0].task}`, /causal mechanism|wider consequence/i);
+assert.match(`${report.practicePlan[0].title} ${report.practicePlan[0].task}`, /sentence completion|missing (?:independent main )?clause|causal mechanism|wider consequence/i);
 assert.doesNotMatch(`${report.practicePlan[0].title} ${report.practicePlan[0].task}`, /map the task routes|check the conclusion/i);
 
 for (const card of report.feedbackCards) {
@@ -76,10 +76,8 @@ for (const card of report.feedbackCards) {
 }
 const body1Card = report.feedbackCards.find((card) => /Every family is living/i.test(card.exactSentence));
 assert.ok(body1Card);
-// The old deterministic repair "Families live in different locations, which could be very far away
-// from their homes" attaches the relative clause to the wrong referent (the locations cannot be far
-// from the homes they ARE). V12.4.0 rejects that revision as semantically unsafe and withholds it
-// rather than showing a student an illogical model sentence.
+// The tense card is withheld because the same sentence still carries an independent
+// reference/meaning risk. It must not repeat the old unsafe rewrite.
 assert.equal(body1Card.revisionWithheld, true);
 assert.equal(body1Card.revisionType, "Revision Unavailable");
 assert.doesNotMatch(body1Card.targetedRevision, /Families live in different locations/i);
@@ -151,20 +149,20 @@ assert.equal(progress.changeIndicator, "new");
 assert.equal(progress.repeatedIssue, "");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.7.0",
-  engineVersion: "ielts-diagnostic-engine-v12.7.0",
+  appVersion: "12.8.0",
+  engineVersion: "ielts-diagnostic-engine-v12.8.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
-  promptVersion: "ielts-diagnostic-prompt-v12.7.0",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.7.0",
-  feedbackSchemaVersion: "feedback-integrity-v12.7.0",
-  issueTaxonomyVersion: "issue-taxonomy-v12.7.0",
-  evidenceValidatorVersion: "evidence-assertion-v12.7.0",
-  revisionValidatorVersion: "revision-alignment-v12.7.0",
-  pdfTextIntegrityVersion: "pdf-text-integrity-v12.7.0",
-  routeClassifierVersion: "task-aware-route-model-v12.7.0",
+  promptVersion: "ielts-diagnostic-prompt-v12.8.0",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.8.0",
+  feedbackSchemaVersion: "feedback-integrity-v12.8.0",
+  issueTaxonomyVersion: "issue-taxonomy-v12.8.0",
+  evidenceValidatorVersion: "evidence-assertion-v12.8.0",
+  revisionValidatorVersion: "revision-alignment-v12.8.0",
+  pdfTextIntegrityVersion: "pdf-text-integrity-v12.8.0",
+  routeClassifierVersion: "task-aware-route-model-v12.8.0",
   grammarValidatorVersion: "syntactic-head-agreement-v12.7.0",
-  scoringOrchestrationVersion: "score-freeze-v12.7.0",
-  studentViewContractVersion: "student-report-allowlist-v12.7.0"
+  scoringOrchestrationVersion: "score-freeze-v12.8.0",
+  studentViewContractVersion: "student-report-allowlist-v12.8.0"
 });
 
 const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");

@@ -1,0 +1,8 @@
+Root Directory: diagnostic-lab-v12-8-0-upload-ready
+Build Command: npm install
+Start Command: npm start
+
+Expected GitHub path:
+/diagnostic-lab-v12-8-0-upload-ready/package.json
+
+Do not create another enclosing folder.

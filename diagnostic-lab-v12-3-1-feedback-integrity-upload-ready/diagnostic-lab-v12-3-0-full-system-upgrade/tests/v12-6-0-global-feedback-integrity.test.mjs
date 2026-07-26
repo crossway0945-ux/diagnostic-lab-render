@@ -38,16 +38,16 @@ assert.ok(corpus.task2.length >= 20);
 assert.ok(corpus.task1.length >= 20);
 assert.ok(corpus.providerCases.length >= 2);
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.7.0");
-assert.equal(ANALYSIS_VERSIONS.engineVersion, "ielts-diagnostic-engine-v12.7.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.0");
+assert.equal(ANALYSIS_VERSIONS.engineVersion, "ielts-diagnostic-engine-v12.8.0");
 assert.equal(ANALYSIS_VERSIONS.rubricVersion, "kru-pom-ielts-writing-v12.3.0");
-assert.equal(ANALYSIS_VERSIONS.promptVersion, "ielts-diagnostic-prompt-v12.7.0");
-assert.equal(ANALYSIS_VERSIONS.reportSchemaVersion, "ielts-diagnostic-report-v12.7.0");
-assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.7.0");
-assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.7.0");
-assert.equal(ANALYSIS_VERSIONS.evidenceValidatorVersion, "evidence-assertion-v12.7.0");
-assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.7.0");
-assert.equal(ANALYSIS_VERSIONS.pdfTextIntegrityVersion, "pdf-text-integrity-v12.7.0");
+assert.equal(ANALYSIS_VERSIONS.promptVersion, "ielts-diagnostic-prompt-v12.8.0");
+assert.equal(ANALYSIS_VERSIONS.reportSchemaVersion, "ielts-diagnostic-report-v12.8.0");
+assert.equal(ANALYSIS_VERSIONS.feedbackSchemaVersion, "feedback-integrity-v12.8.0");
+assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.8.0");
+assert.equal(ANALYSIS_VERSIONS.evidenceValidatorVersion, "evidence-assertion-v12.8.0");
+assert.equal(ANALYSIS_VERSIONS.revisionValidatorVersion, "revision-alignment-v12.8.0");
+assert.equal(ANALYSIS_VERSIONS.pdfTextIntegrityVersion, "pdf-text-integrity-v12.8.0");
 assert.equal(ORCHESTRATION_VERSION, "async-render-v12.5.0");
 
 for (const schema of [task1Schema, task2Schema]) {

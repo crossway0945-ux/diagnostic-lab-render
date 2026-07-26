@@ -8,6 +8,8 @@
 //
 // Nothing here is tied to a topic, student, essay type or visual type.
 
+import { validateSentenceCompleteness } from "./sentenceCompleteness.js";
+
 // Meta-language: sentences that talk *about* the task instead of stating content from it.
 const GENERIC_META_PATTERNS = Object.freeze([
   /\bthe (?:wider |whole |same )?(?:group|system|issue|problem|mechanism|factor)s? (?:named|mentioned|described|identified) in the (?:prompt|task|question)\b/i,
@@ -78,9 +80,10 @@ export function checkRevisionGrammar(revision = "") {
   const text = String(revision || "").trim();
   const problems = [];
   if (!text) return { status: "fail", problems: ["The revision is empty."] };
+  const completeness = validateSentenceCompleteness(text);
   if (!CLOSING.test(text)) problems.push("The revision does not end with terminal punctuation.");
   if (/[,;:]\s*$/u.test(text)) problems.push("The revision ends mid-clause.");
-  if (!hasFiniteVerb(text)) problems.push("The revision has no finite verb.");
+  if (!completeness.complete) problems.push("The revision does not contain a complete independent main clause.");
   // "Although A, B." / "While A, B." are complete sentences: a leading subordinator is only a
   // fragment when no main clause follows. Leading coordinators (and/but/so) stay flagged.
   const startsWithSubordinator = /^(?:because|which|that|although|though|while|whereas)\b/i.test(text);

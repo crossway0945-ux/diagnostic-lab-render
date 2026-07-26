@@ -30,7 +30,7 @@ import {
 } from "../domain/pdfTextIntegrity.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.7.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.0");
 assert.equal(ANALYSIS_VERSIONS.routeClassifierVersion, TASK2_ROUTE_CLASSIFIER_VERSION);
 assert.equal(ANALYSIS_VERSIONS.grammarValidatorVersion, AGREEMENT_VALIDATOR_VERSION);
 assert.equal(ANALYSIS_VERSIONS.rubricVersion, "kru-pom-ielts-writing-v12.3.0");
@@ -206,4 +206,4 @@ assert.ok(pdfTextIntegrityIssues({
   savedReportText: `${webText} source offset 44`
 }).issues.includes("PDF_INTERNAL_REPORT_LANGUAGE"));
 
-console.log("V12.7.0 global root-cause correction: task-aware routes, syntactic-head agreement, frozen scoring, canonical independent defects, student allowlist and PDF semantic parity passed.");
+console.log("V12.8.0 global root-cause correction: task-aware routes, syntactic-head agreement, frozen scoring, canonical independent defects, student allowlist and PDF semantic parity passed.");

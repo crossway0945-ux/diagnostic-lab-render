@@ -62,8 +62,16 @@ export function detectSyntacticHeadAgreementDefects(evidence = "", absoluteStart
     const verb = match[0];
     const verbStart = match.index ?? -1;
     if (verbStart < 0) continue;
+    // A lexical item such as "cause" can be the subject noun before a copula:
+    // "The main cause is ...". It is not a finite verb in that frame.
+    const following = text.slice(verbStart + verb.length);
+    if ((BASE_TO_THIRD[verb.toLowerCase()] || THIRD_TO_BASE[verb.toLowerCase()]) &&
+      /^\s+(?:is|are|was|were|has|have)\b/i.test(following)) {
+      continue;
+    }
     const subject = resolveFiniteVerbSubject(text, verbStart);
     if (!subject || !["singular", "plural"].includes(subject.number)) continue;
+    if (SUBJECT_DETERMINERS.has(String(subject.head || "").toLowerCase())) continue;
     const correctedSpan = expectedVerb(subject.number, verb);
     if (!correctedSpan || correctedSpan.toLowerCase() === verb.toLowerCase()) continue;
     const defect = {

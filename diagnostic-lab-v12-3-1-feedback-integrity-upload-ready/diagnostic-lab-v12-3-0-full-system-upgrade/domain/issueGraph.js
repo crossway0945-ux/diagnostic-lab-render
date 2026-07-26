@@ -156,10 +156,6 @@ export function selectPrimaryIssueCategory({ issue = {}, assertion = {}, taskTyp
   let primary = asserted || explicit || "Lexical Precision";
   const secondary = [];
 
-  if (String(taskType) === "Task 1" && sentenceRole === "introduction_paraphrase" &&
-    ["Visual Understanding", "Introduction Precision"].includes(explicit)) {
-    primary = explicit;
-  }
   if (assertion.assertionType === "lexical_meaning") {
     primary = /\bmeaning (?:change|control|reversal)|reverses? meaning|wrong meaning\b/.test(diagnosis)
       ? "Meaning Control"
@@ -170,10 +166,6 @@ export function selectPrimaryIssueCategory({ issue = {}, assertion = {}, taskTyp
   }
   if (assertion.assertionType === "route_gap") {
     primary = routeCategoryForRole(sentenceRole, diagnosis);
-  }
-  if (String(taskType) === "Task 1" && sentenceRole === "introduction_paraphrase" &&
-    ["Visual Understanding", "Introduction Precision"].includes(explicit)) {
-    primary = explicit;
   }
   if (["cause_route", "solution_route", "thesis_route"].includes(sentenceRole) &&
     /structurally clear|route (?:is|remains) (?:clear|traceable|established)/.test(diagnosis) &&
@@ -214,8 +206,11 @@ export function buildSpecificStudentAction(issue = {}) {
   const assertion = issue.evidenceAssertion || {};
   const category = String(issue.issueCategory || "");
   const location = String(issue.paragraphLocation || issue.paragraphLabel || "the quoted location");
+  if (assertion.assertionType === "visual_type_mismatch" && /\bintro checklist\b/i.test(String(issue.studentAction || ""))) {
+    return String(issue.studentAction).trim();
+  }
   if (assertion.assertionType === "punctuation_spacing") {
-    return `In ${location}, replace "${assertion.targetSpan}" with "${assertion.correctedSpan}".`;
+    return `In ${location}, replace "${assertion.targetSpan}" with "${assertion.correctedSpan}" to insert the missing space after the punctuation mark.`;
   }
   if (assertion.assertionType === "countability") {
     return `In ${location}, remove the unsupported singular article in "${assertion.targetSpan}" and write "${assertion.correctedSpan}".`;
@@ -223,12 +218,25 @@ export function buildSpecificStudentAction(issue = {}) {
   if (assertion.assertionType === "article") {
     return `In ${location}, change "${assertion.targetSpan}" to "${assertion.correctedSpan}".`;
   }
+  if (assertion.assertionType === "sentence_fragment" || category === "Sentence Completion") {
+    return `In ${location}, turn the fragment into a complete sentence with an independent subject and finite main verb while preserving the original idea.`;
+  }
   if (["Lexical Precision", "Word Choice", "Meaning Control", "Collocation", "Word Form"].includes(category) &&
     assertion.targetSpan && assertion.correctedSpan) {
     if (assertion.targetSpan.length <= 60 && assertion.correctedSpan.length <= 60) {
       return `Replace "${assertion.targetSpan}" with "${assertion.correctedSpan}" in this sentence; keep the original claim and grammatical frame.`;
     }
-    return `Rebuild the highlighted wording for ${category}; preserve the sentence's original claim, route and grammatical frame.`;
+    const quotedTerm = firstQuotedSourceTerm(issue);
+    if (quotedTerm) {
+      return `Replace "${quotedTerm}" with a precise term that expresses the intended meaning, then keep the sentence's original claim and route.`;
+    }
+    return `Replace the inaccurate wording with a precise term that preserves the sentence's original claim and route.`;
+  }
+  if (["Lexical Precision", "Word Choice", "Meaning Control", "Collocation", "Word Form"].includes(category)) {
+    return `In ${location}, replace the imprecise word or phrase named in the diagnosis with a precise term that preserves the original claim and grammatical frame.`;
+  }
+  if (["Reference Control", "Pronoun Control"].includes(category) && assertion.targetSpan && assertion.correctedSpan) {
+    return `Replace "${assertion.targetSpan}" with "${assertion.correctedSpan}" so the reference points to one explicit noun and preserves the original meaning.`;
   }
   if (category === "Causal Mechanism") {
     return "Write the missing cause-and-effect chain explicitly: cause -> immediate effect -> wider consequence.";
@@ -354,7 +362,11 @@ export function validateStudentActionSpecificity(issue = {}) {
   const assertion = issue.evidenceAssertion || {};
   if (assertion.targetSpan && assertion.correctedSpan &&
     !action.includes(assertion.targetSpan) && !action.includes(assertion.correctedSpan) &&
-    !["Causal Mechanism", "Solution Mechanism", "Example Development", "SAR Example Quality"].includes(issue.issueCategory)) {
+    ![
+      "Causal Mechanism", "Solution Mechanism", "Example Development", "SAR Example Quality",
+      "Visual Understanding", "Introduction Precision", "Overview Quality", "Overview Accuracy",
+      "Data Accuracy", "Comparison Precision", "Process Sequence", "Process Endpoint", "Map Change Accuracy"
+    ].includes(issue.issueCategory)) {
     problems.push("Student Action does not identify the local repair span or correction.");
   }
   return { pass: problems.length === 0, problems };
@@ -386,11 +398,10 @@ function finalizeIssueIdentity(issue) {
     issue.taskType,
     issue.paragraphId,
     issue.sentenceIndex,
+    issue.issueCategory,
     assertion.targetOffsetStart,
     assertion.targetOffsetEnd,
-    assertion.assertionType,
-    normalizeText(assertion.correctedSpan || issue.targetedRevision),
-    normalizeText(issue.diagnosis || issue.whyItLimitsBand)
+    assertion.assertionType
   ].join("|");
   return { ...issue, issueSignature: signature, issueId: stableId(signature) };
 }
@@ -467,6 +478,13 @@ function dedupeGeneratedGuidance(value) {
 function isBareAdjective(value) {
   const text = String(value || "").trim().toLowerCase();
   return !/\s/.test(text) && /(?:ive|ous|ful|less|able|ible|al|ent|ant|ic|ary|ory)$/.test(text);
+}
+
+function firstQuotedSourceTerm(issue = {}) {
+  const corpus = [issue.diagnosis, issue.kruPomDiagnosis, issue.whyItLimitsBand].filter(Boolean).join(" ");
+  const quoted = corpus.match(/["“‘']([^"”’']{2,60})["”’']/u)?.[1]?.trim() || "";
+  if (!quoted) return "";
+  return normalizeText(issue.exactEvidence).includes(normalizeText(quoted)) ? quoted : "";
 }
 
 function uniqueEvidenceLocations(items) {

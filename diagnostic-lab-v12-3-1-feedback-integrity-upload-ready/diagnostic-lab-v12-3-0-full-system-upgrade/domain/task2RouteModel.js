@@ -1,4 +1,4 @@
-export const TASK2_ROUTE_CLASSIFIER_VERSION = "task-aware-route-model-v12.7.0";
+export const TASK2_ROUTE_CLASSIFIER_VERSION = "task-aware-route-model-v12.8.0";
 
 const ROUTE_TYPES = Object.freeze([
   "cause", "problem", "solution", "effect", "advantage", "disadvantage",
@@ -16,6 +16,7 @@ const OPPOSE_FRAME = /\b(?:i (?:strongly |firmly |fully )?disagree|oppose(?:s|d)
 const SOLUTION_NOUN = /\b(?:solution(?:s)?|measure(?:s)?|policy|policies|initiative(?:s)?|programme(?:s)?|program(?:s)?|law(?:s)?|regulation(?:s)?|investment|infrastructure|enforcement|campaign(?:s)?|subsid(?:y|ies)|tax(?:es)?|restriction(?:s)?)\b/i;
 const SOLUTION_AGENT = /\b(?:government(?:s)?|authorit(?:y|ies)|council(?:s)?|city officials?|police|schools?|employers?|companies|businesses|transport operators?|the state|policy[- ]makers?|individuals?|drivers?|residents?)\b/i;
 const SOLUTION_MODAL_ACTION = /\b(?:should|could|must|need to|ought to|can)\s+(?:(?:significantly|substantially|gradually|directly|actively|strongly|more)\s+){0,2}(?:build|provide|introduce|implement|invest|expand|improve|enforce|encourage|require|restrict|subsidise|subsidize|fund|create|develop|increase|reduce|ban|charge|educate|promote)\b/i;
+const SOLUTION_COPULAR_ACTION = /\b(?:solution|measure|policy|initiative|programme|program|approach|response)\b[^.!?]{0,80}\b(?:is|would be)\s+to\s+(?:build|provide|introduce|implement|invest|expand|improve|enforce|encourage|require|restrict|subsidise|subsidize|fund|create|develop|increase|reduce|ban|charge|educate|promote)\b/i;
 const SOLUTION_GERUND_ACTION = /\b(?:building|providing|introducing|implementing|investing in|expanding|improving|enforcing|encouraging|requiring|restricting|funding|creating|developing|banning|charging|educating|promoting)\b/i;
 const PURPOSE_FRAME = /\b(?:in order to|so that|thereby|which would|this would|to reduce|to address|to tackle|to solve|to alleviate|to prevent)\b/i;
 const EXAMPLE_FRAME = /^(?:for example|for instance|to illustrate|such as)\b/i;
@@ -109,11 +110,12 @@ export function classifyParagraphRoute({ paragraph = "", index = 0, family = "",
 function scoreRouteFrames(text, family, prompt) {
   const value = String(text || "");
   const solutionAction = SOLUTION_MODAL_ACTION.test(value) ||
+    SOLUTION_COPULAR_ACTION.test(value) ||
     (SOLUTION_GERUND_ACTION.test(value) && (SOLUTION_NOUN.test(value) || PURPOSE_FRAME.test(value))) ||
     (SOLUTION_AGENT.test(value) && SOLUTION_NOUN.test(value) && PURPOSE_FRAME.test(value));
   const output = {
-    cause: weightedMatches(value, CAUSE_FRAME),
-    problem: weightedMatches(value, PROBLEM_FRAME),
+    cause: weightedMatches(value, CAUSE_FRAME) + (/\b(?:main|primary|underlying|immediate)\s+(?:cause|reason)\b|\b(?:cause|reason)\s+is\b/i.test(value) ? 4 : 0),
+    problem: weightedMatches(value, PROBLEM_FRAME) + (/\b(?:main|primary|serious)\s+(?:problem|issue)\b|\b(?:problem|issue)\s+is\b/i.test(value) ? 4 : 0),
     solution: solutionAction ? 4 + weightedMatches(value, SOLUTION_NOUN) + weightedMatches(value, PURPOSE_FRAME) : 0,
     effect: weightedMatches(value, EFFECT_FRAME),
     advantage: weightedMatches(value, ADVANTAGE_FRAME),

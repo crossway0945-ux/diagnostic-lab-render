@@ -8,7 +8,7 @@ import { segmentStudentResponse } from "../domain/paragraphEvidence.js";
 import { analyzeWriting } from "../services/aiAnalyzer.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.7.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.0");
 
 const zoningPrompt = [
   "Towns and cities should be divided into zones so that all the schools are in one area, all the shopping malls are located together and all the industrial sites are situated close to each other.",
@@ -95,15 +95,17 @@ assert.equal(audit.filter((finding) => finding.severity === "fatal").length, 0);
 const byLocation = (location) => model.issues.find((issue) => issue.paragraphLocation === location);
 
 // Repair 1: the development diagnosis wins the heading, the language label survives as secondary,
-// and the shortfall is disclosed rather than silently claimed as repaired.
+// and a language-only edit is withheld rather than shown as if it repaired development.
 const developmentIssue = byLocation("Body Paragraph 2, Sentence 3");
 assert.ok(["Causal Mechanism", "Example Development", "SAR Example Quality", "Explanation Depth"].includes(developmentIssue.issueCategory));
 assert.ok(developmentIssue.secondaryIssueCategories.includes("Countability"));
 assert.ok(!developmentIssue.secondaryIssueCategories.includes(developmentIssue.issueCategory));
-assert.equal(developmentIssue.revisionAlignmentStatus, "partial-repair");
+assert.equal(developmentIssue.revisionAlignmentStatus, "withheld");
+assert.equal(developmentIssue.revisionWithheld, true);
+assert.equal(developmentIssue.revisionType, "Revision Unavailable");
 assert.ok(developmentIssue.unresolvedTargets.length > 0);
-assert.match(developmentIssue.revisionLimitationNote, /still require your own rewrite/i);
-assert.match(developmentIssue.whyRevisionIsStronger, /still require your own rewrite/i);
+assert.match(developmentIssue.revisionLimitationNote, /withheld|own rewrite/i);
+assert.match(developmentIssue.whyRevisionIsStronger, /no model sentence|own rewrite/i);
 assert.ok(
   developmentIssue.integrityRepairs.some((repair) => repair.code === "REVISION_TARGETS_UNRESOLVED" && repair.disclosed === true),
   "an unresolved development target must be recorded as a disclosed repair"

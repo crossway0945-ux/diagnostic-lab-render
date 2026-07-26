@@ -17,10 +17,10 @@ import { unsupportedSummaryClaims } from "../domain/reportConsistency.js";
 import { analyzeWriting, getAnalyzerHealth } from "../services/aiAnalyzer.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.7.0");
-assert.equal(ANALYSIS_VERSIONS.engineVersion, "ielts-diagnostic-engine-v12.7.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.0");
+assert.equal(ANALYSIS_VERSIONS.engineVersion, "ielts-diagnostic-engine-v12.8.0");
 assert.equal(ANALYSIS_VERSIONS.rubricVersion, "kru-pom-ielts-writing-v12.3.0", "rubric must not change in this release");
-assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.7.0", "taxonomy advances for global evidence integrity");
+assert.equal(ANALYSIS_VERSIONS.issueTaxonomyVersion, "issue-taxonomy-v12.8.0", "taxonomy advances for global evidence integrity");
 
 // ---------------------------------------------------------------------------
 // Model migration scaffolding.
@@ -121,7 +121,8 @@ assert.doesNotMatch(withheld.targetedRevision, /Families live in different locat
 assert.match(withheld.targetedRevision, /could not be verified/);
 assert.match(withheld.whyRevisionIsStronger, /safer than memorising/i);
 assert.ok(model.repairs.some((repair) => repair.code === "REVISION_WITHHELD" && repair.disclosed === true));
-// Withholding is repairable disclosure, never a fatal block.
+// The local tense correction is still withheld because the same sentence has an independent
+// reference/meaning risk; the unsafe full-sentence provider rewrite is never shown.
 assert.deepEqual(validateFeedbackIntegrity(model, writing), []);
 // Diagnosis and evidence survive untouched.
 assert.equal(withheld.exactEvidence, body1[1]);

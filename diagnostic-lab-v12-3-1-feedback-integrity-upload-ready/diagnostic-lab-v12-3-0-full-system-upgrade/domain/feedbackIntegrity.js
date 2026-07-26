@@ -6,8 +6,7 @@ import {
   detectAgreementDefects,
   detectArticleDefects,
   detectCountabilityDefects,
-  detectPunctuationSpacingDefects,
-  repairDeterministicEvidenceDefects
+  detectPunctuationSpacingDefects
 } from "./evidenceAssertions.js";
 import {
   buildSpecificStudentAction,
@@ -20,6 +19,10 @@ import {
 } from "./issueGraph.js";
 import { assessThesisDimensions } from "./thesisDimensions.js";
 import { validateTask2RevisionIntegrity } from "./task2Safety.js";
+import {
+  buildRoutePreservingFragmentRevision,
+  validateSentenceCompleteness
+} from "./sentenceCompleteness.js";
 import {
   auditReportConsistency,
   paragraphDimensionStatus,
@@ -204,6 +207,16 @@ export function buildFeedbackIntegrityModel({
   const conclusionFunction = assessConclusionFunction(paragraphs, taskType);
   const paragraphCoverage = buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback, taskType, conclusionFunction, routeAssessment });
   const thesisDimensions = assessThesisDimensions({ taskType, essayType, prompt, paragraphs, canonicalIssues });
+  const canonicalFrameworkScores = reconcileFrameworkScoreCards({
+    frameworkScores,
+    canonicalIssues,
+    paragraphCoverage,
+    thesisDimensions,
+    conclusionFunction,
+    routeAssessment,
+    taskType,
+    reportLanguage
+  });
   const model = {
     issues: canonicalIssues,
     topIssues: canonicalTopIssues,
@@ -212,7 +225,7 @@ export function buildFeedbackIntegrityModel({
     thesisDimensions,
     routeAssessment,
     criteriaScores,
-    frameworkScores,
+    frameworkScores: canonicalFrameworkScores,
     repairs: [
       ...canonicalIssues.flatMap((issue) => (issue.integrityRepairs || []).map((repair) => ({ ...repair, issueId: issue.issueId }))),
       ...executiveSummary.repairedClaims.map((repair) => ({ code: "SUMMARY_CLAIM_REPAIRED", ...repair }))
@@ -228,6 +241,104 @@ export function buildFeedbackIntegrityModel({
   };
   model.consistencyAudit = auditReportConsistency(model);
   return model;
+}
+
+function reconcileFrameworkScoreCards({
+  frameworkScores = {},
+  canonicalIssues = [],
+  paragraphCoverage = [],
+  thesisDimensions = {},
+  conclusionFunction = null,
+  routeAssessment = null,
+  taskType = "Task 2",
+  reportLanguage = ""
+} = {}) {
+  const cards = Object.fromEntries(Object.entries(frameworkScores || {}).map(([name, value]) => [
+    name,
+    { ...(value || {}) }
+  ]));
+  if (String(taskType) === "Task 1") return cards;
+  const thai = String(reportLanguage || "").toLowerCase() === "th";
+  const intro = paragraphCoverage.find((item) => item.paragraphLabel === "Introduction");
+  const conclusion = paragraphCoverage.find((item) => item.paragraphLabel === "Conclusion");
+  const allCategories = new Set(canonicalIssues.flatMap((issue) => [
+    issue.issueCategory,
+    ...(issue.secondaryIssueCategories || [])
+  ].filter(Boolean)));
+  const languageCategories = [...allCategories].filter((category) => LANGUAGE_ISSUE_CATEGORIES.includes(category));
+  const developmentCategories = [...allCategories].filter((category) => DEVELOPMENT_ISSUE_CATEGORIES.includes(category));
+  const hasExampleRepair = [...allCategories].some((category) => ["Example Development", "SAR Example Quality", "Sentence Completion"].includes(category));
+  const structurallyClear = Boolean(thesisDimensions.structurallyClear);
+  cards["Thesis Route Clarity"] = structurallyClear
+    ? {
+        status: intro?.dimensions?.language === "repair-needed" || thesisDimensions.lexicalNamingAccurate === false
+          ? "Structurally Strong - Lexical Precision Repair Needed"
+          : "Strong",
+        diagnosis: thai
+          ? "Thesis วาง route ที่โจทย์ต้องการครบและเชื่อมกับ body ได้ โดยประเมิน lexical precision แยกต่างหาก"
+          : "The thesis establishes the required routes and connects them to the body paragraphs; lexical precision is evaluated separately."
+      }
+    : {
+        status: "Needs Work",
+        diagnosis: thai ? "Thesis ยังขาด route ที่ตรวจสอบได้อย่างน้อยหนึ่งส่วน" : "The thesis is missing at least one traceable required route."
+      };
+  if (cards["Explanation Depth"]) {
+    cards["Explanation Depth"] = developmentCategories.length
+      ? {
+          status: "Moderate",
+          diagnosis: thai
+            ? `ยังต้องพัฒนา ${developmentCategories.join(", ")} จากหลักฐานในงานเขียน`
+            : `Validated paragraph evidence still requires repair in: ${developmentCategories.join(", ")}.`
+        }
+      : {
+          status: "Strong",
+          diagnosis: thai ? "ไม่พบ development gap ที่เป็น priority" : "No priority development gap is present in the report evidence."
+        };
+  }
+  if (cards["SAR Example Quality"]) {
+    cards["SAR Example Quality"] = hasExampleRepair
+      ? {
+          status: "Moderate",
+          diagnosis: thai ? "ตัวอย่างอย่างน้อยหนึ่งจุดยังต้องซ่อมความสมบูรณ์หรือผลที่ตามมา" : "At least one validated example still needs a complete proposition, action or result."
+        }
+      : {
+          status: "Strong",
+          diagnosis: thai ? "ไม่พบ example/SAR gap ที่เป็น priority" : "No priority example or SAR gap is present in the report evidence."
+        };
+  }
+  if (cards["Conclusion Closure"]) {
+    const languageRepair = conclusion?.dimensions?.language === "repair-needed";
+    const missingRequiredRoutes = Array.isArray(routeAssessment?.missingRequirements)
+      ? routeAssessment.missingRequirements.filter(Boolean)
+      : [];
+    const routeClosureIncomplete = missingRequiredRoutes.length > 0 ||
+      /^(?:failed|absent|contradicted)$/i.test(String(routeAssessment?.status || routeAssessment?.overallRouteStatus || ""));
+    cards["Conclusion Closure"] = conclusionFunction?.complete && !routeClosureIncomplete
+      ? {
+          status: languageRepair ? "Functionally Strong - Language Repair Needed" : "Strong",
+          diagnosis: languageRepair
+            ? (thai ? "Conclusion ปิด route ได้ครบ แต่ยังมี language issue ที่ต้องซ่อม" : "The conclusion closes the required routes, but validated language issues still need repair.")
+            : (thai ? "Conclusion ปิด route ได้ครบโดยไม่เพิ่ม idea ใหม่" : "The conclusion closes the required routes without adding a new idea.")
+        }
+      : {
+          status: "Needs Work",
+          diagnosis: routeClosureIncomplete
+            ? (thai
+                ? `Conclusion เป็นประโยคสมบูรณ์ แต่ยังปิด route ที่โจทย์ต้องการไม่ครบ: ${missingRequiredRoutes.join(", ") || "required route"}.${languageRepair ? " และยังมี language repair ที่ต้องแก้แยกต่างหาก" : ""}`
+                : `The conclusion is sentence-complete, but it does not close every required route: ${missingRequiredRoutes.join(", ") || "required route"}.${languageRepair ? " A separate language repair is also needed." : ""}`)
+            : conclusionFunction?.reason || "The conclusion does not yet close the required response route."
+        };
+  }
+  if (cards["LFC CPC Control"] || cards["LFC-CPC Control"]) {
+    const key = cards["LFC CPC Control"] ? "LFC CPC Control" : "LFC-CPC Control";
+    cards[key] = {
+      status: languageCategories.length ? "Moderate" : "Strong",
+      diagnosis: languageCategories.length
+        ? `Affected dimensions: Clear, Precise and Comprehensive. Issue families: ${languageCategories.join(", ")}.`
+        : "Link, Flow, Clear, Concise, Precise and Comprehensive control show no priority defect."
+    };
+  }
+  return cards;
 }
 
 export function detectSentenceRole({
@@ -492,11 +603,10 @@ export function validateFeedbackIntegrity(model = {}, writing = "") {
 
 function buildDeterministicEvidenceCandidates(records = []) {
   const candidates = [];
-  const addDefect = (record, defect, category, diagnosis, fullyCorrectedText = "") => {
+  const addDefect = (record, defect, category, diagnosis) => {
     const relativeStart = Math.max(0, Number(defect.targetOffsetStart) - Number(record.startOffset || 0));
     const relativeEnd = Math.max(relativeStart, Number(defect.targetOffsetEnd) - Number(record.startOffset || 0));
-    const corrected = fullyCorrectedText ||
-      `${record.exactText.slice(0, relativeStart)}${defect.correctedSpan}${record.exactText.slice(relativeEnd)}`;
+    const corrected = `${record.exactText.slice(0, relativeStart)}${defect.correctedSpan}${record.exactText.slice(relativeEnd)}`;
     if (!defect.targetSpan || corrected === record.exactText) return;
     candidates.push({
       issueCategory: category,
@@ -517,6 +627,31 @@ function buildDeterministicEvidenceCandidates(records = []) {
 
   for (const record of records) {
     const absoluteStart = Number(record.startOffset || 0);
+    const completeness = validateSentenceCompleteness(record.exactText);
+    if (!completeness.complete) {
+      const corrected = buildRoutePreservingFragmentRevision(record.exactText);
+      candidates.push({
+        issueCategory: "Sentence Completion",
+        issueType: "Sentence Completion",
+        secondaryIssueCategories: record.paragraphRole?.startsWith("Body Paragraph")
+          ? ["Example Development"]
+          : [],
+        severity: "Major",
+        exactEvidence: record.exactText,
+        exactSentence: record.exactText,
+        diagnosis: "The example is a noun phrase with a dependent relative clause but no independent main clause.",
+        whyItLimitsBand: "The fragment prevents the example from functioning as a complete proposition and weakens both sentence control and development.",
+        studentAction: "Turn the example into a complete sentence by making its central noun phrase the subject of an independent main clause.",
+        targetedRevision: corrected,
+        whyRevisionIsStronger: corrected
+          ? "The revision keeps the original solution idea but supplies a complete independent clause."
+          : "No model sentence is shown because a safe independent-clause repair could not be verified.",
+        revisionType: corrected ? "Route-Preserving Revision" : "Revision Unavailable",
+        evidenceAssertionType: "sentence_fragment",
+        deterministicEvidence: true,
+        sentenceCompletenessValidation: completeness
+      });
+    }
     const punctuationDefects = detectPunctuationSpacingDefects(record.exactText, absoluteStart).map((defect) => ({
       ...defect,
       targetOffsetStart: defect.sourceOffsetStart,
@@ -526,22 +661,21 @@ function buildDeterministicEvidenceCandidates(records = []) {
     const articleDefects = detectArticleDefects(record.exactText, absoluteStart)
       .filter((item) => item.assertionType !== "countability");
     const agreementDefects = detectAgreementDefects(record.exactText, absoluteStart);
-    const fullyCorrectedText = repairDeterministicEvidenceDefects(record.exactText);
     for (const defect of punctuationDefects) {
       addDefect(record, {
         ...defect,
         targetOffsetStart: defect.sourceOffsetStart,
         targetOffsetEnd: defect.sourceOffsetEnd
-      }, "Punctuation", defect.proof, fullyCorrectedText);
+      }, "Punctuation", defect.proof);
     }
     for (const defect of countabilityDefects) {
-      addDefect(record, defect, "Countability", defect.proof, fullyCorrectedText);
+      addDefect(record, defect, "Countability", defect.proof);
     }
     for (const defect of articleDefects) {
-      addDefect(record, defect, "Article Control", defect.proof, fullyCorrectedText);
+      addDefect(record, defect, "Article Control", defect.proof);
     }
     for (const defect of agreementDefects) {
-      addDefect(record, defect, "Subject-Verb Agreement", defect.proof, fullyCorrectedText);
+      addDefect(record, defect, "Subject-Verb Agreement", defect.proof);
     }
   }
   return candidates;
@@ -741,14 +875,60 @@ function canonicalizeIssue(card, index, context) {
   const unresolvedStanceIntroduced = context.taskType === "Task 2" &&
     String(context.positionConfidence || "").toLowerCase() === "low" &&
     declaresDefiniteStance(card.targetedRevision);
-  const revisionWithheld = ["fail"].some((status) => [
+  let revisionWithheld = ["fail"].some((status) => [
     revisionQuality.grammarValidationStatus,
     revisionQuality.semanticValidationStatus,
     revisionQuality.taskFidelityStatus,
     revisionQuality.languageSafetyStatus
   ].includes(status)) || !lexicalReplacement.pass || !task2RevisionIntegrity.pass || unresolvedStanceIntroduced;
+  const unsafeIndependentCandidateDefect = (task2RevisionIntegrity.independentIssueCategoriesRemaining || [])
+    .some((category) => /reference|meaning|word order|sentence control/.test(category));
+  if (evidenceAssertion.localCorrectionProven === true && unsafeIndependentCandidateDefect) {
+    revisionWithheld = true;
+  }
   let displayedRevision = String(card.targetedRevision || "");
   let displayedRevisionType = revisionType;
+  const deterministicCoreLocalAssertion = [
+    "punctuation_spacing", "countability", "article", "agreement"
+  ].includes(evidenceAssertion.assertionType);
+  const deterministicLocalAssertion = deterministicCoreLocalAssertion ||
+    (evidenceAssertion.localCorrectionProven === true && revisionWithheld);
+  const deterministicLocalRevision = deterministicLocalAssertion
+    ? applyLocalAssertionCorrection(canonicalEvidence, evidenceAssertion)
+    : "";
+  const deterministicLocalIntegrity = deterministicLocalRevision && context.taskType === "Task 2"
+    ? validateTask2RevisionIntegrity({
+        exactSentence: canonicalEvidence,
+        targetedRevision: deterministicLocalRevision,
+        revisionType: "Minimal Correction",
+        originalIssueCategories: [issueCategory]
+      })
+    : null;
+  const unsafeIndependentDefect = (deterministicLocalIntegrity?.independentIssueCategoriesRemaining || [])
+    .some((category) => /reference|meaning|word order|sentence control/.test(category));
+  if (deterministicLocalRevision && !unsafeIndependentDefect) {
+    revisionWithheld = false;
+    displayedRevision = deterministicLocalRevision;
+    displayedRevisionType = "Minimal Correction";
+    revisionType = "Minimal Correction";
+    alignment = evaluateRevisionAlignment({
+      exactSentence: canonicalEvidence,
+      targetedRevision: deterministicLocalRevision,
+      revisionType,
+      repairTargets,
+      taskType: context.taskType,
+      visualType: context.visualType,
+      sentenceRole
+    });
+  } else if (deterministicLocalRevision && unsafeIndependentDefect) {
+    revisionWithheld = true;
+    repairs.push({
+      code: "LOCAL_REVISION_WITHHELD_FOR_INDEPENDENT_MEANING_RISK",
+      remainingCategories: deterministicLocalIntegrity.independentIssueCategoriesRemaining,
+      paragraphLocation: record.location,
+      disclosed: true
+    });
+  }
   if (revisionWithheld) {
     if (process.env.DIAGNOSTIC_DEBUG_WITHHOLD) {
       console.error("[withhold]", record.location, JSON.stringify(revisionQuality.problems));
@@ -764,16 +944,35 @@ function canonicalizeIssue(card, index, context) {
       : "A safe corrected sentence could not be verified for this point, so no model sentence is shown. Rewrite it yourself following the Student Action below, then resubmit for checking.";
     displayedRevisionType = "Revision Unavailable";
   }
-
   let revisionAlignmentStatus = alignment.revisionAlignmentStatus;
   let revisionLimitationNote = "";
   if (revisionAlignmentStatus === "requires-regeneration") {
-    revisionAlignmentStatus = "partial-repair";
+    const developmentTargets = new Set(["mechanism", "explanation depth", "example specificity", "SAR completeness", "scope", "affected group", "consequence"]);
+    const developmentMismatch = DEVELOPMENT_ISSUE_CATEGORIES.includes(issueCategory) &&
+      !alignment.repairedTargets.some((target) => developmentTargets.has(target));
+    revisionAlignmentStatus = developmentMismatch ? "withheld" : "partial-repair";
     // The disclosure is only truthful for a correction that deliberately stayed inside the quoted
     // sentence. A Teacher-Guided Expansion or Model Paragraph already adds analytical content, so
     // attaching it there would contradict the revision the student is reading.
     const expansionRevision = ["Teacher-Guided Expansion", "Model Paragraph"].includes(revisionType);
-    revisionLimitationNote = expansionRevision ? "" : buildRevisionLimitationNote(alignment.unresolvedTargets, context.reportLanguage);
+    revisionLimitationNote = developmentMismatch
+      ? (String(context.reportLanguage || "").toLowerCase() === "th"
+        ? "ระบบงดแสดงฉบับแก้ที่ปรับเพียงภาษา เพราะยังไม่ซ่อมช่องว่างด้านการพัฒนาเนื้อหา จุดนี้ยังต้องให้นักเรียนเขียนขยายเองตาม Student Action"
+        : "The proposed language-only revision was withheld because it does not repair the diagnosed development gap. Complete the Student Action as your own rewrite.")
+      : expansionRevision ? "" : buildRevisionLimitationNote(alignment.unresolvedTargets, context.reportLanguage);
+    if (developmentMismatch) {
+      revisionWithheld = true;
+      displayedRevision = String(context.reportLanguage || "").toLowerCase() === "th"
+        ? "ไม่แสดงประโยคตัวอย่าง เพราะการแก้เฉพาะภาษาไม่สามารถซ่อมช่องว่างด้านการพัฒนาเนื้อหาได้ ให้เขียนใหม่ด้วยตนเองตาม Student Action"
+        : "No model sentence is shown because a language-only edit would not repair this development gap. Complete the Student Action as your own rewrite.";
+      displayedRevisionType = "Revision Unavailable";
+      repairs.push({
+        code: "REVISION_WITHHELD",
+        reasons: ["CATEGORY_ACTION_REVISION_MISMATCH"],
+        paragraphLocation: record.location,
+        disclosed: true
+      });
+    }
     repairs.push({
       code: "REVISION_TARGETS_UNRESOLVED",
       unresolvedTargets: alignment.unresolvedTargets,
@@ -782,6 +981,16 @@ function canonicalizeIssue(card, index, context) {
       disclosed: Boolean(revisionLimitationNote)
     });
   }
+  const displayedRevisionIntegrity = context.taskType === "Task 2" && revisionWithheld
+    ? task2RevisionIntegrity
+    : context.taskType === "Task 2"
+    ? validateTask2RevisionIntegrity({
+        exactSentence: canonicalEvidence,
+        targetedRevision: displayedRevision,
+        revisionType: displayedRevisionType,
+        originalIssueCategories: [issueCategory]
+      })
+    : { pass: true, revisionIssueCategoriesRemaining: [], newErrorCategories: [] };
   const dimensionMapping = validatedDimensionMapping(
     issueCategory,
     context.taskType,
@@ -875,7 +1084,7 @@ function canonicalizeIssue(card, index, context) {
     taskFidelityStatus: revisionQuality.taskFidelityStatus,
     languageSafetyStatus: revisionQuality.languageSafetyStatus,
     revisionTypeValidationStatus: revisionQuality.revisionTypeValidationStatus,
-    revisionIntegrity: task2RevisionIntegrity,
+    revisionIntegrity: displayedRevisionIntegrity,
     revisionQualityProblems: revisionQuality.problems,
     lexicalReplacementValidationStatus: lexicalReplacement.pass ? "pass" : "fail",
     lexicalReplacementProblems: lexicalReplacement.problems,
@@ -1063,12 +1272,18 @@ function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback
   const guidance = Array.isArray(paragraphFeedback) ? paragraphFeedback : [];
   return paragraphs.map((paragraph) => {
     const issues = canonicalIssues.filter((issue) => issue.paragraphLabel === paragraph.role);
+    const paragraphCategories = new Set(issues.flatMap((issue) => [
+      issue.issueCategory,
+      ...(issue.secondaryIssueCategories || []),
+      ...(issue.secondaryCategories || [])
+    ].filter(Boolean)));
     const primary = [...issues].sort((left, right) => issuePriority(right) - issuePriority(left))[0];
     const legacy = guidance.find((item) => normalizeText(item.paragraphLocation).startsWith(normalizeText(paragraph.role)));
     // Status must reflect the weakest dimension in the paragraph. A paragraph carrying an unrepaired
     // development gap cannot be presented as "Mostly Controlled" while the summary calls it vague.
     const developmentGap = issues.some((issue) =>
       DEVELOPMENT_ISSUE_CATEGORIES.includes(issue.issueCategory) ||
+      (issue.secondaryIssueCategories || []).some((category) => DEVELOPMENT_ISSUE_CATEGORIES.includes(category)) ||
       (Array.isArray(issue.unresolvedTargets) && issue.unresolvedTargets.length > 0)
     );
     const languageOnly = issues.length > 0 && issues.every((issue) => LANGUAGE_ISSUE_CATEGORIES.includes(issue.issueCategory));
@@ -1093,8 +1308,11 @@ function buildParagraphCoverage({ paragraphs, canonicalIssues, paragraphFeedback
       dimensions: {
         route: routeIssue ? "repair-needed" : "controlled",
         development: developmentGap ? "repair-needed" : "controlled",
-        example: issues.some((issue) => ["Example Development", "SAR Example Quality"].includes(issue.issueCategory)) ? "repair-needed" : "controlled",
-        language: languageOnly || issues.some((issue) => LANGUAGE_ISSUE_CATEGORIES.includes(issue.issueCategory)) ? "repair-needed" : "controlled"
+        example: [...paragraphCategories].some((category) => ["Example Development", "SAR Example Quality"].includes(category)) ||
+          issues.some((issue) => issue.sentenceRole === "example" && ["Causal Mechanism", "Solution Mechanism", "Sentence Completion"].includes(issue.issueCategory))
+          ? "repair-needed"
+          : "controlled",
+        language: languageOnly || [...paragraphCategories].some((category) => LANGUAGE_ISSUE_CATEGORIES.includes(category)) ? "repair-needed" : "controlled"
       },
       exactEvidence: paragraph.sentences[0]?.exactText || paragraph.exactText
     };
@@ -1164,7 +1382,7 @@ const LANGUAGE_SIGNAL_RULES = [
   [/\bpronouns?\b|\breferents?\b|reference (?:control|chain|word)|unclear reference/, "Reference Control"],
   [/punctuation|comma splice|run on sentence/, "Punctuation"],
   // Broadest language bucket last: imprecise, invented, vague or unnatural wording and terminology.
-  [/word choice|invented word|non standard word|imprecise|unclear for|unnatural|vague (?:noun|phrase|wording|term)|vague|lexical precision|needs? (?:more )?(?:precise|cleaner|accurate)\b|cleaner terminology|terminology|examiner has to infer|distort/, "Lexical Precision"]
+  [/word choice|invented word|non standard word|imprecise|unclear for|unnatural|awkward|clearer naming|vague (?:noun|phrase|wording|term)|vague|lexical precision|needs? (?:more )?(?:precise|cleaner|accurate)\b|cleaner terminology|terminology|examiner has to infer|distort/, "Lexical Precision"]
 ];
 
 const CATEGORY_KEYWORDS = {
@@ -1197,6 +1415,9 @@ export function detectDevelopmentSignal(text) {
   // "the mechanism is not expressed naturally" is a wording problem, not a missing mechanism.
   // Only treat it as a development defect when the mechanism itself is absent or incomplete.
   const mechanismWordingOnly = /mechanism (?:is |was )?not (?:expressed|worded|phrased|stated|described|written|conveyed)/.test(value);
+  if (/(?:commuter|consumer|driver|resident|traveller|traveler|user|public) (?:response|behavio(?:u)?r|reaction).{0,70}(?:not shown|missing|absent|unclear)|(?:increase|reduction|change) in (?:vehicle|car|traffic|road|user|commuter|passenger) (?:numbers?|volume|use).{0,70}(?:not shown|missing|absent|unclear)|(?:intermediate|behavio(?:u)?ral) (?:step|response).{0,50}(?:not shown|missing|absent)/.test(value)) {
+    return "Causal Mechanism";
+  }
   if (!mechanismWordingOnly && (/(?:missing|incomplete|unclear|weak|vague|broken|absent|no|without) (?:causal )?(?:mechanism|chain)|mechanism.{0,60}(?:missing|incomplete|unclear|weak|vague|absent|broken|not (?:complete|shown|explained|developed))|causal (?:chain|link).{0,40}(?:incomplete|missing|unclear|broken)|does not (?:show|explain|complete).{0,40}(?:mechanism|chain|how )/.test(value))) return "Causal Mechanism";
   // Scope escalation: the result stays on one case and must reach a wider group or wider consequence.
   if (/(?:result|example|case|evidence).{0,80}(?:needs? to move|should move|move from|stays? (?:mostly )?(?:at|on)|does not fully connect|only one|single|one student|one person|one family|personal result).{0,80}(?:wider|broader|many|more|general|city|urban|pattern)|(?:wider|broader) (?:pattern|consequence|impact|group|urban)/.test(value)) return "Example Development";
@@ -1296,6 +1517,9 @@ function normalizeIssueCategory(value, card = {}, taskType = "") {
       if (languageSignal && languageSignal !== explicitCategory && !(CATEGORY_KEYWORDS[explicitCategory]?.test(stripped))) {
         return languageSignal;
       }
+    }
+    if (DEVELOPMENT_ISSUE_CATEGORIES.includes(explicitCategory) && languageSignal && !developmentSignal) {
+      return languageSignal;
     }
     return explicitCategory;
   }
@@ -1547,6 +1771,16 @@ function normalizeStringArray(value) {
   if (Array.isArray(value)) return [...new Set(value.map(String).map((item) => item.trim()).filter(Boolean))];
   if (String(value || "").trim()) return [String(value).trim()];
   return [];
+}
+
+function applyLocalAssertionCorrection(evidence, assertion = {}) {
+  const source = String(evidence || "");
+  const target = String(assertion.targetSpan || "");
+  const correction = String(assertion.correctedSpan || assertion.expectedCorrection || "");
+  if (!source || !target || !correction) return "";
+  const index = source.indexOf(target);
+  if (index < 0) return "";
+  return `${source.slice(0, index)}${correction}${source.slice(index + target.length)}`;
 }
 
 function normalizeText(value) {

@@ -68,7 +68,8 @@ export function assessThesisDimensions({
       sentenceCount: sentences.length,
       sentence: sentence.exactText,
       previousSentence: sentences[index - 1]?.exactText || "",
-      nextSentence: sentences[index + 1]?.exactText || ""
+      nextSentence: sentences[index + 1]?.exactText || "",
+      prompt
     })
   }));
   const present = Object.fromEntries(required.map((route) => [
@@ -136,8 +137,11 @@ export function inferTask2RouteFamily(essayType = "", prompt = "") {
 
 function requiredRoutes(family, prompt) {
   const directQuestionCount = Math.max(0, (String(prompt).match(/\?/g) || []).length);
+  const problemSolutionLead = /\b(?:causes?|reasons?|why)\b/i.test(String(prompt))
+    ? "cause"
+    : /\bproblems?\b/i.test(String(prompt)) ? "problem" : "cause";
   const rules = {
-    "Problem and Solution": ["cause", "solution"],
+    "Problem and Solution": [problemSolutionLead, "solution"],
     "Cause and Effect": ["cause", "effect"],
     "Discuss Both Views": ["view", "position"],
     Outweigh: ["advantage", "disadvantage", "position"],
@@ -151,23 +155,28 @@ function requiredRoutes(family, prompt) {
 }
 
 function routePresentInIntroduction(route, roleRecords, introductionText) {
-  const primaryRoles = roleRecords.map((item) => item.role.primaryRole);
+  const primaryRoles = roleRecords.flatMap((item) => [
+    item.role.primaryRole,
+    ...(item.role.secondaryRoles || [])
+  ]);
   const text = String(introductionText || "");
   const roleMap = {
     cause: ["cause_route", "thesis_route"],
+    problem: ["cause_route", "thesis_route"],
     solution: ["solution_route", "thesis_route"],
     view: ["view_route", "thesis_route"],
     position: ["position", "thesis_route"],
     answer_1: ["answer_to_question_1", "thesis_route"],
     answer_2: ["answer_to_question_2", "thesis_route"],
-    reason: ["thesis_route", "cause_route"],
+    reason: ["thesis_route", "cause_route", "position"],
     advantage: ["thesis_route"],
     disadvantage: ["thesis_route"],
     effect: ["thesis_route", "consequence", "cause_route"]
   };
   const lexicalMap = {
     cause: /\b(?:causes?|reasons?|drivers?|factors?|due to|because of)\b/i,
-    solution: /\b(?:solution|measure|address|tackle|solve|should|must)\b/i,
+    problem: /\b(?:problems?|issues?|difficulties|pressure|delay|pollution|congestion)\b/i,
+    solution: /\b(?:solution|measure|address|tackle|solve|reduce|should|must)\b/i,
     view: /\b(?:view|argue|believe|supporters|opponents)\b/i,
     position: /\b(?:agree|disagree|believe|opinion|view|outweigh|positive|negative)\b/i,
     answer_1: /\b(?:first|one reason|main reason|because|is that)\b/i,
@@ -182,7 +191,7 @@ function routePresentInIntroduction(route, roleRecords, introductionText) {
 
 function routeOrderingIsClear(required, roleRecords) {
   const order = roleRecords.map((item) => item.role.primaryRole);
-  if (required.includes("cause") && required.includes("solution")) {
+  if ((required.includes("cause") || required.includes("problem")) && required.includes("solution")) {
     const cause = order.indexOf("cause_route");
     const solution = order.indexOf("solution_route");
     return cause < 0 || solution < 0 || cause <= solution;
@@ -200,7 +209,7 @@ function bodyRoutesTraceable(required, bodyParagraphs, issues) {
   if (issues.some((issue) => issue.issueCategory === "Body Route Alignment" && /not trace|misalign|unrelated|off-topic/i.test(`${issue.diagnosis} ${issue.whyItLimitsBand}`))) {
     return false;
   }
-  if (required.includes("cause") && required.includes("solution") && bodyParagraphs.length < 2) return false;
+  if ((required.includes("cause") || required.includes("problem")) && required.includes("solution") && bodyParagraphs.length < 2) return false;
   if (required.includes("view") && bodyParagraphs.length < 2) return false;
   if (required.includes("answer_1") && required.includes("answer_2") && bodyParagraphs.length < 2) return false;
   return true;

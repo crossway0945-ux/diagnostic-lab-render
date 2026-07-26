@@ -1,4 +1,5 @@
 import { normalizeVisibleText } from "./textIntegrity.js";
+import { validateSentenceCompleteness } from "./sentenceCompleteness.js";
 
 export const EVIDENCE_ASSERTION_TYPES = Object.freeze([
   "punctuation_spacing",
@@ -21,7 +22,8 @@ export const EVIDENCE_ASSERTION_TYPES = Object.freeze([
   "overview_error",
   "comparison_error",
   "process_sequence",
-  "map_change"
+  "map_change",
+  "visual_type_mismatch"
 ]);
 
 const UNCOUNTABLE_PATTERNS = Object.freeze([
@@ -64,6 +66,8 @@ const ASSERTION_CATEGORY = Object.freeze({
   comparison_error: "Comparison Precision",
   process_sequence: "Process Sequence",
   map_change: "Map Change Accuracy"
+  ,
+  visual_type_mismatch: "Visual Understanding"
 });
 
 const ARTICLE_DETERMINERS = Object.freeze([
@@ -186,10 +190,10 @@ export function buildEvidenceAssertion({
     else if (["process_stage", "process_endpoint"].includes(sentenceRole) && /\b(?:process|stage|sequence|endpoint|input|output)\b/.test(diagnosisCorpus)) assertionType = "process_sequence";
     else if (sentenceRole === "overview" && /\boverview\b/.test(diagnosisCorpus)) assertionType = "overview_error";
     else if (sentenceRole === "comparison" && /\bcompar/.test(diagnosisCorpus)) assertionType = "comparison_error";
-    else if (sentenceRole === "introduction_paraphrase" && /\b(?:visual|chart|graph|table|map|diagram|process)\b/.test(diagnosisCorpus)) {
+    else if (["introduction_paraphrase", "introduction_background"].includes(sentenceRole) && /\b(?:visual|chart|graph|table|map|diagram|process)\b/.test(diagnosisCorpus)) {
       const expectedVisual = visualNounForType(visualType);
       const reportedVisual = exactEvidence.match(/\b(?:line graph|bar chart|pie chart|table|map|plan|diagram|process|cycle|mixed graph|combination graph)\b/i)?.[0]?.toLowerCase() || "";
-      if (expectedVisual && reportedVisual && !visualNounsCompatible(expectedVisual, reportedVisual)) assertionType = "task_coverage";
+      if (expectedVisual && reportedVisual && !visualNounsCompatible(expectedVisual, reportedVisual)) assertionType = "visual_type_mismatch";
     }
   }
   const revision = String(card.targetedRevision || "").trim();
@@ -281,6 +285,13 @@ export function buildEvidenceAssertion({
     return { ...base, ...selected, assertionType: "agreement", demonstrated: true };
   }
 
+  if (assertionType === "tense") {
+    const localTense = detectGeneralStatementProgressive(exactEvidence, sourceLocation.start, diagnosisCorpus);
+    if (localTense) {
+      return { ...base, ...localTense, assertionType: "tense", demonstrated: true, localCorrectionProven: true };
+    }
+  }
+
   if (isTaskOrVisualAssertion(assertionType, issueCategory)) {
     const roleSupported = taskAssertionSupported({
       assertionType,
@@ -290,7 +301,7 @@ export function buildEvidenceAssertion({
       visualType,
       exactEvidence
     });
-    if (!roleSupported || (String(taskType) === "Task 1" && ["data_error", "overview_error", "comparison_error", "process_sequence", "map_change"].includes(assertionType) && !hasVisualEvidence)) {
+    if (!roleSupported || (String(taskType) === "Task 1" && ["data_error", "overview_error", "comparison_error", "process_sequence", "map_change", "visual_type_mismatch"].includes(assertionType) && !hasVisualEvidence)) {
       return reject(base, "TASK_ASSERTION_UNPROVEN", "The issue is not supported by the validated task/visual context and sentence role.");
     }
     return {
@@ -395,6 +406,7 @@ export function detectArticleDefects(evidence = "", absoluteStart = 0) {
   const text = String(evidence || "");
   const defects = [];
   for (const match of text.matchAll(/\b(a)\s+([aeiou][a-z-]*)\b/giu)) {
+    if (match[1] === "A" && /^(?:and|or|versus|vs)$/i.test(match[2])) continue;
     if (/^(?:uni(?:vers|form|que)|use|user|usual|euro|one)/i.test(match[2])) continue;
     const relativeStart = match.index ?? -1;
     const replacement = `an ${match[2]}`;
@@ -589,26 +601,33 @@ function selectPunctuationDefect(defects, revision) {
 function detectSentenceFragment(text) {
   const value = String(text || "").trim();
   if (!value) return { demonstrated: false, reason: "The evidence is empty." };
-  const terminal = /[.!?]["')\]]*$/u.test(value);
-  const finite = /\b(?:is|are|was|were|has|have|had|do|does|did|can|could|will|would|should|may|might|must)\b/i.test(value) ||
-    /\b[\p{L}-]+(?:s|ed)\b/iu.test(value);
-  if (!terminal || !finite || /[,;:]\s*$/u.test(value)) {
-    return { demonstrated: true, proof: "The evidence lacks terminal sentence closure or a controlled finite clause." };
+  const validation = validateSentenceCompleteness(value);
+  if (!validation.complete) {
+    return {
+      demonstrated: true,
+      proof: `The evidence has no complete independent main clause (${validation.reasons.join(", ")}).`,
+      validatorVersion: validation.validatorVersion
+    };
   }
-  return { demonstrated: false, reason: "The exact evidence forms a complete finite sentence." };
+  return {
+    demonstrated: false,
+    reason: "The exact evidence forms a complete independent sentence.",
+    validatorVersion: validation.validatorVersion
+  };
 }
 
 function isTaskOrVisualAssertion(assertionType, category) {
   return [
     "causal_gap", "example_scope", "route_gap", "task_coverage", "data_error",
-    "overview_error", "comparison_error", "process_sequence", "map_change"
+    "overview_error", "comparison_error", "process_sequence", "map_change", "visual_type_mismatch"
   ].includes(assertionType) || /Route|Coverage|Overview|Data|Comparison|Process|Map|Mechanism|Example|SAR/.test(String(category || ""));
 }
 
 function taskAssertionSupported({ assertionType, issueCategory, sentenceRole, taskType, visualType, exactEvidence }) {
   const role = String(sentenceRole || "");
   if (String(taskType) === "Task 1") {
-    if (role === "introduction_paraphrase" && /Visual Understanding|Introduction Precision/.test(String(issueCategory || ""))) {
+    if (["introduction_paraphrase", "introduction_background"].includes(role) &&
+      (assertionType === "visual_type_mismatch" || /Visual Understanding|Introduction Precision/.test(String(issueCategory || "")))) {
       const expected = visualNounForType(visualType);
       const reported = String(exactEvidence || "").match(/\b(?:line graph|bar chart|pie chart|table|map|plan|diagram|process|cycle|mixed graph|combination graph)\b/i)?.[0]?.toLowerCase() || "";
       return Boolean(expected && reported && !visualNounsCompatible(expected, reported));
@@ -625,6 +644,44 @@ function taskAssertionSupported({ assertionType, issueCategory, sentenceRole, ta
   if (assertionType === "route_gap") return ["position", "thesis_route", "cause_route", "solution_route", "view_route", "body_topic_sentence"].includes(role);
   if (assertionType === "task_coverage") return ["position", "thesis_route", "cause_route", "solution_route", "view_route", "answer_to_question_1", "answer_to_question_2"].includes(role);
   return true;
+}
+
+function detectGeneralStatementProgressive(evidence, absoluteStart, diagnosisCorpus = "") {
+  if (!/\b(?:general statement|progressive tense|simple present|present simple)\b/i.test(String(diagnosisCorpus || ""))) return null;
+  const text = String(evidence || "");
+  const match = /\b(?<subject>(?:every|each)\s+[\p{L}'-]+)\s+(?<aux>is)\s+(?<verb>[\p{L}'-]+ing)\b/iu.exec(text);
+  if (!match?.groups) return null;
+  const base = gerundToBaseVerb(match.groups.verb);
+  if (!base) return null;
+  const correctedVerb = thirdPersonSingular(base);
+  const targetSpan = `${match.groups.aux} ${match.groups.verb}`;
+  const localIndex = match.index + match[0].lastIndexOf(targetSpan);
+  return {
+    targetSpan,
+    sourceOffsetStart: absoluteStart + localIndex,
+    sourceOffsetEnd: absoluteStart + localIndex + targetSpan.length,
+    surroundingText: contextWindow(text, localIndex, localIndex + targetSpan.length),
+    expectedCorrection: correctedVerb,
+    correctedSpan: correctedVerb,
+    proof: `The general-statement subject "${match.groups.subject}" uses a progressive verb; the local simple-present correction is "${correctedVerb}".`
+  };
+}
+
+function gerundToBaseVerb(value) {
+  const verb = String(value || "").toLowerCase();
+  if (!verb.endsWith("ing") || verb.length < 5) return "";
+  const stem = verb.slice(0, -3);
+  if (/v$/.test(stem)) return `${stem}e`;
+  if (/(.)\1$/.test(stem) && !/(?:ss|ll)$/.test(stem)) return stem.slice(0, -1);
+  return stem;
+}
+
+function thirdPersonSingular(value) {
+  const verb = String(value || "").toLowerCase();
+  if (!verb) return "";
+  if (/[^aeiou]y$/.test(verb)) return `${verb.slice(0, -1)}ies`;
+  if (/(?:s|sh|ch|x|z|o)$/.test(verb)) return `${verb}es`;
+  return `${verb}s`;
 }
 
 function detectArticleCorrectionFromRevision(evidence, revision, absoluteStart) {

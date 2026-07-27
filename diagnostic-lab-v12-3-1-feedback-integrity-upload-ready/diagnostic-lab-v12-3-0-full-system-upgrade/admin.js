@@ -104,6 +104,88 @@ diagnosticsButtons.provider?.addEventListener("click", () => runDiagnostic("Prov
 diagnosticsButtons.contract?.addEventListener("click", () => runDiagnostic("Production output contract", "/api/admin/diagnostics/production-contract"));
 diagnosticsButtons.storage?.addEventListener("click", () => runDiagnostic("Storage self-test", "/api/admin/diagnostics/storage"));
 diagnosticsButtons.jobs?.addEventListener("click", () => runDiagnostic("Job queue status", "/api/admin/diagnostics/job-queue-status", "GET"));
+
+// ---- Canonical QA Export (admin only) ----
+const qaSearch = document.querySelector("#qa-search");
+const qaList = document.querySelector("#qa-report-list");
+const qaStatus = document.querySelector("#qa-status");
+let qaSelectedReportId = "";
+
+async function loadQaReports() {
+  if (!qaList) return;
+  qaStatus.textContent = "Loading reports…";
+  qaList.textContent = "";
+  try {
+    const query = encodeURIComponent(String(qaSearch?.value || "").trim());
+    const response = await fetch(`/api/admin/qa-reports${query ? `?q=${query}` : ""}`);
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      qaStatus.textContent = result.error || "Reports could not be loaded.";
+      return;
+    }
+    if (!result.reports.length) {
+      qaStatus.textContent = "No reports matched.";
+      return;
+    }
+    for (const report of result.reports) {
+      // Build with DOM nodes only (never innerHTML) so no field can inject markup.
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "ghost-button compact qa-report-row";
+      row.dataset.reportId = report.reportId;
+      const available = report.canonicalSnapshotAvailable
+        ? "full canonical snapshot"
+        : report.recordExportAvailable ? "partial (from saved record)" : "canonical data unavailable";
+      row.textContent = `${report.date?.slice(0, 10) || "-"} | ${report.studentName || "-"} | ${report.taskType || "-"} ${report.essayOrVisualType || ""} | ${report.estimatedBandRange || "-"} | ${available}`;
+      row.addEventListener("click", () => {
+        qaSelectedReportId = report.reportId;
+        for (const node of qaList.querySelectorAll(".qa-report-row")) node.classList.remove("is-selected");
+        row.classList.add("is-selected");
+        qaStatus.textContent = report.canonicalSnapshotAvailable || report.recordExportAvailable
+          ? `Selected report ${report.reportId}.`
+          : "Canonical data unavailable for this report version. Run a new analysis after the QA Export feature is deployed.";
+      });
+      qaList.appendChild(row);
+    }
+    qaStatus.textContent = `${result.reports.length} report(s). Select one, then click Export Canonical QA JSON.`;
+  } catch {
+    qaStatus.textContent = "Reports could not be loaded.";
+  }
+}
+
+async function exportQaReport() {
+  if (!qaSelectedReportId) {
+    qaStatus.textContent = "Select one report first.";
+    return;
+  }
+  qaStatus.textContent = "Exporting…";
+  try {
+    const response = await fetch(`/api/admin/qa-reports/${encodeURIComponent(qaSelectedReportId)}/export`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      qaStatus.textContent = error.error || `Export failed (${error.errorCode || response.status}).`;
+      return;
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") || "";
+    const match = disposition.match(/filename="([^"]+)"/);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = match ? match[1] : `diagnostic-qa-${qaSelectedReportId}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    qaStatus.textContent = "Canonical QA JSON downloaded.";
+  } catch {
+    qaStatus.textContent = "Export failed.";
+  }
+}
+
+document.querySelector("#qa-refresh")?.addEventListener("click", loadQaReports);
+document.querySelector("#qa-export")?.addEventListener("click", exportQaReport);
+qaSearch?.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); loadQaReports(); } });
 diagnosticsButtons.recovery?.addEventListener("click", () => runDiagnostic("Stale job recovery test", "/api/admin/diagnostics/stale-job-recovery-test"));
 diagnosticsButtons.idempotency?.addEventListener("click", () => runDiagnostic("Duplicate / idempotency test", "/api/admin/diagnostics/duplicate-idempotency-test"));
 diagnosticsButtons.failures?.addEventListener("click", () => runDiagnostic("Recent analysis failures", "/api/admin/diagnostics/analysis-failures", "GET"));

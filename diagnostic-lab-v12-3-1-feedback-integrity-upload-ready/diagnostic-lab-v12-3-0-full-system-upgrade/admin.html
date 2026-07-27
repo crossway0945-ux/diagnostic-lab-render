@@ -99,6 +99,20 @@
       <pre id="diagnostics-output" class="diagnostics-output" aria-live="polite"></pre>
     </section>
 
+    <section class="admin-card">
+      <div class="admin-section-header">
+        <h2>Canonical QA Export</h2>
+        <button class="ghost-button compact" type="button" id="qa-refresh">Load reports</button>
+      </div>
+      <p class="admin-hint">Export the complete internal canonical diagnostic data for one selected report, for QA and defect reproduction. Admin only. Exporting never calls OpenAI, never uses a credit, and never changes the report.</p>
+      <div class="diagnostics-actions">
+        <input type="search" id="qa-search" placeholder="Search student, report ID, date, task or essay type" aria-label="Search QA reports" />
+        <button class="ghost-button compact" type="button" id="qa-export">Export Canonical QA JSON</button>
+      </div>
+      <div id="qa-report-list" class="diagnostics-output" role="listbox" aria-label="Reports available for QA export"></div>
+      <p class="admin-hint" id="qa-status" aria-live="polite"></p>
+    </section>
+
     <p class="form-error" id="admin-error" role="alert"></p>
   </main>
   <div class="toast" id="admin-toast"></div>

@@ -53,4 +53,42 @@ for (const [name, item] of Object.entries(vm.frameworkBreakdown)) {
 }
 assert.equal(remaining, 0, "no status-explanation contradiction survives the enforced gate");
 
-console.log("V12.8.1 final consistency gate: adverb-inserted status↔explanation contradictions are caught and repaired in place while the frozen status is preserved; compatible dimensions untouched.");
+// 4. Cross-section route consistency: a route dimension must not claim a missing route while the
+//    canonical Body Route Alignment shows the route is present (the p2-vs-p3/p7 contradiction).
+const routeVm = {
+  frameworkBreakdown: {
+    "Body Paragraph Route Alignment": { status: "Aligned", diagnosis: "Body 1 develops causes; Body 2 develops solutions." },
+    "Thesis Route Clarity": { status: "Needs Work", diagnosis: "The thesis is missing at least one traceable required route." }
+  },
+  paragraphCoverage: [],
+  detailedFeedback: [],
+  topIssues: []
+};
+const routeResult = enforceViewModelConsistency(routeVm);
+assert.ok(routeResult.repairs.some((r) => r.code === "ROUTE_CROSS_SECTION_CONTRADICTION"), "route cross-section contradiction is caught");
+assert.doesNotMatch(routeVm.frameworkBreakdown["Thesis Route Clarity"].diagnosis.toLowerCase(), /missing.{0,40}route|route.{0,40}missing/, "the repaired explanation no longer claims a missing route");
+
+// 5. Duplicate issue merge (§8) and priority ordering (§10).
+const dupVm = {
+  frameworkBreakdown: {},
+  paragraphCoverage: [],
+  detailedFeedback: [
+    { issueCategory: "Countability", exactSentence: "a severe traffic congestion is heavy", studentAction: "Remove the article a." },
+    { issueCategory: "Lexical Precision", exactSentence: "the unconsciousness of drivers", studentAction: "Replace unconsciousness." },
+    { issueCategory: "Countability", exactSentence: "a severe traffic congestion is heavy", studentAction: "Remove the article a." }
+  ],
+  topIssues: [
+    { issueCategory: "Countability", severity: "Moderate", exactSentence: "a severe traffic congestion", studentAction: "Remove a." },
+    { issueCategory: "Sentence Completion", severity: "Major", exactSentence: "For instance, a law that forces drivers.", studentAction: "Complete the sentence." }
+  ]
+};
+enforceViewModelConsistency(dupVm);
+assert.equal(dupVm.detailedFeedback.length, 2, "the duplicate Countability card is merged to one");
+assert.equal(dupVm.topIssues[0].severity, "Major", "a Major issue is ordered before a Moderate one");
+
+// 6. Idempotency: running the gate twice produces the same result (no self-triggering).
+const first = JSON.stringify(routeVm);
+enforceViewModelConsistency(routeVm);
+assert.equal(JSON.stringify(routeVm), first, "the gate is idempotent — a second pass changes nothing");
+
+console.log("V12.8.1 final consistency gate: status↔explanation, cross-section route, duplicate-merge, priority ordering and idempotency verified.");

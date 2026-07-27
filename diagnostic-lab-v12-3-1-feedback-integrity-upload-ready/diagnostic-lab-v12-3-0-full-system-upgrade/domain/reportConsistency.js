@@ -201,6 +201,25 @@ export function enforceViewModelConsistency(viewModel = {}) {
       item.diagnosis = replacement;
     }
   }
+  // Cross-section route consistency (brief §5): a route-family framework dimension must not claim the
+  // route is missing/absent when the canonical Body Route Alignment shows the route is present and
+  // traceable. The route is authoritative; a false "missing route" explanation is repaired so it no
+  // longer contradicts the other pages (the real defect — e.g. lexical naming — stays in the issues).
+  if (framework && typeof framework === "object") {
+    const bodyRoute = normalize(framework["Body Paragraph Route Alignment"]?.status || framework["Body Route Alignment"]?.status);
+    const routePresent = /\b(?:aligned|controlled|strong|adequately)\b/.test(bodyRoute);
+    if (routePresent) {
+      for (const name of ["Thesis Route Clarity", "Prompt Coverage", "Introduction Route"]) {
+        const item = framework[name];
+        if (!item || typeof item !== "object") continue;
+        const text = normalize(item.diagnosis || item.explanation);
+        const claimsMissingRoute = /\b(?:missing|absent|not (?:present|traceable|shown))\b.{0,40}\broute\b|\broute\b.{0,40}\b(?:missing|absent|not (?:present|traceable|shown))\b|\bdoes not\b.{0,25}\b(?:establish|present|trace)\b.{0,40}\broute\b/.test(text);
+        if (!claimsMissingRoute) continue;
+        repairs.push({ section: "frameworkBreakdown", name, code: "ROUTE_CROSS_SECTION_CONTRADICTION" });
+        item.diagnosis = `${name} sits over a route that the body paragraphs make present and traceable; the refinement needed here is wording and precision — see the detailed feedback below.`;
+      }
+    }
+  }
   // Paragraph Coverage: the multi-dimension status string and the structured `dimensions` object must
   // agree (brief §13). If either says a dimension needs repair, the conservative reading wins — a
   // "Development Controlled" label must never hide a "development: repair-needed" dimension.
@@ -208,7 +227,54 @@ export function enforceViewModelConsistency(viewModel = {}) {
     const reconciled = reconcileParagraphCoverage(paragraph);
     if (reconciled) repairs.push({ section: "paragraphCoverage", name: paragraph.paragraphLabel, code: "PARAGRAPH_STATUS_DIMENSION_CONTRADICTION" });
   }
+  // Duplicate canonical issues (brief §8): the same defect on the same evidence with the same repair
+  // must appear once. Dedup Detailed Feedback and Top Issues by a content signature, keeping the first.
+  if (Array.isArray(viewModel.detailedFeedback)) {
+    const before = viewModel.detailedFeedback.length;
+    viewModel.detailedFeedback = dedupBySignature(viewModel.detailedFeedback);
+    if (viewModel.detailedFeedback.length !== before) repairs.push({ section: "detailedFeedback", code: "DUPLICATE_ISSUE_MERGED", removed: before - viewModel.detailedFeedback.length });
+  }
+  if (Array.isArray(viewModel.topIssues)) {
+    const before = viewModel.topIssues.length;
+    viewModel.topIssues = dedupBySignature(viewModel.topIssues);
+    // Priority ordering (brief §10): most severe first, so a Major defect can never sit below a
+    // Moderate/Minor one. Stable sort preserves the engine's tie order.
+    viewModel.topIssues = stableSortBySeverity(viewModel.topIssues);
+    if (viewModel.topIssues.length !== before) repairs.push({ section: "topIssues", code: "DUPLICATE_TOP_ISSUE_MERGED", removed: before - viewModel.topIssues.length });
+  }
   return { viewModel, repairs };
+}
+
+function issueSignature(item = {}) {
+  const norm = (v) => normalize(v).replace(/[^a-z0-9 ]/g, "").trim();
+  const category = norm(item.issueCategory || item.primaryCategory || item.category);
+  const evidence = norm(item.exactSentence || item.exactEvidence || item.targetSpan);
+  const action = norm(item.studentAction || item.detectedDefect || item.summary);
+  return `${category}|${evidence}|${action}`;
+}
+
+function dedupBySignature(items = []) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const sig = issueSignature(item);
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    out.push(item);
+  }
+  return out;
+}
+
+const SEVERITY_RANK = { critical: 0, major: 1, moderate: 2, "minor repair": 3, minor: 3, "pass / strong": 4 };
+function stableSortBySeverity(items = []) {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const ra = SEVERITY_RANK[normalize(a.item.severity)] ?? 2;
+      const rb = SEVERITY_RANK[normalize(b.item.severity)] ?? 2;
+      return ra === rb ? a.index - b.index : ra - rb;
+    })
+    .map((entry) => entry.item);
 }
 
 // Rebuild a paragraph's multi-dimension status string from the conservative union of its status string

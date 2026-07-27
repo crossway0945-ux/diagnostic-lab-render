@@ -14,7 +14,7 @@ import {
 import { unicodeIntegrityIssues } from "../domain/textIntegrity.js";
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.8.0",
+  appVersion: "12.8.2",
   engineVersion: "ielts-diagnostic-engine-v12.8.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.8.0",

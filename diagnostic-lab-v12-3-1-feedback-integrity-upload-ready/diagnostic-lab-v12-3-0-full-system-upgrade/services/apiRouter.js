@@ -20,6 +20,13 @@ import {
   runJobQueueStatus,
   runStaleJobRecoveryTest
 } from "./jobDiagnostics.js";
+import {
+  assembleQaExportFromRecord,
+  buildQaSnapshot,
+  createQaCanonicalStore,
+  QA_EXPORT_VERSION,
+  redactForQa
+} from "./qaCanonicalExport.js";
 import { createAnalysisFailureLog, runStorageSelfTest } from "./analysisFailureLog.js";
 import {
   analyzeWriting,
@@ -298,7 +305,7 @@ export function createApiHandler(options = {}) {
       }
 
       if (method === "POST" && apiPath === "/api/analyze") {
-        return await handleAnalyze(request, storage, jobStore, failureLog);
+        return await handleAnalyze(request, storage, jobStore, failureLog, rootDir);
       }
 
       const adminResponse = await maybeHandleAdminRoute(method, apiPath, request, storage, { failureLog, rootDir, jobStore });
@@ -513,7 +520,7 @@ async function handleLogin(request, storage) {
   });
 }
 
-async function handleAnalyze(request, storage, jobStore, failureLog = null) {
+async function handleAnalyze(request, storage, jobStore, failureLog = null, rootDir = process.cwd()) {
   const startedAt = Date.now();
   const requestId = createAnalysisRequestId();
   const session = await requireSession(request, storage);
@@ -694,6 +701,9 @@ async function handleAnalyze(request, storage, jobStore, failureLog = null) {
     );
     return jsonResponse(200, duplicatePayload);
   }
+
+  // Admin-only canonical QA snapshot from the pre-projection analysis (never affects the student view).
+  await persistQaSnapshot({ rootDir, analysis, savedRecord, payload });
 
   return jsonResponse(200, {
     ok: true,
@@ -985,6 +995,8 @@ export async function processAnalyzeJob({
     if (!transaction.created) {
       await auditAnalyze(storage, updatedUser, job.payload || {}, { openAiCalled: true, quotaDeducted: false, duplicateCacheUsed: true });
     }
+    // Admin-only canonical QA snapshot from the pre-projection analysis (async-render path).
+    await persistQaSnapshot({ rootDir, analysis, savedRecord, payload: job.payload || {} });
 
     return finalize({
       status: "complete",
@@ -1190,6 +1202,77 @@ async function maybeHandleAdminRoute(method, apiPath, request, storage, context 
   if (method === "POST" && apiPath === "/api/admin/diagnostics/duplicate-idempotency-test") {
     // Runs entirely in an isolated temp storage with a synthetic user; no production quota is touched.
     return jsonResponse(200, await runDuplicateIdempotencyTest());
+  }
+
+  // ---- Canonical QA Export (admin session only; never exposes secrets or another student's data) ----
+  // Listing: safe searchable metadata only — no prompt, no writing, no report body.
+  if (method === "GET" && apiPath === "/api/admin/qa-reports") {
+    const qaStore = createQaCanonicalStore({ rootDir: context.rootDir });
+    const records = typeof storage.readHistory === "function" ? await storage.readHistory() : [];
+    const query = normalizeQaQuery(getQueryParam(request.path, "q"));
+    const rows = [];
+    for (const record of Array.isArray(records) ? records : []) {
+      const reportId = String(record.submissionId || "");
+      if (!reportId) continue;
+      const meta = {
+        reportId,
+        studentName: String(record.studentDisplayNameSnapshot || ""),
+        studentId: String(record.studentProfileId || ""),
+        date: String(record.dateTime || ""),
+        taskType: String(record.taskType || ""),
+        essayOrVisualType: String(record.essayType || record.visualType || ""),
+        estimatedBandRange: String(record.estimatedBandRange || ""),
+        appVersion: String(record.appVersion || ""),
+        engineVersion: String(record.engineVersion || ""),
+        providerModel: String(record.providerModel || ""),
+        canonicalSnapshotAvailable: await qaStore.has(reportId),
+        // A record still exports a substantial QA file from its persisted per-issue canonical layer.
+        recordExportAvailable: Boolean((record.report || record).feedbackCards?.length || record.feedbackCards?.length)
+      };
+      if (query && !qaMetadataMatches(meta, query)) continue;
+      rows.push(meta);
+    }
+    rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    return jsonResponse(200, { ok: true, count: rows.length, exportVersion: QA_EXPORT_VERSION, reports: rows.slice(0, 200) });
+  }
+
+  const qaExportMatch = apiPath.match(/^\/api\/admin\/qa-reports\/([^/]+)\/export$/);
+  if (method === "GET" && qaExportMatch) {
+    const requestedId = decodeURIComponent(qaExportMatch[1]);
+    // Path-traversal safety: the id is only ever matched against stored record ids, never joined
+    // into a filesystem path here; the QA store sanitises it again before touching disk.
+    const records = typeof storage.readHistory === "function" ? await storage.readHistory() : [];
+    const record = (Array.isArray(records) ? records : []).find((item) => String(item.submissionId || "") === requestedId);
+    if (!record) {
+      return jsonResponse(404, { ok: false, error: "Report was not found.", errorCode: "REPORT_NOT_FOUND" });
+    }
+    try {
+      const qaStore = createQaCanonicalStore({ rootDir: context.rootDir });
+      const snapshot = await qaStore.read(requestedId);
+      const payload = snapshot
+        ? { ...redactForQa(snapshot), exportedAt: new Date().toISOString(), canonicalDataSource: "qa-snapshot", studentReportViewModel: (record.report || record).studentReportViewModel || {} }
+        : assembleQaExportFromRecord(record);
+      if (!payload.feedbackCards?.length && !snapshot) {
+        return jsonResponse(409, {
+          ok: false,
+          errorCode: "CANONICAL_QA_NOT_AVAILABLE",
+          error: "Canonical data unavailable for this report version. Run a new analysis after the QA Export feature is deployed."
+        });
+      }
+      await auditQaExport(storage, request, record);
+      const fileName = `diagnostic-qa-${sanitizeDownloadName(record.studentDisplayNameSnapshot)}-${sanitizeDownloadName(requestedId)}.json`;
+      return {
+        statusCode: 200,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "content-disposition": `attachment; filename="${fileName}"`,
+          "cache-control": "no-store"
+        },
+        body: JSON.stringify(payload, null, 2)
+      };
+    } catch (error) {
+      return jsonResponse(500, { ok: false, errorCode: "CANONICAL_QA_EXPORT_FAILED", error: "Canonical QA export could not be produced." });
+    }
   }
 
   if (method === "GET" && apiPath === "/api/admin/users") {
@@ -2238,6 +2321,52 @@ function normalizeHashOptionValue(value) {
   if (typeof value === "string") return normalizeHashText(value);
   if (typeof value === "boolean" || typeof value === "number" || value === null) return value;
   return String(value || "");
+}
+
+// Persists the admin-only canonical QA snapshot for a newly saved report. Uses the PRE-projection
+// analysis object, so the full canonical layer is captured before it is stripped for the student view.
+// Never throws (a QA-snapshot failure must never fail a student's analysis), never calls the provider,
+// never touches quota, and never modifies the saved report.
+async function persistQaSnapshot({ rootDir, analysis, savedRecord, payload }) {
+  try {
+    if (!savedRecord?.submissionId) return;
+    const qaStore = createQaCanonicalStore({ rootDir });
+    await qaStore.write(savedRecord.submissionId, buildQaSnapshot({ analysis, savedRecord, payload }));
+    await qaStore.prune(process.env.DIAGNOSTIC_QA_EXPORT_RETENTION_DAYS);
+  } catch (error) {
+    console.error("[diagnostic-lab] canonical QA snapshot failed", { message: truncate(String(error?.message || ""), 160) });
+  }
+}
+
+function normalizeQaQuery(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+// Matches a search term against safe metadata only (name, ids, date, task/essay type) — never content.
+function qaMetadataMatches(meta, query) {
+  return [meta.studentName, meta.studentId, meta.reportId, meta.date, meta.taskType, meta.essayOrVisualType]
+    .some((field) => String(field || "").toLowerCase().includes(query));
+}
+
+function sanitizeDownloadName(value) {
+  return String(value || "report").normalize("NFKD").replace(/[^a-zA-Z0-9_-]/g, "-").replace(/-+/g, "-").slice(0, 40) || "report";
+}
+
+// Safe admin audit event for a QA export: who exported which report — never the exported content.
+async function auditQaExport(storage, request, record) {
+  if (typeof storage.appendAuditLog !== "function") return;
+  const session = await getSessionUser(request, storage).catch(() => null);
+  await storage.appendAuditLog({
+    username: session?.user?.username || "admin",
+    role: session?.user?.role || "admin",
+    taskType: String(record.taskType || ""),
+    taskSubtype: "canonical-qa-export",
+    openAiCalled: false,
+    quotaDeducted: false,
+    duplicateCacheUsed: false,
+    blocked: false,
+    reason: `qa-export:${String(record.submissionId || "").slice(0, 24)}`
+  }).catch(() => null);
 }
 
 function buildPromptPreview(prompt) {

@@ -38,7 +38,7 @@ assert.ok(corpus.task2.length >= 20);
 assert.ok(corpus.task1.length >= 20);
 assert.ok(corpus.providerCases.length >= 2);
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.2");
 assert.equal(ANALYSIS_VERSIONS.engineVersion, "ielts-diagnostic-engine-v12.8.0");
 assert.equal(ANALYSIS_VERSIONS.rubricVersion, "kru-pom-ielts-writing-v12.3.0");
 assert.equal(ANALYSIS_VERSIONS.promptVersion, "ielts-diagnostic-prompt-v12.8.0");

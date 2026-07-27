@@ -30,7 +30,7 @@ import {
 } from "../domain/pdfTextIntegrity.js";
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.2");
 assert.equal(ANALYSIS_VERSIONS.routeClassifierVersion, TASK2_ROUTE_CLASSIFIER_VERSION);
 assert.equal(ANALYSIS_VERSIONS.grammarValidatorVersion, AGREEMENT_VALIDATOR_VERSION);
 assert.equal(ANALYSIS_VERSIONS.rubricVersion, "kru-pom-ielts-writing-v12.3.0");

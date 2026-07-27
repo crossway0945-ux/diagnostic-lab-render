@@ -18,7 +18,7 @@ try {
   ]);
   assert.equal(health.status, 200);
   const healthJson = await health.json();
-  assert.equal(healthJson.appVersion, "12.8.2");
+  assert.equal(healthJson.appVersion, "12.8.3");
   assert.equal(home.status, 200);
   const html = await home.text();
   assert.match(html, /script\.js\?v=diagnostic-v12-7-0-root-cause-correction/);

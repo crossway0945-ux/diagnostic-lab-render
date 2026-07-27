@@ -1,7 +1,7 @@
 export const ANALYSIS_VERSIONS = Object.freeze({
   // V12.8.0 adds independent-clause completeness, canonical issue alignment, output consistency,
   // and extracted-PDF text gates. The IELTS/Kru Pom rubric remains frozen.
-  appVersion: "12.8.2",
+  appVersion: "12.8.3",
   engineVersion: "ielts-diagnostic-engine-v12.8.0",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.8.0",

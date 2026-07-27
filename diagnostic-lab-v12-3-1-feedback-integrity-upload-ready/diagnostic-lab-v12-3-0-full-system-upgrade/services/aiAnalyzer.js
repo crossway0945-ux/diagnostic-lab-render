@@ -22,6 +22,7 @@ import { buildSentenceCoverageAudit } from "../domain/paragraphEvidence.js";
 import { buildStudentReportViewModel } from "../domain/reportViewModels.js";
 import { auditFeedbackIntegrity, buildFeedbackIntegrityModel, projectRouteAlignmentDisplay, validateFeedbackIntegrity } from "../domain/feedbackIntegrity.js";
 import { buildEvidenceBasedRepairPlan } from "../domain/reportConsistency.js";
+import { applyCanonicalIntegrity } from "../domain/canonicalIntegrity.js";
 import { repairDeterministicEvidenceDefects } from "../domain/evidenceAssertions.js";
 import { assertUnicodeIntegrity, normalizeVisibleTree } from "../domain/textIntegrity.js";
 export {
@@ -3770,11 +3771,35 @@ function normalizeAnalysis(analysis, payload) {
     disclaimer: normalizeReportLanguage(payload.reportLanguage) === "th" ? THAI_DISCLAIMER : (guardedAnalysis.disclaimer || DISCLAIMER),
     thaiDisclaimer: guardedAnalysis.thaiDisclaimer || THAI_DISCLAIMER
   };
+  // Canonical diagnostic integrity (V12.8.3): correct the canonical issue layer — taxonomy / evidence
+  // assertion (a lexical-meaning defect must not present as a route gap), duplicate merge, priority
+  // ordering, sentence-function projection, revision-type fidelity and Student Action specificity —
+  // BEFORE the canonical analysis is built, so feedbackCards, topIssues, coverage, summary and repair
+  // plan all inherit one corrected source. The frozen scoring object is never touched, and the
+  // `normalized` report keeps its exact field set (adding keys breaks strict report validation).
+  // Task 1 keeps its visual-specific card chain untouched (protected system).
+  // Canonical diagnostic integrity (V12.8.3): correct the canonical issue layer — taxonomy / evidence
+  // assertion (a lexical-meaning defect must not present as a route gap), duplicate merge, priority
+  // ordering, sentence-function projection, revision-type fidelity and Student Action specificity —
+  // BEFORE the canonical analysis is built, so feedbackCards, topIssues, coverage, summary and repair
+  // plan all inherit one corrected source. The frozen scoring object is never touched and the report
+  // keeps its exact field set. Task 1 keeps its visual-specific card chain (protected system).
+  const canonicalIntegrity = payload.taskType === "Task 1"
+    ? { issues: studentFeedbackCards, topIssues: studentTopIssues, executiveSummary: null }
+    : applyCanonicalIntegrity({
+        issues: studentFeedbackCards,
+        topIssues: studentTopIssues,
+        executiveSummary: { mainScoreLimitingFactor: normalized.mainScoreLimitingFactor, mostUrgentRepair: normalized.mostUrgentRepair },
+        routePresent: !["absent", "contradicted"].includes(String(normalized.routeAssessment?.status || normalized.routeAssessment?.overallRouteStatus || ""))
+      });
+  if (canonicalIntegrity.executiveSummary?.mainScoreLimitingFactor) {
+    normalized.mainScoreLimitingFactor = canonicalIntegrity.executiveSummary.mainScoreLimitingFactor;
+  }
   const canonicalAnalysis = buildCanonicalAnalysis({
     payload,
     analysis: normalized,
-    feedbackCards: studentFeedbackCards,
-    topIssues: studentTopIssues,
+    feedbackCards: canonicalIntegrity.issues,
+    topIssues: canonicalIntegrity.topIssues.length ? canonicalIntegrity.topIssues : studentTopIssues,
     paragraphFeedback: studentParagraphFeedback,
     repairPlan: studentPracticePlan
   });

@@ -38,7 +38,7 @@ const check = (name, fn) => {
 };
 
 check("release and validator versions", () => {
-  assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.2");
+  assert.equal(ANALYSIS_VERSIONS.appVersion, "12.8.3");
   assert.equal(ANALYSIS_VERSIONS.routeClassifierVersion, TASK2_ROUTE_CLASSIFIER_VERSION);
   assert.equal(SENTENCE_COMPLETENESS_VALIDATOR_VERSION, "independent-clause-validator-v12.8.0");
   assert.equal(ISSUE_ALIGNMENT_VALIDATOR_VERSION, "canonical-issue-alignment-v12.8.0");

@@ -26,7 +26,7 @@ try {
   const reportA = {
     submissionId: "reportA", username: "stu1", studentProfileId: "p1", studentDisplayNameSnapshot: "Student A",
     dateTime: "2026-07-26T10:00:00.000Z", taskType: "Task 2", essayType: "Problem & Solution", estimatedBandRange: "6.0-6.5",
-    appVersion: "12.8.2", engineVersion: "e-12.8.0", analysisValidity: "valid",
+    appVersion: "12.8.3", engineVersion: "e-12.8.0", analysisValidity: "valid",
     sourceInput: { prompt: "Traffic prompt A", writing: "Writing A" },
     report: { estimatedBandRange: "6.0-6.5", feedbackCards: [{ issueId: "i1", issueCategory: "Countability", revisionType: "Minimal Correction", exactEvidence: "a severe traffic congestion" }], studentReportViewModel: { frameworkBreakdown: {} }, kruPomScores: {}, criteriaScores: {} }
   };

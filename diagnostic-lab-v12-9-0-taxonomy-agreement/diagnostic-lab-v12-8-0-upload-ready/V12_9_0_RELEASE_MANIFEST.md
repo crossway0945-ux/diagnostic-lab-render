@@ -1,122 +1,165 @@
-# V12.8.3 — Canonical Diagnostic Integrity (module + verified corrections)
+# V12.9.0 — Diagnostic Accuracy (SVA + Outweigh) & Admin Security
 
-**Status: FULLY WIRED into the production analysis pipeline.** The canonical corrections for defects
-A–H are implemented in `domain/canonicalIntegrity.js`, invoked automatically by `analyzeWriting()` for
-every completed Task 2 analysis (before the canonical analysis and all downstream sections are built),
-verified against the real exported QA fixture (`695dcee4c5a8d808c49db2a0`), and locked in by an
-integration test. The Task 2 underlength 502 regression is fixed. Do not deploy automatically.
-
-### The regression and its real root cause
-Top Issues reference their detailed card by a **1-based positional id** (`feedbackCardId: "card-N"`)
-and `validateReportOutput` enforces that link plus category/evidence agreement. Correcting and
-de-duplicating the canonical layer changes card positions, so the previously-stamped ids became stale
-→ *"Top issue N is not linked to a valid detailed feedback card"* → `REPORT_OUTPUT_VALIDATION_FAILED`
-(502). Fixed by `relinkTopIssues()`, which re-points every top issue at the index its card actually
-occupies, syncs the compared fields, drops a top issue whose card was merged away, and applies the
-shared priority order. Verified load-bearing by a mutation test: bypassing the wiring makes the
-integration test fail (`Top Issues are ordered most-severe first`).
+Status: **all corrections wired into production code and verified end-to-end.** No dormant module.
+Do not deploy automatically.
 
 ## 1. Starting version
-`package.json` / `appVersion` **12.8.2** → **12.8.3**. `rubricVersion`, `promptVersion`,
-`issueTaxonomyVersion` and all scoring calibration unchanged. Frozen score of the fixture is untouched
-(TR 6.5 / CC 6.0–6.5 / LR 6.0 / GRA 6.0 / overall 6.0–6.5 — verified after correction).
+package.json / appVersion **12.8.3 → 12.9.0**. `rubricVersion` unchanged (scoring criteria unchanged).
+`grammarValidatorVersion` → `syntactic-head-agreement-v12.9.0` (grammar logic changed).
+`routeClassifierVersion` unchanged (`task2RouteModel.js` untouched).
 
-## 2. Confirmed root causes (reproduced from the real JSON, before any edit)
-| Defect | Reproduced evidence |
-|---|---|
-| A | `issue-b1eeca53`: `primaryCategory: "Cause Route Clarity"`, `evidenceAssertionType: "route_gap"`, `repairTargets: []`, while the diagnosis is purely about the meaning of a quoted word |
-| B | `Prompt Coverage: Strong` + `Body Route Alignment: Aligned` coexisting with `Thesis Route Clarity: Needs Work — "missing at least one traceable required route"` |
-| C | Signature `Task 2\|paragraph-2\|7\|Countability\|946\|973\|countability` present **twice** |
-| D | `topIssues` = Moderate, Moderate, **Major** (Major last) |
-| E | `sentenceRole: causal_mechanism` (+result/consequence) but `sentenceFunction: "could not be determined safely"`; revision forced to Teacher-Guided Expansion by a false "new affected group" claim |
-| F | 3 Student Actions failed with "does not identify the local repair span" although one was pedagogically precise |
-| G | Summary claimed "frequent grammar and collocation errors" against ~1 occurrence per family |
-| H | Repair Plan contained Cause-Route-order drills produced by defect A |
-| §11 | The persisted `taskInput.studentWriting` contains `"congestion. Therefore"` **with a space** → no punctuation defect exists; none is fabricated |
+## 2. Diagnostic accuracy
 
-## 3. Corrections implemented (`domain/canonicalIntegrity.js`) and verified on the real fixture
-```
-A primary category   Cause Route Clarity → Lexical Precision
-A evidence assertion route_gap → lexical_meaning
-A repair target      populated: "unconsciousness"   (secondary keeps the route effect only)
-A student action     regenerated, specific, passes validation
-C Countability       2 → 1 canonical issue (idempotent)
-D top issue          Sentence Completion [Major] first
-E sentence function  "This sentence explains how one step leads to the next, and states the result…"
-E revision type      Teacher-Guided Expansion → Route-Preserving Revision (status pass)
-G summary            "frequent" removed (quantity-aware wording)
-B thesis route       no longer claims a missing route (cross-section gate, V12.8.1)
-score                unchanged (6.0-6.5)
-```
-Rules are structural — sentence role, route presence, diagnosis semantics, target span, revision
-content — with **no fixture wording, issue id or score hardcoded**. Guards proven by test: a genuine
-missing-route diagnosis is *not* reclassified; Task 1 visual taxonomy is untouched; issues lacking
-canonical detail are never merged; a genuinely new affected group is still detected; generic Student
-Actions are still rejected; a genuinely recurring family keeps its frequency wording.
+### FATAL fixed — subject–verb agreement false positive (§7)
+Root cause: the quantifier rule matched `a number of` only when "number" sat at token index 1, so
+`an **increasing** number of residents have` fell through and was treated as singular — producing the
+harmful "correction" `have → has`.
+
+Fix (`domain/agreementValidator.js`): quantifier-construction-aware analysis.
+- `a/an [adjective]* number|percentage|proportion|majority|minority of + plural noun` → **plural verb**
+- `the [adjective]* <same heads> of + plural noun` → **singular verb**
+- `range / variety / amount / couple / handful / series / total` → both agreements occur in accepted
+  usage → **never asserted**
+
+Verified on 13 cases: every "must not flag" case passes, and the genuine defect
+`the promotion of ... shops **are** vital` is still detected with correction `is`.
+
+### Outweigh is a prompt subtype, never a top-level essay type (§1)
+`domain/task2Safety.js` now returns `promptSubtype: "outweigh"`, `outweighDirection:
+"disadvantages" | "advantages" | "unspecified"` and `comparisonRequired: true`, while `essayType`
+stays `advantages-disadvantages` / "Advantages & Disadvantages". The subtype label changed from
+"Advantages Outweigh Disadvantages" to "Advantages & Disadvantages (Outweigh)" so it can never read as
+a separate type. A plain A&D prompt carries no subtype and `comparisonRequired: false`.
+
+### Eva fixture through the REAL pipeline
+`essayType: Advantages & Disadvantages` · false `have → has`: **false** · genuine `promotion…are`
+detected · Student View `taskSubtype: "Advantages & Disadvantages"`.
+Artifacts: `eva-pipeline-canonical.json`, `eva-pipeline-student-view.json`.
+
+## 3. Admin security (§16–§21)
+- **`/admin` access**: anonymous → **302 redirect to `/?next=/admin`** (login page; no admin data is
+  rendered); signed-in non-admin → **403 JSON** `ADMIN_REQUIRED`; admin → allowed. Decided server-side
+  from the session cookie only. The redirect target is a fixed internal path (no open redirect).
+- **Every `/api/admin/*` route** goes through `requireAdmin`: anonymous **401**, non-admin **403**,
+  always JSON, error code `ADMIN_REQUIRED`. Browser-supplied role headers cannot escalate.
+- **Account lifecycle** (`POST`/`DELETE` only, never GET): `archive` · `restore` · `delete`.
+  Permanent delete requires the username typed exactly plus an explicit report mode: `anonymise`
+  (default — keeps the analytical record, strips identity and the student's writing) or `delete`. It
+  also removes student profiles, deletes the account's QA snapshots, and **revokes the account's
+  outstanding sessions immediately**.
+- **Safety rails**: an admin can neither archive nor delete the account they are signed in with, and
+  the last active admin cannot be removed (`ADMIN_PROTECTED`, HTTP 409).
+- **Pagination / search / filter / sort** on `/api/admin/users`: default view is **active accounts
+  only**; `status` (active|disabled|archived|expired|all), `role`, `q`, `sort`
+  (newest|oldest|last-login|expiry|used), `page`, `pageSize` (max 100). Payload is always bounded and
+  reports `total` / `totalPages`.
+- **Admin audit log** `/api/admin/audit-log` (paginated, searchable): eventId, timestamp, admin
+  account, action, target, result, redacted metadata. Never stores passwords, hashes, cookies, keys or
+  student text.
+- **Session hardening**: HttpOnly + SameSite=Lax + Secure in production + bounded Max-Age (already
+  present, now asserted by test).
+- **Login throttling**: per-account failure counter → **429 `RATE_LIMITED`** after repeated failures,
+  reset on success, other accounts unaffected. Configurable via `LOGIN_MAX_FAILURES` /
+  `LOGIN_LOCKOUT_MS`.
+- **Admin UI**: Archive / Restore / Delete… buttons per row, typed-confirmation prompt and an explicit
+  reports choice; `archived` added to the status selector.
 
 ## 4. Tests — exact commands and results
 ```
-node scripts/check-source.mjs                                    → 84 JavaScript modules
-node scripts/build-static-preview.mjs && node scripts/run-tests.mjs → Test suite passed: 30 files
-node tests/v12-8-3-canonical-integrity.test.mjs                  → pass (22 assertions)
+node scripts/check-source.mjs                                       -> 86 JavaScript modules
+node scripts/build-static-preview.mjs && node scripts/run-tests.mjs  -> Test suite passed: 32 files
+node tests/v12-9-0-taxonomy-agreement.test.mjs                       -> pass
+node tests/v12-9-0-admin-security.test.mjs                           -> pass
 ```
-All existing Task 1/Task 2, scoring, async-render, quota, auth, ownership, provider, QA-export and PDF
-tests remain green.
+Two pre-existing assertions were updated (not weakened) because §16 mandates 401-for-anonymous and
+403-for-non-admin where the older tests asserted 403 for both; they still assert that access is denied.
 
 ## 5. Files changed / untouched
-**New:** `domain/canonicalIntegrity.js`, `tests/v12-8-3-canonical-integrity.test.mjs`, this manifest.
-**Changed:** `services/aiAnalyzer.js` (live integration point: `applyCanonicalIntegrity` is invoked
-before `buildCanonicalAnalysis` for every Task 2 analysis, and its re-linked Top Issues are passed
-through), `package.json` / `package-lock.json` / `services/analysisVersions.js` (12.8.3).
-**Carried from 12.8.1/12.8.2:** `domain/reportConsistency.js` + `domain/reportViewModels.js` (enforced
-cross-section gate), `services/qaCanonicalExport.js` + admin QA Export UI/endpoints.
-**Deliberately untouched:** scoring/calibration, rubric/prompt/taxonomy versions, route detection,
-LFC-CPC / SAR / TEEL, Targeted Revision engine, Task 1 visual logic, async-render, auth, sessions,
-quota, ownership, pricing, PDF layout, student-facing copy.
+**New:** `tests/v12-9-0-taxonomy-agreement.test.mjs`, `tests/v12-9-0-admin-security.test.mjs`.
 
-## 6. Deliverables produced
-- `sun-corrected-canonical-qa.json` — corrected canonical issues, feedbackCards, topIssues, executive
-  summary, student view; `paragraphCoverage` honestly marked `NOT_PERSISTED_IN_THIS_REPORT_VERSION`.
-- `sun-corrected-student-view.json` — student view after the cross-section gate.
+**Changed:** `domain/agreementValidator.js`, `domain/task2Safety.js`, `services/apiRouter.js`
+(requireAdmin codes, user-list pagination/filtering, archive/restore/delete, audit log, session
+revocation, login throttle), `services/storage.js` (`archived` status, `deleteUser`), `server.js`
+(/admin redirect + access classification), `admin.js` / `styles.css` (lifecycle UI),
+`services/analysisVersions.js` + `package.json` + `package-lock.json` (12.9.0).
 
-## 7. End-to-end verification through the ACTUAL pipeline
-The real Sun submission (prompt + writing from the exported QA JSON) was run through `analyzeWriting()`
-and projected with `buildStudentReportViewModel()`:
+**Deliberately untouched:** scoring calibration, rubric, prompt and taxonomy versions, route model,
+LFC-CPC / SAR / TEEL, Task 1 visual logic, async-render, quotas, ownership, PDF layout, the canonical
+integrity wiring (still live: 2 refs in `aiAnalyzer.js`), and **branding, domain and pricing**.
+
+## 6. Deployment
+GitHub path `/diagnostic-lab-v12-8-0-upload-ready/package.json` · Render Root Directory
+`diagnostic-lab-v12-8-0-upload-ready` · `npm install` / `npm start` · confirm `/api/health` →
+`"appVersion":"12.9.0"`.
+
+**Environment (still required — this is what currently breaks production):**
+`DIAGNOSTIC_ANALYSIS_MODE=async-render`, `OPENAI_MAX_OUTPUT_TOKENS=16000`,
+`OPENAI_TIMEOUT_MS=600000`, `OPENAI_RETRY_MAX_OUTPUT_TOKENS=24000`.
+
+**Rollback:** redeploy the previous commit. `archived` is an additive status and `deleteUser` runs only
+on an explicit admin action, so existing data is unaffected by the upgrade itself.
+
+## 7. Remaining limitations (honest)
+1. **CSRF tokens not implemented.** Mitigations in place: `SameSite=Lax` cookies and destructive
+   actions restricted to POST/DELETE with a JSON body and typed confirmation. A dedicated token should
+   still be added before treating the admin console as fully hardened.
+2. **Audit log is per-process** (bounded in memory, mirrored into the durable usage-audit trail). A
+   restart clears the in-memory view; a dedicated durable audit store is the next step.
+3. **§4–§15 diagnostic items not addressed**: route presence vs comparative weighing as separate
+   dimensions, Eva TR/CC calibration, Reference Control taxonomy, conclusion function vs language, and
+   SAR-vs-development consistency.
+4. **No real gpt-5.6-sol run and no PDF regeneration** in this environment (no key; no Chromium and no
+   PDF text extractor). Provider and PDF gates remain PENDING.
+
+## 8. Verdict — CONDITIONAL PASS
+Both FATAL items in scope are fixed and verified (no false `have → has`; Outweigh is a subtype), admin
+authentication and authorization are enforced server-side on every surface with archive/restore,
+guarded delete, audit logging and pagination, production wiring is enabled, and 32 test files pass.
+**Not a full PASS**: CSRF tokens, durable audit storage, the remaining §4–§15 accuracy items and the
+real-provider/PDF gates are outstanding. Do not claim commercial readiness from automated tests alone.
+
+
+---
+
+# ภาคผนวก: คู่มือติดตั้งภาษาไทย (V12.9.0)
+
+# คู่มือติดตั้ง V12.9.0 (ภาษาไทย)
+
+## 1. แก้ค่า Environment บน Render ก่อน (สำคัญที่สุด — แก้ปัญหา PROVIDER_TIMEOUT)
+ตอนนี้ production ยังเป็น `analysisMode: "sync"` + `timeoutMs: 180000` + `maxOutputTokens: 8000`
+ทำให้วิเคราะห์ไม่ผ่านทุกครั้ง (และเว็บอยู่หลัง Cloudflare ที่ตัดที่ ~100 วินาที)
+
+ไปที่ Render → Settings → Environment แล้วตั้ง:
 ```
-top issues        : card-2:Sentence Completion[Major] > card-1:Countability[Moderate]
-lexical-meaning filed as route_gap : 0
-duplicate canonical signatures     : 0
-undetermined sentence functions    : 0
-unsupported "frequent" in summary  : none
-STUDENT VIEW top issues            : Sentence Completion[Major] > Countability[Moderate]
-STUDENT VIEW sections              : 15 (allowlist assertion passes → no unsupported field)
+DIAGNOSTIC_ANALYSIS_MODE=async-render
+OPENAI_MAX_OUTPUT_TOKENS=16000
+OPENAI_TIMEOUT_MS=600000
+OPENAI_RETRY_MAX_OUTPUT_TOKENS=24000
 ```
-Artifacts: `sun-pipeline-canonical.json`, `sun-pipeline-student-view.json`,
-`sun-corrected-canonical-qa.json`, `sun-corrected-student-view.json`.
+กด Save (restart เอง ~1 นาที)
 
-**No report schema mutation:** the wiring writes only to the existing `mainScoreLimitingFactor` field.
-`assertStudentReportViewModel` (strict allowlist) passes, which it would not if an unsupported field
-were introduced.
+ตรวจ: `/api/health` ต้องได้ `"analysisMode":"async-render"` และ `"timeoutMs":600000`
 
-## 8. Remaining limitations (honest)
-1. **PDF not regenerated / extracted-text parity not verified** — this environment has no Chromium and
-   no PDF text extractor (verified: extraction returns 0 characters). Run your PDF QA after deploy.
-2. **No real gpt-5.6-sol run** — provider-side verification remains PENDING on your key. The local
-   deterministic engine produces a different (smaller) card set than the provider, so the fixture's
-   specific issue ids are not reproduced end-to-end; the *invariants* are, and the fixture-level
-   corrections are verified directly by the unit tests.
-3. Repair Plan (H) and Paragraph Coverage (§12) now inherit the corrected taxonomy automatically, but
-   their student-visible effect should be confirmed on your next real analysis.
+## 2. อัปโหลดขึ้น GitHub
+- แตก ZIP ลงโฟลเดอร์ว่าง
+- อัปเนื้อหาในโฟลเดอร์ `diagnostic-lab-v12-8-0-upload-ready` ทับของเดิม
+- ตำแหน่งที่ต้องมี: `/diagnostic-lab-v12-8-0-upload-ready/package.json`
+- อย่าสร้างโฟลเดอร์เวอร์ชันซ้อน · อย่าอัปตัว ZIP
+- commit เข้า `main`
 
-## 9. Readiness verdict — CONDITIONAL (deploy to production for acceptance testing)
-The corrections are wired, automatic for every completed analysis, verified against real production
-data, locked by a mutation-proven integration test, and all 30 test files pass with the integration
-enabled. **Not yet sale-ready**: real-provider regression and PDF text-integrity remain PENDING on your
-environment. Do not claim commercial readiness from these automated tests alone.
+## 3. Render settings (เดิม ไม่เปลี่ยน)
+```
+Root Directory : diagnostic-lab-v12-8-0-upload-ready
+Build Command  : npm install
+Start Command  : npm start
+```
+ตรวจ: `/api/health` → `"appVersion":"12.9.0"`
 
-## 9. Deployment
-GitHub path: `/diagnostic-lab-v12-8-0-upload-ready/package.json` (unchanged).
-Render: Root Directory `diagnostic-lab-v12-8-0-upload-ready`, Build `npm install`, Start `npm start`.
-Confirm: `/api/health` → `"appVersion":"12.8.3"`. After deploy, run one real analysis and check that a Major issue leads Top Issues.
-**Rollback:** redeploy the previous commit. This release adds one module plus a disabled integration
-point, so reverting is low-risk; saved reports, progress, quotas and QA snapshots are unaffected.
+## 4. เข้า /admin ไม่ได้?
+`/admin` ป้องกันที่ฝั่งเซิร์ฟเวอร์อยู่แล้ว (ต้องมี session ที่ role = admin)
+ถ้าขึ้น `{"ok":false,"error":"Admin access is required."}` แปลว่า:
+- ยังไม่ได้ล็อกอินในแท็บนั้น → ล็อกอินที่หน้าแรกก่อน แล้วค่อยเปิด /admin
+- หรือบัญชีที่ใช้ role ไม่ใช่ `admin` → ต้องตั้ง role เป็น admin ในไฟล์ users
+
+## 5. Rollback
+Deploy commit เดิมที่ Render · รายงาน/ประวัติ/เครดิตเดิมไม่ถูกแตะ

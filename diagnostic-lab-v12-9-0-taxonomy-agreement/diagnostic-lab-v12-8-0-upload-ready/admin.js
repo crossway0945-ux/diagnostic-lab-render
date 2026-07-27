@@ -105,6 +105,46 @@ diagnosticsButtons.contract?.addEventListener("click", () => runDiagnostic("Prod
 diagnosticsButtons.storage?.addEventListener("click", () => runDiagnostic("Storage self-test", "/api/admin/diagnostics/storage"));
 diagnosticsButtons.jobs?.addEventListener("click", () => runDiagnostic("Job queue status", "/api/admin/diagnostics/job-queue-status", "GET"));
 
+// ---- Account lifecycle: archive / restore / permanent delete (admin only, server-enforced) ----
+async function accountAction(username, action) {
+  const body = {};
+  if (action === "delete") {
+    const confirmation = window.prompt(`PERMANENT DELETE — this cannot be undone.\n\nType the username "${username}" exactly to confirm:`);
+    if (!confirmation) return;
+    body.confirmation = confirmation;
+    body.reportMode = window.confirm(
+      "Click OK to DELETE this account's reports as well.\n\nClick Cancel to KEEP the reports in anonymised form (identity and writing removed)."
+    ) ? "delete" : "anonymise";
+  } else if (action === "archive" && !window.confirm(`Archive "${username}"? The account is hidden from the active list and cannot sign in, but nothing is deleted and it can be restored.`)) {
+    return;
+  }
+  try {
+    const response = await fetch(`/api/admin/users/${encodeURIComponent(username)}/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      window.alert(result.error || `Action failed (${result.errorCode || response.status}).`);
+      return;
+    }
+    if (action === "delete") {
+      window.alert(`Deleted "${username}". Reports deleted: ${result.deletedReportCount || 0}; anonymised: ${result.anonymisedReportCount || 0}.`);
+    }
+    if (typeof loadUsers === "function") loadUsers();
+  } catch {
+    window.alert("Action failed. Please try again.");
+  }
+}
+
+usersBody?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-lifecycle]");
+  if (!button) return;
+  const username = button.dataset.username;
+  if (username) accountAction(username, button.dataset.lifecycle);
+});
+
 // ---- Canonical QA Export (admin only) ----
 const qaSearch = document.querySelector("#qa-search");
 const qaList = document.querySelector("#qa-report-list");
@@ -247,6 +287,7 @@ function renderUserRow(user) {
       <select data-field="status">
         ${option("active", user.status)}
         ${option("inactive", user.status)}
+        ${option("archived", user.status)}
       </select>
     </td>
     <td><input data-field="quotaLimit" type="number" min="0" value="${escapeHtml(user.quotaLimit ?? user.totalQuota ?? user.quota ?? 0)}"><small>${quota}</small></td>
@@ -256,6 +297,10 @@ function renderUserRow(user) {
       <button type="button" class="ghost-button compact" data-action="save" data-username="${escapeHtml(user.username)}">Save</button>
       <button type="button" class="ghost-button compact" data-action="reset" data-username="${escapeHtml(user.username)}">Reset password</button>
       <button type="button" class="ghost-button compact" data-action="${toggleAction}" data-username="${escapeHtml(user.username)}">${toggleAction}</button>
+      ${String(user.status || "").toLowerCase() === "archived"
+        ? `<button type="button" class="ghost-button compact" data-lifecycle="restore" data-username="${escapeHtml(user.username)}">Restore</button>`
+        : `<button type="button" class="ghost-button compact" data-lifecycle="archive" data-username="${escapeHtml(user.username)}">Archive</button>`}
+      <button type="button" class="ghost-button compact danger" data-lifecycle="delete" data-username="${escapeHtml(user.username)}">Delete…</button>
     </td>
   </tr>`;
 }

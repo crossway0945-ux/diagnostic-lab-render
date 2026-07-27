@@ -136,6 +136,9 @@ export function normalizeUserAccount(user = {}) {
 
 export function normalizeStatus(value) {
   const normalized = String(value || "active").toLowerCase();
+  // "archived" removes an account from the default active list without deleting anything. Like
+  // "inactive" it is not an active status, so it also prevents login; it is fully reversible.
+  if (normalized === "archived") return "archived";
   return ["inactive", "disabled", "false"].includes(normalized) ? "inactive" : "active";
 }
 
@@ -226,6 +229,40 @@ class JsonFileStorage {
       users[index] = applyUserPatch(users[index], patch);
       await this.writeUsers(users);
       return users[index];
+    });
+  }
+
+  // Permanently removes an account's credentials and profile. Reports are handled according to the
+  // admin's explicit choice (anonymise vs delete) so nothing cascades silently.
+  async deleteUser(username, { reportMode = "anonymise" } = {}) {
+    return this.withLock(async () => {
+      const users = await this.readUsers();
+      const index = users.findIndex((user) => user.username === username);
+      if (index === -1) return { deleted: false, deletedReportCount: 0, anonymisedReportCount: 0 };
+      users.splice(index, 1);
+      const records = await this.readHistory();
+      let deletedReportCount = 0;
+      let anonymisedReportCount = 0;
+      const nextRecords = [];
+      for (const record of records) {
+        if (String(record.username || record.ownerAccountId || "") !== String(username)) {
+          nextRecords.push(record);
+          continue;
+        }
+        if (reportMode === "delete") {
+          deletedReportCount += 1;
+          continue;
+        }
+        // Anonymise: strip identity and the student's own writing, keep the analytical record.
+        const { username: _u, ownerAccountId: _o, studentDisplayNameSnapshot: _d, sourceInput: _s, ...rest } = record;
+        nextRecords.push({ ...rest, username: "", ownerAccountId: "", studentDisplayNameSnapshot: "", anonymisedAt: new Date().toISOString() });
+        anonymisedReportCount += 1;
+      }
+      const profiles = (await this.readStudentProfiles()).filter((profile) => profile.ownerAccountId !== username);
+      await this.writeUsers(users);
+      await this.writeHistory(nextRecords);
+      await this.writeStudentProfiles(profiles);
+      return { deleted: true, deletedReportCount, anonymisedReportCount };
     });
   }
 

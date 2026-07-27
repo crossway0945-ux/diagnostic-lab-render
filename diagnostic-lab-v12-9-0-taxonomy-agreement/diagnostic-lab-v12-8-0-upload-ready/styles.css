@@ -2819,3 +2819,7 @@ blockquote {
 .qa-report-row { text-align: left; font-family: inherit; white-space: normal; }
 .qa-report-row.is-selected { outline: 2px solid currentColor; outline-offset: 1px; font-weight: 600; }
 #qa-search { flex: 1 1 260px; min-width: 200px; padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(128,128,128,0.4); font: inherit; }
+
+/* Admin destructive action */
+.ghost-button.danger { color: #a12b2b; border-color: rgba(161,43,43,0.45); }
+.ghost-button.danger:hover { background: rgba(161,43,43,0.08); }

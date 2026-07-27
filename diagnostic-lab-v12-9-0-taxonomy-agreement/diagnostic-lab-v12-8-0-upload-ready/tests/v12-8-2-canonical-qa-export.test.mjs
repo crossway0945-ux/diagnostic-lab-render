@@ -71,7 +71,7 @@ try {
     assert.equal(deniedExport.headers["content-type"], "application/json; charset=utf-8", "denial is JSON, not HTML");
   }
   const anon = await request("GET", "/api/admin/qa-reports/reportA/export", null, "");
-  assert.equal(anon.statusCode, 403, "anonymous cannot export");
+  assert.equal(anon.statusCode, 401, "anonymous cannot export (401 = not signed in)");
 
   // 4-5. Admin exports exactly one report; the other student's data never appears.
   const exported = await request("GET", "/api/admin/qa-reports/reportA/export", null, adminCookie);

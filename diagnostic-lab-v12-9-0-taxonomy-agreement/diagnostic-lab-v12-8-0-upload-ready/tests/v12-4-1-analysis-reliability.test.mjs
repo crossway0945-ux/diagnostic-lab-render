@@ -282,12 +282,12 @@ try {
     "/api/admin/diagnostics/clear-failures"
   ]) {
     const response = await fetch(`${base}${route}`, { method: "POST" });
-    assert.equal(response.status, 403, `${route} must require an admin session`);
+    assert.ok([401, 403].includes(response.status), `${route} must require an admin session (401 anonymous / 403 non-admin)`);
     assert.match(response.headers.get("content-type") || "", /application\/json/);
   }
   for (const route of ["/api/admin/diagnostics/system", "/api/admin/diagnostics/analysis-failures"]) {
     const response = await fetch(`${base}${route}`);
-    assert.equal(response.status, 403, `${route} must require an admin session`);
+    assert.ok([401, 403].includes(response.status), `${route} must require an admin session (401 anonymous / 403 non-admin)`);
   }
 } finally {
   await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

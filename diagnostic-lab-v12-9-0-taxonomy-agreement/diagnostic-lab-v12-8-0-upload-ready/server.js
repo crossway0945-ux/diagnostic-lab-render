@@ -77,9 +77,20 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    if ((url.pathname === "/admin" || url.pathname === "/admin.html") && !(await canViewAdminPage(req.headers))) {
-      sendJson(res, 403, { ok: false, error: "Admin access is required." });
-      return;
+    if (url.pathname === "/admin" || url.pathname === "/admin.html") {
+      const access = await adminPageAccess(req.headers);
+      if (access === "anonymous") {
+        // Not signed in: send the visitor to the normal login page and remember where they were
+        // heading. Admin data is never rendered, and the redirect target is a fixed internal path
+        // (never taken from user input), so it cannot be used as an open redirect.
+        res.writeHead(302, { location: `/?next=${encodeURIComponent("/admin")}`, "cache-control": "no-store" });
+        res.end();
+        return;
+      }
+      if (access !== "admin") {
+        sendJson(res, 403, { ok: false, error: "Admin access is required.", errorCode: "ADMIN_REQUIRED" });
+        return;
+      }
     }
 
     await serveStatic(url.pathname, res);
@@ -198,17 +209,21 @@ async function serveStatic(urlPath, res) {
   res.end(bytes);
 }
 
-async function canViewAdminPage(headers) {
+// Classifies the visitor for the /admin page: "anonymous" (no valid session), "forbidden" (signed in
+// without admin rights) or "admin". The decision is always made server-side from the session cookie —
+// never from anything the browser claims.
+async function adminPageAccess(headers) {
   const apiResponse = await handleApiRequest({
     method: "GET",
     path: "/api/session",
     headers,
     body: ""
   });
-  if (apiResponse.statusCode !== 200) return false;
+  if (apiResponse.statusCode !== 200) return "anonymous";
 
   const payload = JSON.parse(apiResponse.body || "{}");
-  return Boolean(payload?.authenticated && payload?.user?.role === "admin");
+  if (!payload?.authenticated) return "anonymous";
+  return payload?.user?.role === "admin" ? "admin" : "forbidden";
 }
 
 function sendApiResponse(res, response) {

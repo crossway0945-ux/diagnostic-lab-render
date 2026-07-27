@@ -1,0 +1,70 @@
+services:
+  - type: web
+    name: ielts-diagnostic-lab
+    runtime: node
+    plan: starter
+    region: singapore
+    # The release ZIP is flat-root: package.json is at the repository root.
+    # In the Render dashboard leave Root Directory blank. Blueprint users resolve "." here.
+    rootDir: .
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: diagnostic-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.16.0
+      - key: HOST
+        value: 0.0.0.0
+      - key: DIAGNOSTIC_STORAGE_ADAPTER
+        value: local-json
+      - key: DIAGNOSTIC_DATA_DIR
+        value: /var/data
+      - key: DIAGNOSTIC_REQUIRE_FULL_ENGINE
+        value: "true"
+      # V12.5.0: Render-native durable async analysis. The browser no longer waits on one long
+      # POST /api/analyze; an in-process worker loop runs the analysis and the client polls.
+      - key: DIAGNOSTIC_ANALYSIS_MODE
+        value: async-render
+      - key: DIAGNOSTIC_ENABLE_NETLIFY_BLOBS
+        value: "false"
+      # Async job lifecycle timings (all configurable). Distinct from the provider timeout below.
+      - key: DIAGNOSTIC_JOB_CONCURRENCY
+        value: "1"
+      - key: DIAGNOSTIC_JOB_TIMEOUT_MS
+        value: "900000"
+      - key: DIAGNOSTIC_JOB_LEASE_MS
+        value: "120000"
+      - key: DIAGNOSTIC_JOB_STALE_MS
+        value: "1200000"
+      # DATA_DIR is the brief's name for the persistent disk; the service also reads DIAGNOSTIC_DATA_DIR.
+      - key: DATA_DIR
+        value: /var/data
+      - key: OPENAI_BASE_URL
+        value: https://api.openai.com/v1/responses
+      # Provider request timeout (single OpenAI call). Async transport means a long provider call no
+      # longer breaks the browser request, so this can be generous.
+      - key: OPENAI_TIMEOUT_MS
+        value: "600000"
+      - key: OPENAI_MAX_OUTPUT_TOKENS
+        value: "16000"
+      - key: OPENAI_RETRY_MAX_OUTPUT_TOKENS
+        value: "24000"
+      # Production baseline is high (benchmark max separately before adopting globally — brief §5).
+      - key: OPENAI_REASONING_EFFORT
+        value: high
+      # Secrets/model stay dashboard-only and are never committed. The model in use always equals
+      # OPENAI_MODEL — there is no hidden fallback. Set it to gpt-5.6-sol on the Render dashboard.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_SECRET
+        generateValue: true

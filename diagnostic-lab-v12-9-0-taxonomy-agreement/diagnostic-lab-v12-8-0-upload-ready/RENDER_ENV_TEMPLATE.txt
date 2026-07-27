@@ -1,0 +1,32 @@
+NODE_ENV=production
+NODE_VERSION=22.16.0
+HOST=0.0.0.0
+DIAGNOSTIC_STORAGE_ADAPTER=local-json
+DIAGNOSTIC_DATA_DIR=/var/data
+DATA_DIR=/var/data
+DIAGNOSTIC_REQUIRE_FULL_ENGINE=true
+# V12.5.0 Render-native durable async analysis (browser no longer waits on one long request).
+DIAGNOSTIC_ANALYSIS_MODE=async-render
+DIAGNOSTIC_ENABLE_NETLIFY_BLOBS=false
+# Async job lifecycle (all configurable; distinct from OPENAI_TIMEOUT_MS below).
+DIAGNOSTIC_JOB_CONCURRENCY=1
+DIAGNOSTIC_JOB_TIMEOUT_MS=900000
+DIAGNOSTIC_JOB_LEASE_MS=120000
+DIAGNOSTIC_JOB_STALE_MS=1200000
+# Optional overrides (defaults shown): frontend/worker poll interval, terminal-job retention.
+# DIAGNOSTIC_JOB_POLL_INTERVAL_MS=2500
+# DIAGNOSTIC_JOB_RETENTION_MS=86400000
+OPENAI_BASE_URL=https://api.openai.com/v1/responses
+OPENAI_TIMEOUT_MS=600000
+OPENAI_MAX_OUTPUT_TOKENS=16000
+OPENAI_RETRY_MAX_OUTPUT_TOKENS=24000
+# Production baseline is high. Benchmark max separately before adopting it globally (brief §5).
+OPENAI_REASONING_EFFORT=high
+SESSION_SECRET=<generate-a-long-random-secret>
+ADMIN_SECRET=<generate-a-long-random-secret>
+# Never commit these two. Set them only in the Render dashboard. The model in use always equals
+# OPENAI_MODEL — there is no hidden fallback to gpt-5.5 / gpt-5.6 / Terra / Luna.
+OPENAI_API_KEY=<paste-a-new-secret-key-in-render-only>
+OPENAI_MODEL=gpt-5.6-sol
+# Optional (defaults to 50): teacher/internal daily safety limit.
+# TEACHER_DAILY_SAFETY_LIMIT=50

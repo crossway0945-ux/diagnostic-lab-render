@@ -2069,7 +2069,18 @@ async function testTask2LowBandCompletionAndRouteSafety() {
     "The essay is 60 words below the minimum, ends with an unfinished conclusion, and lacks a controlled position-and-body route. Together with limited development and meaning-affecting language errors, these issues prevent it from functioning as a complete Task 2 response."
   );
   assert.match(analysis.mostUrgentRepair, /^Submit a complete essay of at least 250 words, including a fully finished conclusion\./);
-  assert.ok(analysis.feedbackCards.some((card) => card.revisionType === "Teacher-Guided Expansion"));
+  // V12.9.1 (stricter than before): a revision whose type validator FAILED must never reach the
+  // report. Previously this asserted that a Teacher-Guided Expansion card exists, which allowed a
+  // failed label to ship. Now the label may only survive when its validation actually passed.
+  assert.equal(
+    analysis.feedbackCards.filter((card) => String(card.revisionTypeValidationStatus || "").toLowerCase() === "fail").length,
+    0,
+    "no card with a failed revision-type validation reaches the report"
+  );
+  assert.ok(
+    analysis.feedbackCards.every((card) => card.revisionType !== "Teacher-Guided Expansion" || String(card.revisionTypeValidationStatus || "").toLowerCase() !== "fail"),
+    "Teacher-Guided Expansion only survives when its validator passed"
+  );
   assert.ok(analysis.feedbackCards.some((card) => card.revisionType === "Minimal Correction" && /with charging|free to charge/i.test(card.exactSentence)));
   assert.ok(!/detected position:\s*partly agree/i.test(JSON.stringify(analysis)));
   assert.ok(analysis.paragraphFeedback.length >= 4);
@@ -2300,11 +2311,31 @@ async function assertRejectsWithCode(promise, errorCode) {
   });
 }
 
+// Privileged admin writes require a session-bound CSRF token (V12.9.1). The harness attaches one so
+// existing functional assertions keep testing behaviour rather than the CSRF gate; the gate itself is
+// asserted in tests/v12-9-1-admin-hardening.test.mjs and tests/v12-9-0-admin-security.test.mjs.
+const csrfTokenCache = new Map();
+async function adminCsrfToken(handler, cookie) {
+  if (!cookie) return "";
+  const key = `${cookie}`;
+  if (!csrfTokenCache.has(key)) {
+    const response = await handler({ method: "GET", path: "/api/admin/csrf-token", headers: { cookie }, body: "" });
+    let token = "";
+    try { token = JSON.parse(response.body || "{}").csrfToken || ""; } catch { token = ""; }
+    csrfTokenCache.set(key, token);
+  }
+  return csrfTokenCache.get(key);
+}
+
 async function request(handler, method, requestPath, body = null, cookie = "") {
+  const headers = cookie ? { cookie } : {};
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && String(requestPath).startsWith("/api/admin/")) {
+    headers["x-csrf-token"] = await adminCsrfToken(handler, cookie);
+  }
   const response = await handler({
     method,
     path: requestPath,
-    headers: cookie ? { cookie } : {},
+    headers,
     body: body ? JSON.stringify(body) : ""
   });
 

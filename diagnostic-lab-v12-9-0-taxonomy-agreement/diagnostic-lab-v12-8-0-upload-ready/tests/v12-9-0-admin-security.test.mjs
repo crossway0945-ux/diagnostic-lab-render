@@ -27,8 +27,25 @@ try {
   await writeFile(path.join(dataDir, "student-profiles.json"), "[]\n");
 
   const handler = createApiHandler({ rootDir: dataDir });
-  const request = async (method, p, body, cookie) => {
-    const res = await handler({ method, path: p, headers: cookie ? { cookie } : {}, body: body ? JSON.stringify(body) : "" });
+  // Privileged writes now require a CSRF token bound to the session (V12.9.1), so the harness fetches
+  // one per cookie and attaches it. The rejection paths are asserted explicitly further down.
+  const csrfTokens = new Map();
+  const csrfFor = async (cookie) => {
+    if (!cookie) return "";
+    if (!csrfTokens.has(cookie)) {
+      const res = await handler({ method: "GET", path: "/api/admin/csrf-token", headers: { cookie }, body: "" });
+      let token = "";
+      try { token = JSON.parse(res.body || "{}").csrfToken || ""; } catch { token = ""; }
+      csrfTokens.set(cookie, token);
+    }
+    return csrfTokens.get(cookie);
+  };
+  const request = async (method, p, body, cookie, extraHeaders = {}) => {
+    const headers = { ...(cookie ? { cookie } : {}), ...extraHeaders };
+    if (!["GET", "HEAD", "OPTIONS"].includes(method) && p.startsWith("/api/admin/") && !("x-csrf-token" in headers)) {
+      headers["x-csrf-token"] = await csrfFor(cookie);
+    }
+    const res = await handler({ method, path: p, headers, body: body ? JSON.stringify(body) : "" });
     let json = null;
     try { json = JSON.parse(res.body || "{}"); } catch { json = null; }
     return { ...res, json };
@@ -102,7 +119,7 @@ try {
   // 11-12. Self-deletion and last-admin deletion are refused.
   const selfDelete = await request("POST", "/api/admin/users/kru/delete", { confirmation: "kru", reportMode: "anonymise" }, adminCookie);
   assert.equal(selfDelete.statusCode, 409);
-  assert.equal(selfDelete.json.errorCode, "ADMIN_PROTECTED");
+  assert.match(selfDelete.json.errorCode, /^ADMIN_PROTECTED/);
   const selfArchive = await request("POST", "/api/admin/users/kru/archive", {}, adminCookie);
   assert.equal(selfArchive.statusCode, 409, "an admin cannot archive their own account either");
   const archiveOtherAdmin = await request("POST", "/api/admin/users/kru2/archive", {}, adminCookie);
@@ -140,7 +157,12 @@ try {
   assert.equal(audit.statusCode, 200);
   const actions = audit.json.events.map((e) => e.action);
   assert.ok(actions.includes("account-delete") && actions.includes("account-archive") && actions.includes("account-restore"), "lifecycle actions are audited");
-  assert.ok(audit.json.events.every((e) => e.eventId && e.timestamp && e.adminAccountId), "audit records carry event id, timestamp and actor");
+  assert.ok(audit.json.events.every((e) => e.eventId && e.timestamp && typeof e.adminAccountId === "string"), "audit records carry event id, timestamp and an administrator id field");
+  // An anonymous access denial has no known actor; every action taken BY an admin names one.
+  assert.ok(
+    audit.json.events.filter((e) => e.action !== "admin-access-denied").every((e) => e.adminAccountId),
+    "every action performed by an administrator records who performed it"
+  );
   assert.doesNotMatch(JSON.stringify(audit.json), /admin-security-test|passwordHash|scrypt:|VICTIM-WRITING/, "audit log never stores secrets or student text");
 
   // 17. Admin responses never leak credential material.

@@ -9,7 +9,20 @@ const CAUSE_FRAME = /\b(?:cause[sd]?|reason(?:s)?|driver(?:s)?|factor(?:s)?|beca
 const PROBLEM_FRAME = /\b(?:problem(?:s)?|issue(?:s)?|difficulty|consequence(?:s)?|harm|delay(?:s)?|pollution|accident(?:s)?|traffic jam(?:s)?|pressure|burden|worsen(?:s|ed)?|negative impact)\b/i;
 const EFFECT_FRAME = /\b(?:effect(?:s)?|consequence(?:s)?|impact(?:s)?|therefore|as a result|consequently|lead(?:s)? to|result(?:s)? in|create(?:s)?|produce(?:s)?)\b/i;
 const ADVANTAGE_FRAME = /\b(?:advantage(?:s)?|benefit(?:s)?|positive (?:effect|impact|outcome)|improve(?:s|d)?|enable(?:s|d)?|opportunit(?:y|ies))\b/i;
-const DISADVANTAGE_FRAME = /\b(?:disadvantage(?:s)?|drawback(?:s)?|negative (?:effect|impact|outcome)|risk(?:s)?|cost(?:s)?|burden(?:s)?|harm(?:s|ed)?)\b/i;
+// Disadvantage recognition is SEMANTIC, not literal: a paragraph that develops harm rarely uses the
+// word "disadvantage". It covers damage/deterioration, business failure, job loss, lost public
+// revenue, loss of local services, isolation/access loss and community-wide decline. Without this,
+// a clearly developed harm paragraph scored zero and its recommendation-style closing sentence
+// ("promoting X to prevent Y") was allowed to reclassify the whole paragraph as a solution.
+const DISADVANTAGE_FRAME = new RegExp([
+  "\\b(?:disadvantage(?:s)?|drawback(?:s)?|negative (?:effect|impact|outcome)|risk(?:s)?|cost(?:s)?|burden(?:s)?|harm(?:s|ed|ful)?)\\b",
+  "\\b(?:damage(?:s|d)?|deteriorat(?:e|es|ed|ion)|decline(?:s|d)?|declining|worsen(?:s|ed|ing)?|erod(?:e|es|ed|ing)|suffer(?:s|ed|ing)?|threaten(?:s|ed|ing)?|destroy(?:s|ed)?)\\b",
+  "\\b(?:bankrupt(?:cy|ed)?|insolven(?:t|cy)|go(?:es|ing)? out of business|clos(?:e|es|ed|ing|ure)s? down|shut(?:ting)? down|business failure|forced (?:out|into))\\b",
+  "\\b(?:job (?:loss(?:es)?|cuts?)|unemploy(?:ed|ment)|redundanc(?:y|ies)|lay(?:-| )?offs?|lose (?:their )?jobs?)\\b",
+  "\\b(?:(?:reduc(?:e|es|ed|ing)|lower(?:s|ed)?|lost|loss of|falling|shrink(?:s|ing)?) (?:the )?(?:local )?(?:tax )?(?:revenue|income|funding|budget))\\b",
+  "\\b(?:isolat(?:e|es|ed|ion)|abandon(?:ed|ment)|deprive(?:s|d)?|vulnerable groups?|left behind|cut off|lack of access|reduced access)\\b",
+  "\\b(?:economic (?:decline|instability|stagnation|hardship)|rural decline|loss of (?:services?|amenities|infrastructure))\\b"
+].join("|"), "i");
 const SUPPORT_FRAME = /\b(?:i (?:strongly |firmly |fully )?agree|support(?:s|ed)?|should be|is beneficial|is essential)\b/i;
 const OPPOSE_FRAME = /\b(?:i (?:strongly |firmly |fully )?disagree|oppose(?:s|d)?|should not|is harmful|is unnecessary)\b/i;
 

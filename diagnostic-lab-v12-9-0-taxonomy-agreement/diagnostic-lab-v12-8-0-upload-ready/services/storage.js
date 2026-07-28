@@ -134,6 +134,48 @@ export function normalizeUserAccount(user = {}) {
   };
 }
 
+// Identity fields that must be emptied wherever they appear in a stored submission record, at any
+// nesting depth. Cleared rather than deleted, so the record keeps the shape old readers expect.
+const IDENTITY_FIELDS = new Set([
+  "username", "ownerAccountId", "studentProfileId", "studentDisplayNameSnapshot", "studentName",
+  "studentDisplayName", "displayName", "accountId", "userId", "email", "ownerUsername", "owner"
+]);
+// Fields that hold the student's own words, which anonymisation must remove entirely.
+const RAW_CONTENT_FIELDS = new Set([
+  "sourceInput", "studentWriting", "writing", "rawWriting", "essay", "essayText", "submittedWriting"
+]);
+
+// Deep anonymisation: walks the whole record, clears every identity field and drops every raw-writing
+// field, at top level and inside `report`, `report.canonicalAnalysis.metadata`, student-profile
+// snapshots and export metadata alike. Evidence quotations inside the analysis are the analytical
+// record itself; the `deleteEvidenceText` option removes those too when the mode requires it.
+// A bare `id` is only an identity when it sits inside a student-identity container; elsewhere it is
+// an analytical key (issue id, paragraph id) that must survive.
+const STUDENT_IDENTITY_CONTAINERS = /^(student|studentProfile|studentProfiles|profile|profiles|learner|account)$/i;
+
+export function anonymiseSubmissionRecord(record, { deleteEvidenceText = false } = {}) {
+  const walk = (value, parentKey = "") => {
+    if (Array.isArray(value)) return value.map((item) => walk(item, parentKey));
+    if (!value || typeof value !== "object") return value;
+    const insideStudentContainer = STUDENT_IDENTITY_CONTAINERS.test(String(parentKey));
+    const out = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (RAW_CONTENT_FIELDS.has(key)) continue;
+      if (IDENTITY_FIELDS.has(key) || (insideStudentContainer && /^(id|name)$/.test(key))) {
+        out[key] = typeof item === "number" ? 0 : "";
+        continue;
+      }
+      if (deleteEvidenceText && /^(exactSentence|exactEvidence|exactProblemSpan|targetedRevision|evidence|exactText)$/.test(key)) {
+        out[key] = "";
+        continue;
+      }
+      out[key] = walk(item, key);
+    }
+    return out;
+  };
+  return { ...walk(record), anonymisedAt: new Date().toISOString(), anonymisationMode: deleteEvidenceText ? "identity-and-evidence" : "identity-only" };
+}
+
 export function normalizeStatus(value) {
   const normalized = String(value || "active").toLowerCase();
   // "archived" removes an account from the default active list without deleting anything. Like
@@ -234,7 +276,7 @@ class JsonFileStorage {
 
   // Permanently removes an account's credentials and profile. Reports are handled according to the
   // admin's explicit choice (anonymise vs delete) so nothing cascades silently.
-  async deleteUser(username, { reportMode = "anonymise" } = {}) {
+  async deleteUser(username, { reportMode = "anonymise", removeEvidenceText = false } = {}) {
     return this.withLock(async () => {
       const users = await this.readUsers();
       const index = users.findIndex((user) => user.username === username);
@@ -253,9 +295,10 @@ class JsonFileStorage {
           deletedReportCount += 1;
           continue;
         }
-        // Anonymise: strip identity and the student's own writing, keep the analytical record.
-        const { username: _u, ownerAccountId: _o, studentDisplayNameSnapshot: _d, sourceInput: _s, ...rest } = record;
-        nextRecords.push({ ...rest, username: "", ownerAccountId: "", studentDisplayNameSnapshot: "", anonymisedAt: new Date().toISOString() });
+        // Anonymise: strip identity everywhere it appears — top level, nested report metadata,
+        // canonicalAnalysis metadata, student profile ids, name snapshots, source input and raw
+        // writing — and keep only the analytical record.
+        nextRecords.push(anonymiseSubmissionRecord(record, { deleteEvidenceText: removeEvidenceText === true }));
         anonymisedReportCount += 1;
       }
       const profiles = (await this.readStudentProfiles()).filter((profile) => profile.ownerAccountId !== username);

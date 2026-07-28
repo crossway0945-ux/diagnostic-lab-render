@@ -21,8 +21,51 @@ import {
 import { buildSentenceCoverageAudit } from "../domain/paragraphEvidence.js";
 import { buildStudentReportViewModel } from "../domain/reportViewModels.js";
 import { auditFeedbackIntegrity, buildFeedbackIntegrityModel, projectRouteAlignmentDisplay, validateFeedbackIntegrity } from "../domain/feedbackIntegrity.js";
-import { buildEvidenceBasedRepairPlan } from "../domain/reportConsistency.js";
-import { applyCanonicalIntegrity } from "../domain/canonicalIntegrity.js";
+import { buildCanonicalConsistencyAudit, buildEvidenceBasedRepairPlan, buildExecutiveSummaryFromIssues, normalizeConsistencyAuditRecord, paragraphDimensionStatus, summaryAlreadyAddresses } from "../domain/reportConsistency.js";
+import { applyCanonicalIntegrity, buildTopIssuesFromCanonical, issuePriorityScore } from "../domain/canonicalIntegrity.js";
+
+// G: recompute each paragraph's dimension statuses from the COMPLETE corrected issue set. A paragraph
+// may never read "Language Controlled" while a validated language issue for it survives correction.
+function rebuildParagraphCoverageFromIssues(paragraphFeedback = [], issues = [], conclusionFunction = null) {
+  if (!Array.isArray(paragraphFeedback) || !paragraphFeedback.length) return paragraphFeedback;
+  const normalise = (value) => String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+  return paragraphFeedback.map((paragraph) => {
+    const label = normalise(paragraph.paragraphLabel || paragraph.label || paragraph.paragraph);
+    const id = normalise(paragraph.paragraphId);
+    const paragraphIssues = issues.filter((issue) => {
+      if (id && normalise(issue.paragraphId) === id) return true;
+      const issueLabel = normalise(issue.paragraphLabel || issue.paragraphLocation);
+      if (!label || !issueLabel) return false;
+      return issueLabel.startsWith(label) || label.startsWith(issueLabel);
+    });
+    if (!paragraphIssues.length) return paragraph;
+    const status = paragraphDimensionStatus(paragraphIssues, paragraph.paragraphLabel || paragraph.label, paragraph.conclusionFunction || conclusionFunction);
+    // The dimensions object is the machine-readable half of the same judgement: rebuilding the status
+    // string without rebuilding the dimensions would leave a paragraph reading "Language Repair
+    // Needed" while its language dimension still said "controlled".
+    return {
+      ...paragraph,
+      status,
+      dimensions: paragraphDimensionsFromStatus(status, paragraph.dimensions),
+      issueIds: paragraphIssues.map((issue) => issue.issueId).filter(Boolean)
+    };
+  });
+}
+
+// Derives the four canonical dimensions from the rebuilt status string, so status and dimensions can
+// never disagree. "Functionally Strong — Language Repair Needed" (the conclusion form) is handled by
+// the same rules: any dimension the status does not mark as repair-needed is controlled.
+function paragraphDimensionsFromStatus(status = "", previous = {}) {
+  const text = String(status);
+  const needs = (label) => new RegExp(`${label} Repair Needed`).test(text);
+  return {
+    ...(previous && typeof previous === "object" ? previous : {}),
+    route: needs("Route") ? "repair-needed" : "controlled",
+    development: needs("Development") ? "repair-needed" : "controlled",
+    example: needs("Example/SAR") ? "repair-needed" : "controlled",
+    language: needs("Language") ? "repair-needed" : "controlled"
+  };
+}
 import { repairDeterministicEvidenceDefects } from "../domain/evidenceAssertions.js";
 import { assertUnicodeIntegrity, normalizeVisibleTree } from "../domain/textIntegrity.js";
 export {
@@ -3790,18 +3833,161 @@ function normalizeAnalysis(analysis, payload) {
         issues: studentFeedbackCards,
         topIssues: studentTopIssues,
         executiveSummary: { mainScoreLimitingFactor: normalized.mainScoreLimitingFactor, mostUrgentRepair: normalized.mostUrgentRepair },
-        routePresent: !["absent", "contradicted"].includes(String(normalized.routeAssessment?.status || normalized.routeAssessment?.overallRouteStatus || ""))
+        routePresent: !["absent", "contradicted"].includes(String(normalized.routeAssessment?.status || normalized.routeAssessment?.overallRouteStatus || "")),
+        // Validated language evidence feeds candidate promotion so meaning-affecting errors are not
+        // dropped and one local repair cannot dominate the report (defect F).
+        languageProfile: normalized.languageProfile || null,
+        // Canonical development evidence (comparison not demonstrated, undeveloped thesis promise,
+        // affected-group/mechanism gap, unclear local reference) is promoted ahead of language
+        // repairs so the report leads with the task-level limitation.
+        developmentEvidence: payload.task2Safety?.canonicalDevelopmentEvidence || null,
+        maxPromotions: 8,
+        reportLanguage: payload.reportLanguage
       });
   if (canonicalIntegrity.executiveSummary?.mainScoreLimitingFactor) {
     normalized.mainScoreLimitingFactor = canonicalIntegrity.executiveSummary.mainScoreLimitingFactor;
   }
+  // The Executive Summary was built before promotion, so it can still name a local repair while a
+  // higher-priority task-level defect now exists. Rebuild it from the corrected canonical set, but
+  // only when promotion actually introduced a defect that outranks the one already named.
+  if (payload.taskType !== "Task 1") {
+    const rebuiltSummary = buildExecutiveSummaryFromIssues(canonicalIntegrity.issues);
+    const promotedLead = (canonicalIntegrity.issues || []).some((issue) =>
+      issue.promoted && (issue.issueId === rebuiltSummary?.leadIssueId));
+    // If the engine's own summary already names this limitation, its wording is kept.
+    const alreadyAddressed = rebuiltSummary && (
+      summaryAlreadyAddresses(normalized.mostUrgentRepair, rebuiltSummary.leadIssueCategory) ||
+      summaryAlreadyAddresses(normalized.mainScoreLimitingFactor, rebuiltSummary.leadIssueCategory)
+    );
+    if (rebuiltSummary && promotedLead && !alreadyAddressed) {
+      normalized.mainScoreLimitingFactor = rebuiltSummary.mainScoreLimitingFactor;
+      normalized.mostUrgentRepair = rebuiltSummary.mostUrgentRepair;
+      normalized.topRepairPriority = rebuiltSummary.mostUrgentRepair;
+    }
+  }
+  // G + H: Paragraph Coverage, Top Issues and the Repair Plan are rebuilt from the CORRECTED canonical
+  // issue set (after promotion, dedupe and prioritisation) rather than the pre-correction set, so
+  // promoted evidence reaches every section and no single local repair can fill the whole report.
+  const correctedCards = canonicalIntegrity.issues;
+  // Top Issues: keep every selection the engine already made (re-linked to its corrected card), then
+  // ADD promoted canonical evidence until the slot budget is used. Promoted findings therefore reach
+  // the summary without displacing issues the engine deliberately surfaced.
+  let correctedTopIssues = studentTopIssues;
+  if (payload.taskType !== "Task 1") {
+    const relinked = canonicalIntegrity.topIssues || [];
+    const budget = Math.min(5, Math.max(3, relinked.length));
+    const merged = [...relinked];
+    for (const candidate of buildTopIssuesFromCanonical(correctedCards, canonicalIntegrity.prioritised || [], 5)) {
+      if (merged.length >= budget) break;
+      if (merged.some((item) => item.feedbackCardId === candidate.feedbackCardId)) continue;
+      merged.push(candidate);
+    }
+    // Merging preserves every engine selection, but the visible order must still follow the shared
+    // canonical priority — otherwise a Moderate local repair the engine happened to surface first
+    // would outrank a Major task-level defect in Top Issues.
+    if (merged.length) {
+      correctedTopIssues = merged.slice().sort((a, b) => {
+        const cardA = correctedCards[Number(String(a.feedbackCardId).slice(5)) - 1];
+        const cardB = correctedCards[Number(String(b.feedbackCardId).slice(5)) - 1];
+        return issuePriorityScore(cardA) - issuePriorityScore(cardB);
+      });
+    }
+  }
+  const canonicalConclusionFunction = feedbackIntegrity.conclusionFunction || null;
+  const correctedParagraphFeedback = payload.taskType === "Task 1"
+    ? studentParagraphFeedback
+    : rebuildParagraphCoverageFromIssues(studentParagraphFeedback, correctedCards, canonicalConclusionFunction);
+  // The rendered coverage is read from analysis.feedbackIntegrity.paragraphCoverage (canonicalAnalysis
+  // line 75/205), so that is the authoritative list to recompute. No new keys are introduced — the
+  // report field set stays exactly as validated.
+  if (payload.taskType !== "Task 1") {
+    if (Array.isArray(normalized.paragraphCoverage)) {
+      normalized.paragraphCoverage = rebuildParagraphCoverageFromIssues(normalized.paragraphCoverage, correctedCards, canonicalConclusionFunction);
+    }
+    if (Array.isArray(normalized.feedbackIntegrity?.paragraphCoverage)) {
+      normalized.feedbackIntegrity.paragraphCoverage = rebuildParagraphCoverageFromIssues(normalized.feedbackIntegrity.paragraphCoverage, correctedCards, canonicalConclusionFunction);
+    }
+  }
+  // Rebuild through the SAME builder + localiser that produced the original plan, so English and Thai
+  // stay consistent with each other and with the corrected canonical issues.
+  const correctedRepairPlan = payload.taskType === "Task 1"
+    ? studentPracticePlan
+    : localizePracticePlan(
+        buildEvidenceBasedRepairPlan(correctedCards, payload.reportLanguage, 7, { visualType: payload.visualType }),
+        payload
+      );
+
+  // C. Canonical cross-section consistency gate. Runs AFTER canonical route and issue reconciliation
+  // and BEFORE the Student View and the PDF are rendered, so every visible section inherits one
+  // reconciled set of canonical objects. It writes only to fields the report schema already defines —
+  // `feedbackIntegrity.consistencyAudit`, the framework score cards, the paragraph coverage list and
+  // the criterion diagnoses. No top-level report key is added: validateReportOutput rejects unknown
+  // fields with 502 REPORT_OUTPUT_VALIDATION_FAILED. The frozen band ranges are never touched.
+  if (payload.taskType !== "Task 1") {
+    // The framework statuses live in two projections that must stay identical: the canonical
+    // camelCase assessment (`canonicalTask2Analysis.frameworkAssessment`) and the display-named
+    // reconciliation (`feedbackIntegrity.frameworkScores`), which wins when the visible display is
+    // projected. The gate is given both so a repair cannot land on one and leave the other stale.
+    const canonicalFramework = normalized.canonicalTask2Analysis?.frameworkAssessment || {};
+    const integrityFramework = normalized.feedbackIntegrity?.frameworkScores || {};
+    const gate = buildCanonicalConsistencyAudit({
+      taskRequirements: payload.task2Safety?.canonicalAnalysis?.taskRequirements || null,
+      routeAssessment: normalized.routeAssessment || {},
+      taskAwareRouteModel: normalized.routeAssessment?.taskAwareRouteModel || payload.task2Safety?.routeAssessment?.taskAwareRouteModel || null,
+      thesisDimensions: normalized.feedbackIntegrity?.thesisDimensions || normalized.thesisDimensions || null,
+      frozenScoring: { criteriaScores: normalized.criteriaScores, repairs: feedbackIntegrity.repairs || [] },
+      frameworkScores: { ...canonicalFramework, ...integrityFramework, display: normalized.kruPomScores || {} },
+      paragraphCoverage: normalized.feedbackIntegrity?.paragraphCoverage || normalized.paragraphCoverage || [],
+      issues: correctedCards,
+      languageProfile: normalized.languageProfile || null,
+      criteriaScores: normalized.criteriaScores || {},
+      executiveSummary: { mainScoreLimitingFactor: normalized.mainScoreLimitingFactor, mostUrgentRepair: normalized.mostUrgentRepair },
+      repairPlan: correctedRepairPlan,
+      studentView: { topIssues: correctedTopIssues, feedbackCards: correctedCards },
+      conclusionFunction: canonicalConclusionFunction,
+      existingAudit: normalized.feedbackIntegrity?.consistencyAudit || []
+    });
+    // Write each repaired dimension back to the container it came from, so both projections carry the
+    // reconciled value and nothing outside the schema is introduced.
+    for (const [key, value] of Object.entries(gate.frameworkScores)) {
+      if (key === "display") continue;
+      if (Object.prototype.hasOwnProperty.call(canonicalFramework, key)) canonicalFramework[key] = value;
+      if (Object.prototype.hasOwnProperty.call(integrityFramework, key)) integrityFramework[key] = value;
+    }
+    if (gate.frameworkScores.display) normalized.kruPomScores = gate.frameworkScores.display;
+    normalized.criteriaScores = gate.criteriaScores;
+    if (Array.isArray(normalized.feedbackIntegrity?.paragraphCoverage)) {
+      normalized.feedbackIntegrity.paragraphCoverage = gate.paragraphCoverage;
+    }
+    if (Array.isArray(normalized.paragraphCoverage)) {
+      normalized.paragraphCoverage = gate.paragraphCoverage;
+    }
+    for (const paragraph of gate.paragraphCoverage) {
+      const target = correctedParagraphFeedback.find((item) =>
+        String(item.paragraphLabel || item.label || "") === String(paragraph.paragraphLabel || ""));
+      if (target) {
+        target.status = paragraph.status;
+        target.dimensions = paragraph.dimensions;
+      }
+    }
+    // Persist at the existing schema path. `consistencyAudit` already exists on the canonical
+    // feedback-integrity model, so this replaces an empty list rather than introducing a field.
+    if (normalized.feedbackIntegrity) {
+      const legacy = Array.isArray(normalized.feedbackIntegrity.consistencyAudit) ? normalized.feedbackIntegrity.consistencyAudit : [];
+      normalized.feedbackIntegrity.consistencyAudit = [
+        ...legacy.map((entry, index) => normalizeConsistencyAuditRecord(entry, index + 1)).filter(Boolean),
+        ...gate.audit
+      ];
+    }
+  }
+
   const canonicalAnalysis = buildCanonicalAnalysis({
     payload,
     analysis: normalized,
-    feedbackCards: canonicalIntegrity.issues,
-    topIssues: canonicalIntegrity.topIssues.length ? canonicalIntegrity.topIssues : studentTopIssues,
-    paragraphFeedback: studentParagraphFeedback,
-    repairPlan: studentPracticePlan
+    feedbackCards: correctedCards,
+    topIssues: correctedTopIssues.length ? correctedTopIssues : studentTopIssues,
+    paragraphFeedback: correctedParagraphFeedback,
+    repairPlan: correctedRepairPlan.length === 7 ? correctedRepairPlan : studentPracticePlan
   });
   const projected = normalizeVisibleTree(projectCanonicalAnalysis(canonicalAnalysis, normalized));
   assertUnicodeIntegrity(JSON.stringify(projected));

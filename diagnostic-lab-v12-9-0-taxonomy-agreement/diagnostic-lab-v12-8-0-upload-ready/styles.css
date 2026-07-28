@@ -2823,3 +2823,56 @@ blockquote {
 /* Admin destructive action */
 .ghost-button.danger { color: #a12b2b; border-color: rgba(161,43,43,0.45); }
 .ghost-button.danger:hover { background: rgba(161,43,43,0.08); }
+
+/* V12.9.1 — admin list controls, pagination and audit-log panel. */
+.admin-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 12px 0 16px;
+}
+.admin-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #6b6357;
+}
+.admin-filter input,
+.admin-filter select {
+  min-width: 150px;
+  font-size: 0.9rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.admin-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 14px;
+  font-size: 0.88rem;
+  color: #4c463d;
+}
+.admin-pagination button[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.status-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #efe7db;
+  color: #6b5b3e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+#admin-audit-body code {
+  font-size: 0.76rem;
+  word-break: break-word;
+}

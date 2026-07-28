@@ -285,7 +285,10 @@ loginForm.addEventListener("submit", async (event) => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         username: loginUsername.value.trim(),
-        password: loginPassword.value
+        password: loginPassword.value,
+        // Carry the requested destination (e.g. ?next=/admin) so the server can decide, AFTER
+        // verifying the role it requires, whether to send the user there.
+        next: new URLSearchParams(window.location.search).get("next") || ""
       })
     });
     const result = await readJsonResponse(response, "Username or password is incorrect. Please contact Kru Pom IELTS.");
@@ -296,6 +299,11 @@ loginForm.addEventListener("submit", async (event) => {
 
     loginPassword.value = "";
     setAuthenticatedUser(result.user);
+    // The server returns a destination only when it verified the role that destination requires.
+    if (result.redirectTo) {
+      window.location.assign(result.redirectTo);
+      return;
+    }
     showSection("start");
   } catch (error) {
     loginError.textContent = error.message || "Username or password is incorrect. Please contact Kru Pom IELTS.";

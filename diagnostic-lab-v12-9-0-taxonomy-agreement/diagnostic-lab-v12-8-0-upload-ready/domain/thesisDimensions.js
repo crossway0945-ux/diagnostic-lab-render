@@ -169,8 +169,13 @@ function routePresentInIntroduction(route, roleRecords, introductionText) {
     answer_1: ["answer_to_question_1", "thesis_route"],
     answer_2: ["answer_to_question_2", "thesis_route"],
     reason: ["thesis_route", "cause_route", "position"],
-    advantage: ["thesis_route"],
-    disadvantage: ["thesis_route"],
+    // An outweigh thesis normally names both sides INSIDE the position sentence
+    // ("While this trend offers X, I believe its disadvantages far outweigh the advantages"), so that
+    // sentence classifies as `position`, not `thesis_route`. Requiring `thesis_route` alone recorded
+    // both routes as absent while the route assessment recorded them as present — the same
+    // recognition-too-narrow defect fixed in the paragraph route model.
+    advantage: ["thesis_route", "position"],
+    disadvantage: ["thesis_route", "position"],
     effect: ["thesis_route", "consequence", "cause_route"]
   };
   const lexicalMap = {
@@ -182,8 +187,10 @@ function routePresentInIntroduction(route, roleRecords, introductionText) {
     answer_1: /\b(?:first|one reason|main reason|because|is that)\b/i,
     answer_2: /\b(?:second|another|whereas|while|also)\b/i,
     reason: /\b(?:reason|because|since|due to)\b/i,
-    advantage: /\b(?:advantage|benefit|positive)\b/i,
-    disadvantage: /\b(?:disadvantage|drawback|negative)\b/i,
+    // Semantic recognition, consistent with the paragraph route model: a thesis can name a benefit or
+    // a harm without using the label word.
+    advantage: /\b(?:advantages?|benefits?|positives?|gains?|offers?|provides?|greater\s+\w+|convenien\w+|efficien\w+|cheaper|lower\s+(?:prices?|costs?))\b/i,
+    disadvantage: /\b(?:disadvantages?|drawbacks?|negatives?|risks?|costs?|harms?|damage|decline|degradation|deterioration|loss(?:es)?|bankrupt\w*|unemployment|isolat\w+|shortages?)\b/i,
     effect: /\b(?:effect|result|consequence|lead to)\b/i
   };
   return (roleMap[route] || []).some((role) => primaryRoles.includes(role)) && (lexicalMap[route]?.test(text) ?? true);

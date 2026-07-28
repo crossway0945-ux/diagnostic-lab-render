@@ -106,35 +106,51 @@ diagnosticsButtons.storage?.addEventListener("click", () => runDiagnostic("Stora
 diagnosticsButtons.jobs?.addEventListener("click", () => runDiagnostic("Job queue status", "/api/admin/diagnostics/job-queue-status", "GET"));
 
 // ---- Account lifecycle: archive / restore / permanent delete (admin only, server-enforced) ----
+// Permanent Delete stays gated until the owner enables it, because it is the one action with no
+// recovery path. The gate is a build-time constant, not a user preference, so it cannot be clicked
+// open by accident. Set to true only after the destructive-action safety suite has been run against
+// the deployed environment.
+export const PERMANENT_DELETE_ENABLED = false;
+
 async function accountAction(username, action) {
   const body = {};
   if (action === "delete") {
+    if (!PERMANENT_DELETE_ENABLED) {
+      window.alert(
+        "Permanent Delete is unavailable in this release.\n\n" +
+        "Use Archive to take the account out of service (reversible), then enable Permanent Delete " +
+        "once the destructive-action safety checks have been run in this environment."
+      );
+      return;
+    }
     const confirmation = window.prompt(`PERMANENT DELETE — this cannot be undone.\n\nType the username "${username}" exactly to confirm:`);
     if (!confirmation) return;
     body.confirmation = confirmation;
     body.reportMode = window.confirm(
       "Click OK to DELETE this account's reports as well.\n\nClick Cancel to KEEP the reports in anonymised form (identity and writing removed)."
     ) ? "delete" : "anonymise";
-  } else if (action === "archive" && !window.confirm(`Archive "${username}"? The account is hidden from the active list and cannot sign in, but nothing is deleted and it can be restored.`)) {
+    if (body.reportMode === "anonymise") {
+      body.removeEvidenceText = window.confirm(
+        "Also remove the quoted sentences from the retained reports?\n\n" +
+        "OK removes every quotation of the student's writing and keeps only the statistics.\n" +
+        "Cancel keeps the quoted evidence so the anonymised reports remain diagnostically useful."
+      );
+    }
+  } else if (action === "archive" && !window.confirm(`Archive "${username}"? The account is hidden from the active list, cannot sign in, and its sessions are revoked — but nothing is deleted and it can be restored.`)) {
     return;
   }
   try {
-    const response = await fetch(`/api/admin/users/${encodeURIComponent(username)}/${action}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    const result = await response.json();
-    if (!response.ok || !result.ok) {
-      window.alert(result.error || `Action failed (${result.errorCode || response.status}).`);
-      return;
-    }
+    const result = await apiPost(`/api/admin/users/${encodeURIComponent(username)}/${action}`, body);
     if (action === "delete") {
-      window.alert(`Deleted "${username}". Reports deleted: ${result.deletedReportCount || 0}; anonymised: ${result.anonymisedReportCount || 0}.`);
+      window.alert(
+        `Deleted "${username}".\nReports deleted: ${result.deletedReportCount || 0}; anonymised: ${result.anonymisedReportCount || 0}.\n` +
+        `QA snapshots removed: ${result.removedSnapshots || 0} of ${(result.qaSnapshotIds || []).length}.\n` +
+        `Orphaned records remaining: ${(result.orphanedRecords || []).length}.`
+      );
     }
     if (typeof loadUsers === "function") loadUsers();
-  } catch {
-    window.alert("Action failed. Please try again.");
+  } catch (error) {
+    window.alert(error.message || "Action failed. Please try again.");
   }
 }
 
@@ -248,13 +264,17 @@ usersBody.addEventListener("click", async (event) => {
       showToast(`Account ${action}d.`);
     } else if (action === "save") {
       const row = button.closest("tr");
-      await apiPatch(`/api/admin/users/${encodeURIComponent(username)}`, {
+      const statusField = row.querySelector("[data-field='status']");
+      const patch = {
         displayName: row.querySelector("[data-field='displayName']").value,
         role: row.querySelector("[data-field='role']").value,
-        status: row.querySelector("[data-field='status']").value,
         quotaLimit: Number(row.querySelector("[data-field='quotaLimit']").value || 0),
         expiryDate: row.querySelector("[data-field='expiryDate']").value
-      });
+      };
+      // An archived row has no status control, so Save cannot silently un-archive it. Restore is the
+      // only route back, and it records its own audit event.
+      if (statusField) patch.status = statusField.value;
+      await apiPatch(`/api/admin/users/${encodeURIComponent(username)}`, patch);
       showToast("Account updated.");
     }
     await loadUsers();
@@ -263,10 +283,129 @@ usersBody.addEventListener("click", async (event) => {
   }
 });
 
-async function loadUsers() {
-  const result = await apiGet("/api/admin/users");
-  usersBody.innerHTML = result.users.map(renderUserRow).join("");
+// ---- User list controls: search, status/role filter, sort, page size, paging -------------------
+// The API already supports every control; these are the UI bindings. The default view is ACTIVE
+// users only, so archived accounts never clutter the table.
+const userControls = {
+  search: document.querySelector("#user-search"),
+  status: document.querySelector("#user-status-filter"),
+  role: document.querySelector("#user-role-filter"),
+  sort: document.querySelector("#user-sort"),
+  pageSize: document.querySelector("#user-page-size"),
+  prev: document.querySelector("#user-prev-page"),
+  next: document.querySelector("#user-next-page"),
+  indicator: document.querySelector("#user-page-indicator"),
+  count: document.querySelector("#user-result-count")
+};
+let userPage = 1;
+
+function userQueryString() {
+  const params = new URLSearchParams();
+  params.set("status", userControls.status?.value || "active");
+  if (userControls.role?.value) params.set("role", userControls.role.value);
+  if (userControls.search?.value.trim()) params.set("q", userControls.search.value.trim());
+  params.set("sort", userControls.sort?.value || "newest");
+  params.set("pageSize", userControls.pageSize?.value || "25");
+  params.set("page", String(userPage));
+  return params.toString();
 }
+
+async function loadUsers() {
+  const result = await apiGet(`/api/admin/users?${userQueryString()}`);
+  usersBody.innerHTML = result.users.map(renderUserRow).join("");
+  if (userControls.indicator) userControls.indicator.textContent = `Page ${result.page} of ${result.totalPages}`;
+  if (userControls.count) userControls.count.textContent = `${result.total} result${result.total === 1 ? "" : "s"}`;
+  if (userControls.prev) userControls.prev.disabled = result.page <= 1;
+  if (userControls.next) userControls.next.disabled = result.page >= result.totalPages;
+}
+
+const reloadFromFirstPage = () => {
+  userPage = 1;
+  loadUsers().catch((error) => showError(error.message));
+};
+userControls.search?.addEventListener("input", debounce(reloadFromFirstPage, 250));
+for (const control of [userControls.status, userControls.role, userControls.sort, userControls.pageSize]) {
+  control?.addEventListener("change", reloadFromFirstPage);
+}
+userControls.prev?.addEventListener("click", () => {
+  if (userPage > 1) {
+    userPage -= 1;
+    loadUsers().catch((error) => showError(error.message));
+  }
+});
+userControls.next?.addEventListener("click", () => {
+  userPage += 1;
+  loadUsers().catch((error) => showError(error.message));
+});
+
+function debounce(fn, wait) {
+  let timer = null;
+  return (...args) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
+// ---- Admin audit log panel ---------------------------------------------------------------------
+const auditControls = {
+  refresh: document.querySelector("#audit-refresh"),
+  search: document.querySelector("#audit-search"),
+  action: document.querySelector("#audit-action-filter"),
+  result: document.querySelector("#audit-result-filter"),
+  body: document.querySelector("#admin-audit-body"),
+  prev: document.querySelector("#audit-prev-page"),
+  next: document.querySelector("#audit-next-page"),
+  indicator: document.querySelector("#audit-page-indicator"),
+  count: document.querySelector("#audit-result-count")
+};
+let auditPage = 1;
+
+async function loadAuditLog() {
+  if (!auditControls.body) return;
+  const params = new URLSearchParams();
+  if (auditControls.search?.value.trim()) params.set("q", auditControls.search.value.trim());
+  if (auditControls.action?.value) params.set("action", auditControls.action.value);
+  if (auditControls.result?.value) params.set("result", auditControls.result.value);
+  params.set("page", String(auditPage));
+  params.set("pageSize", "50");
+  const data = await apiGet(`/api/admin/audit-log?${params.toString()}`);
+  auditControls.body.innerHTML = (data.events || []).map((event) => `<tr>
+    <td>${escapeHtml(event.timestamp || "")}</td>
+    <td>${escapeHtml(event.action || "")}</td>
+    <td>${escapeHtml(event.adminAccountId || "-")}</td>
+    <td>${escapeHtml(event.targetId || "-")}</td>
+    <td>${escapeHtml(event.result || "")}</td>
+    <td><code>${escapeHtml(JSON.stringify(event.metadata || {}))}</code></td>
+  </tr>`).join("");
+  if (auditControls.action && Array.isArray(data.actions)) {
+    const selected = auditControls.action.value;
+    auditControls.action.innerHTML = `<option value="">All actions</option>${data.actions
+      .map((action) => `<option value="${escapeHtml(action)}"${action === selected ? " selected" : ""}>${escapeHtml(action)}</option>`).join("")}`;
+  }
+  if (auditControls.indicator) auditControls.indicator.textContent = `Page ${data.page} of ${data.totalPages}`;
+  if (auditControls.count) auditControls.count.textContent = `${data.total} event${data.total === 1 ? "" : "s"}${data.durable ? " (durable)" : ""}`;
+  if (auditControls.prev) auditControls.prev.disabled = data.page <= 1;
+  if (auditControls.next) auditControls.next.disabled = data.page >= data.totalPages;
+}
+
+const reloadAuditFromFirstPage = () => {
+  auditPage = 1;
+  loadAuditLog().catch((error) => showError(error.message));
+};
+auditControls.refresh?.addEventListener("click", reloadAuditFromFirstPage);
+auditControls.search?.addEventListener("input", debounce(reloadAuditFromFirstPage, 250));
+auditControls.action?.addEventListener("change", reloadAuditFromFirstPage);
+auditControls.result?.addEventListener("change", reloadAuditFromFirstPage);
+auditControls.prev?.addEventListener("click", () => {
+  if (auditPage > 1) {
+    auditPage -= 1;
+    loadAuditLog().catch((error) => showError(error.message));
+  }
+});
+auditControls.next?.addEventListener("click", () => {
+  auditPage += 1;
+  loadAuditLog().catch((error) => showError(error.message));
+});
 
 function renderUserRow(user) {
   const quota = user.quotaMode === "unlimited"
@@ -284,11 +423,12 @@ function renderUserRow(user) {
       </select>
     </td>
     <td>
-      <select data-field="status">
+      ${String(user.status || "").toLowerCase() === "archived"
+        ? `<span class="status-pill">archived</span>`
+        : `<select data-field="status">
         ${option("active", user.status)}
         ${option("inactive", user.status)}
-        ${option("archived", user.status)}
-      </select>
+      </select>`}
     </td>
     <td><input data-field="quotaLimit" type="number" min="0" value="${escapeHtml(user.quotaLimit ?? user.totalQuota ?? user.quota ?? 0)}"><small>${quota}</small></td>
     <td><input data-field="expiryDate" type="date" value="${escapeHtml(user.expiryDate || "")}"></td>
@@ -315,24 +455,45 @@ function option(value, current) {
   return `<option value="${value}"${value === current ? " selected" : ""}>${value}</option>`;
 }
 
+// ---- CSRF -------------------------------------------------------------------------------------
+// Every privileged write carries a token the server issued for this session. The token is fetched
+// once, cached, and re-fetched automatically if the server reports it expired.
+let csrfToken = "";
+async function ensureCsrfToken(force = false) {
+  if (csrfToken && !force) return csrfToken;
+  const response = await fetch("/api/admin/csrf-token");
+  const data = await response.json().catch(() => ({}));
+  csrfToken = data.csrfToken || "";
+  return csrfToken;
+}
+
 async function apiGet(url) {
   return readJson(await fetch(url), "Request failed.");
 }
 
+async function apiWrite(method, url, body) {
+  const send = async () => fetch(url, {
+    method,
+    headers: { "content-type": "application/json", "x-csrf-token": await ensureCsrfToken() },
+    body: JSON.stringify(body ?? {})
+  });
+  let response = await send();
+  if (response.status === 403) {
+    const retryData = await response.clone().json().catch(() => ({}));
+    if (retryData.errorCode === "CSRF_REJECTED") {
+      await ensureCsrfToken(true);
+      response = await send();
+    }
+  }
+  return readJson(response, "Request failed.");
+}
+
 async function apiPost(url, body) {
-  return readJson(await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
-  }), "Request failed.");
+  return apiWrite("POST", url, body);
 }
 
 async function apiPatch(url, body) {
-  return readJson(await fetch(url, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
-  }), "Request failed.");
+  return apiWrite("PATCH", url, body);
 }
 
 async function readJson(response, fallback) {

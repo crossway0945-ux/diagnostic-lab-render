@@ -5,6 +5,8 @@ import {
   buildTaskAwareRouteModel
 } from "./task2RouteModel.js";
 import { validateSentenceCompleteness } from "./sentenceCompleteness.js";
+import { segmentStudentResponse } from "./paragraphEvidence.js";
+import { assessCanonicalDevelopmentEvidence } from "./canonicalDevelopmentEvidence.js";
 
 const POSITION_PATTERN = /\b(?:i\s+(?:(strongly|firmly|completely|fully|heavily|generally|partly|partially|consequently|therefore|ultimately)\s+)?(agree|disagree)|in my (?:view|opinion)[^.!?]{0,80}\b(agree|disagree)|i believe[^.!?]{0,80}\b(?:should|must|ought|outweigh|more (?:important|significant|beneficial)))\b/i;
 const SUPPORT_PATTERN = /\b(?:agree|support|benefit|advantage|basic right|human right|should (?:receive|be provided)|free of charge|without (?:a )?charge|protect|improve|enable|allow|essential)\b/i;
@@ -247,6 +249,21 @@ export function analyzeTask2Safety(payload = {}) {
     routeAssessment,
     concessionStatus
   });
+  // Canonical development evidence: whether the comparative judgement was demonstrated, whether
+  // every thesis promise was developed, and whether local reference and affected-group transitions
+  // stay traceable. Derived from segmented paragraphs and the prompt obligations, never from scores.
+  const canonicalDevelopmentEvidence = assessCanonicalDevelopmentEvidence({
+    taskType: "Task 2",
+    prompt: payload.prompt,
+    paragraphs: segmentStudentResponse(writing, "Task 2"),
+    taskRequirements: {
+      stanceRequired,
+      requiredRoutes: classification.requiredRoutes,
+      promptObligations: classification.promptObligations
+    },
+    bodyRoutes: routeAssessment.bodyRoutes,
+    detectedPosition
+  });
   const shortBodyParagraphs = classifyShortBodyParagraphs(bodyParagraphs, wordMetadata);
   const severeUnderLength = wordMetadata.wordShortfall >= 40;
   const directQuestionMissingPart = essayRoute === TASK2_PUBLIC_FAMILIES.DIRECT_QUESTION && routeAssessment.missingRequirements.length > 0;
@@ -405,6 +422,7 @@ export function analyzeTask2Safety(payload = {}) {
     languageProfile,
     languageAccuracyRisk,
     developmentRisk,
+    canonicalDevelopmentEvidence,
     shortBodyParagraphs,
     essayRoute: [TASK2_INTERNAL_SUBTYPES.STANDARD, TASK2_INTERNAL_SUBTYPES.MULTI_QUESTION].includes(internalSubtype) ? essayRoute : internalSubtype,
     internalSubtype,
@@ -1718,8 +1736,26 @@ function classifyOutweighBodyRoute(paragraph) {
   return "route unclear from the controlling sentences";
 }
 
+// Semantic harm propositions. A disadvantage paragraph rarely uses the word "disadvantage": it
+// develops damage, business failure, job loss, lost public revenue, loss of services or isolation.
+// Shared by the controlling-sentence check and the signal counter so both read the same evidence.
+const SEMANTIC_HARM_PATTERNS = [
+  /\b(?:damage|deteriorat\w*|declin\w*|worsen\w*|erod\w*|suffer\w*|threaten\w*|destroy\w*|inflict\w*)\b/i,
+  /\b(?:bankrupt\w*|insolven\w*|closure|clos(?:e|es|ing) down|shut down|business failure|forced (?:out|into))\b/i,
+  /\b(?:job (?:loss\w*|cuts?)|unemploy\w*|redundanc\w*|lay(?:-| )?offs?|lose (?:their )?jobs?)\b/i,
+  /\b(?:reduc\w*|lower\w*|lost|loss of|falling|shrink\w*)\s+(?:the\s+)?(?:local\s+)?(?:tax\s+)?(?:revenue|income|funding|budget|services?)\b/i,
+  /\b(?:isolat\w*|abandon\w*|depriv\w*|vulnerable groups?|left behind|cut off|lack of access|reduced access)\b/i,
+  /\b(?:economic (?:decline|instability|stagnation|hardship)|rural decline)\b/i
+];
+
+function countSemanticHarmSignals(sentence) {
+  return SEMANTIC_HARM_PATTERNS.reduce((total, pattern) => total + (pattern.test(sentence) ? 1 : 0), 0);
+}
+
 function hasExplicitDisadvantageControl(sentence) {
-  return /\b(?:main|major|principal|significant|serious|primary)?\s*(?:disadvantage|drawback|risk|problem|challenge)\b|\b(?:heavy|considerable|extreme|significant)\s+(?:burden|pressure)\b/i.test(sentence);
+  if (/\b(?:main|major|principal|significant|serious|primary)?\s*(?:disadvantage|drawback|risk|problem|challenge)\b|\b(?:heavy|considerable|extreme|significant)\s+(?:burden|pressure)\b/i.test(sentence)) return true;
+  // A controlling sentence that asserts harm establishes the disadvantage route even without the label.
+  return countSemanticHarmSignals(sentence) >= 1;
 }
 
 function hasExplicitAdvantageControl(sentence) {
@@ -1749,7 +1785,8 @@ function countOutweighDisadvantageRouteSignals(sentence) {
     /\b(?:youth )?unemployment\b|\bdifficult\s+to\s+(?:find|secure|obtain)\s+(?:a\s+)?job\b/i,
     /\b(?:damage|weaken|undermine|reduce)\w*\s+(?:a country'?s\s+)?employment stability\b/i,
     /\bfuture age?ing crisis\b|\bretirement (?:burden|pressure)\b|\beconomic and social(?:ietal)? strain\b|\bshrinking workforce\b/i,
-    /\blimit(?:s|ed|ing)?\s+(?:children'?s\s+)?(?:sociali[sz]ation|communication|development)\b/i
+    /\blimit(?:s|ed|ing)?\s+(?:children'?s\s+)?(?:sociali[sz]ation|communication|development)\b/i,
+    ...SEMANTIC_HARM_PATTERNS
   ];
   return countSemanticSignals(sentence, patterns);
 }
@@ -2788,12 +2825,41 @@ export function deriveDeterministicTask2CriterionRanges(safety = {}) {
   const lexicalRange = languageCriterionRange(profile.overallLexicalControl, developmentLimitsUpperBand);
   const grammarRange = languageCriterionRange(profile.overallGrammarControl, developmentLimitsUpperBand);
   const coherenceLanguageLimiter = Boolean(profile.sentenceCompletionErrors?.length);
+  // Canonical development limiters. A present route is no longer, on its own, evidence of a secure
+  // Band 6.5-7.0 Task Response: an outweigh question that is answered but never demonstrated, or a
+  // thesis promise that no body develops, is a genuine task-response limitation. Each limiter is
+  // derived from canonical evidence with an exact sentence attached — never from a card count.
+  const development = safety.canonicalDevelopmentEvidence || {};
+  const taskResponseLimiterCount = (development.taskResponseLimiters || []).length;
+  const coherenceLimiterCount = (development.coherenceLimiters || []).length;
+  const baseTaskResponse = safety.underLength || partial ? "6.0-6.5" : "6.5";
+  const baseCoherence = partial || coherenceLanguageLimiter ? "6.0-6.5" : "6.5-7.0";
   return {
-    "Task Response": critical ? "4.0" : serious || failed ? "5.0-5.5" : safety.underLength || partial ? "6.0-6.5" : "6.5",
-    "Coherence & Cohesion": critical ? "5.0-5.5" : safety.unfinishedEndingDetected || failed ? "5.0-5.5" : partial || coherenceLanguageLimiter ? "6.0-6.5" : "6.5-7.0",
+    "Task Response": critical
+      ? "4.0"
+      : serious || failed
+        ? "5.0-5.5"
+        : applyDevelopmentLimiters(baseTaskResponse, taskResponseLimiterCount),
+    "Coherence & Cohesion": critical
+      ? "5.0-5.5"
+      : safety.unfinishedEndingDetected || failed
+        ? "5.0-5.5"
+        : applyDevelopmentLimiters(baseCoherence, coherenceLimiterCount),
     "Lexical Resource": critical ? "5.5-6.0" : serious ? "5.5-6.0" : lexicalRange,
     "Grammatical Range & Accuracy": critical ? "5.5-6.0" : serious ? "5.5-6.0" : grammarRange
   };
+}
+
+// Two or more independent canonical development limiters hold the criterion at the band boundary
+// (6.0); one limiter removes the secure upper half of the range. The floor is 6.0 — development
+// limiters never push a criterion into the low-band ranges reserved for route or completion failure.
+function applyDevelopmentLimiters(baseRange, limiterCount) {
+  if (!limiterCount) return baseRange;
+  const parsed = parseBandRange(baseRange) || { low: 6, high: 6.5 };
+  if (parsed.high <= 6) return baseRange;
+  const high = limiterCount >= 2 ? 6 : Math.min(parsed.high, 6.5);
+  const low = Math.min(parsed.low, high, 6);
+  return formatBandRange(Math.max(low, 6), high);
 }
 
 function languageCriterionRange(control, developmentLimitsUpperBand = false) {
@@ -2807,9 +2873,40 @@ function languageCriterionRange(control, developmentLimitsUpperBand = false) {
   }[control] || "6.0-6.5";
 }
 
+// Explains what actually limits the criterion. When canonical development evidence exists, the
+// diagnosis names those limitations instead of restating route coverage, so the learner is never
+// told a route is absent when the canonical assessment records it as present.
+function developmentLimiterSentence(limiters = []) {
+  const phrases = {
+    COMPARISON_ASSERTED_NOT_DEMONSTRATED: "the comparative judgement is stated but not demonstrated by weighing the two sides against each other",
+    THESIS_PROMISE_UNDEVELOPED: "a route named in the thesis is never developed in a body paragraph",
+    LOCAL_REFERENCE_UNCLEAR: "local reference is not always traceable to a single antecedent",
+    AFFECTED_GROUP_TRANSITION_UNCLEAR: "at least one transition introduces an affected group without the mechanism that reaches it"
+  };
+  const seen = [];
+  for (const limiter of limiters) {
+    const phrase = phrases[limiter.code];
+    if (phrase && !seen.includes(phrase)) seen.push(phrase);
+  }
+  if (!seen.length) return "";
+  if (seen.length === 1) return seen[0];
+  return `${seen.slice(0, -1).join("; ")}; and ${seen.at(-1)}`;
+}
+
 function deterministicCriterionDiagnosis(criterion, safety) {
-  if (criterion === "Task Response") return `The task route is ${routeCoverageLabel(safety.routeAssessment?.status)}, and the response is ${safety.completionStatus || "of uncertain completion"}.`;
-  if (criterion === "Coherence & Cohesion") return `Paragraph progression is ${routeCoverageLabel(safety.routeAssessment?.status)}, and the conclusion is ${safety.conclusionStatus || "not yet confirmed"}.`;
+  const development = safety.canonicalDevelopmentEvidence || {};
+  if (criterion === "Task Response") {
+    const limitation = developmentLimiterSentence(development.taskResponseLimiters || []);
+    return limitation
+      ? `The required task routes are present and the response is ${safety.completionStatus || "of uncertain completion"}, but ${limitation}.`
+      : `The task route is ${routeCoverageLabel(safety.routeAssessment?.status)}, and the response is ${safety.completionStatus || "of uncertain completion"}.`;
+  }
+  if (criterion === "Coherence & Cohesion") {
+    const limitation = developmentLimiterSentence(development.coherenceLimiters || []);
+    return limitation
+      ? `Paragraph progression is ${routeCoverageLabel(safety.routeAssessment?.status)} and the conclusion is ${safety.conclusionStatus || "not yet confirmed"}, but ${limitation}.`
+      : `Paragraph progression is ${routeCoverageLabel(safety.routeAssessment?.status)}, and the conclusion is ${safety.conclusionStatus || "not yet confirmed"}.`;
+  }
   if (criterion === "Lexical Resource") {
     return safety.languageProfile?.overallLexicalControl === "band6"
       ? "Relevant topic vocabulary is used, but repeated vague nouns, unnatural word choices and collocations occur across the response, so lexical control is not securely Band 7."

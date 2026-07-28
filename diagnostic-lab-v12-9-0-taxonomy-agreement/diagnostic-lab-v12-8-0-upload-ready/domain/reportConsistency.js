@@ -20,11 +20,16 @@ const CATEGORY_CLAIMS = Object.freeze({
   data: ["Data Accuracy", "Data Selection", "Comparison Precision", "Magnitude Precision"]
 });
 
+// Shared canonical repair priority (V12.9.1). Task-level defects — a comparative judgement that was
+// never demonstrated, a thesis promise no body develops — outrank every local language repair, so a
+// single agreement correction can never lead the Repair Plan or the Most Urgent Repair.
 const PRIORITY_ORDER = Object.freeze([
   "Visual Understanding", "Sentence Completion", "Prompt Coverage", "Overview Accuracy", "Overview Quality", "Data Accuracy",
   "Position Clarity", "Thesis Route Clarity", "Cause Route Clarity", "Solution Route Clarity",
-  "Body Route Alignment", "Causal Mechanism", "Solution Mechanism", "Explanation Depth",
+  "Body Route Alignment", "Comparative Judgement", "Thesis-to-Body Promise",
+  "Causal Mechanism", "Solution Mechanism", "Explanation Depth",
   "Example Development", "SAR Example Quality", "Meaning Control", "Lexical Precision",
+  "Reference Control", "Pronoun Control",
   "Grammar and Sentence Control", "Countability", "Article Control",
   "Subject-Verb Agreement", "Agreement", "Collocation", "Word Choice", "Punctuation"
 ]);
@@ -305,6 +310,484 @@ function reconcileParagraphCoverage(paragraph) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// C. Canonical cross-section consistency gate.
+//
+// Operates on CANONICAL OBJECTS (route assessment, framework statuses, paragraph coverage, canonical
+// issues, scoring snapshot) — never on visible strings — and records every deterministic repair as a
+// structured audit entry so an empty audit can no longer hide a repair that actually happened.
+// ---------------------------------------------------------------------------
+
+export const CONSISTENCY_AUDIT_VERSION = "canonical-consistency-gate-v12.9.1";
+
+// One structured audit record. `at` is a deterministic processing marker rather than a wall-clock
+// timestamp so two runs over the same canonical objects produce byte-identical audits (the gate is
+// re-run inside the idempotency tests, and a clock would make it non-reproducible).
+function auditRecord({
+  ruleId,
+  affectedObject,
+  affectedPath,
+  previousValue,
+  correctedValue,
+  evidenceSource,
+  exactEvidence = "",
+  repairAction,
+  repairStatus,
+  sequence = 0
+}) {
+  return {
+    ruleId,
+    affectedObject,
+    affectedPath: affectedPath || affectedObject,
+    previousValue: previousValue === undefined ? null : previousValue,
+    correctedValue: correctedValue === undefined ? null : correctedValue,
+    evidenceSource,
+    // Only evidence taken verbatim from the student's own response or from a canonical status value
+    // is recorded; nothing is paraphrased into the audit.
+    exactEvidence: String(exactEvidence || "").slice(0, 400),
+    repairAction,
+    repairStatus,
+    at: `${CONSISTENCY_AUDIT_VERSION}#${sequence}`,
+    // Retained for compatibility with the earlier record shape read by existing consumers.
+    rule: ruleId
+  };
+}
+
+const MECHANISM_CATEGORIES = /Causal Mechanism|Solution Mechanism|Explanation Depth|Affected-Group/i;
+const EXAMPLE_CATEGORIES = /Example Development|SAR Example Quality/i;
+const LANGUAGE_CATEGORIES = /Lexical|Word|Collocation|Meaning|Grammar|Sentence|Agreement|Article|Countability|Reference|Pronoun|Tense|Preposition|Punctuation|Modal/i;
+const ABSENT_ROUTE_CLAIM = /\broute is absent\b|\babsent route\b|\bno (?:traceable )?route\b|\btask route (?:is )?missing\b/i;
+const ABSENT_PROGRESSION_CLAIM = /\bprogression is absent\b|\bno paragraph progression\b|\bparagraph progression (?:is )?missing\b/i;
+const MISSING_EVERY_ROUTE_CLAIM = /\bmissing (?:at least one|every|all)\b[^.]{0,40}\broute\b|\bnot traceable\b|\bno traceable\b/i;
+const CONCLUSION_DOES_NOT_CLOSE = /\bdoes not close\b|\bfails to close\b|\bdoes not restate\b|\bleaves .{0,30}open\b|\bnew (?:route|idea) in the conclusion\b/i;
+
+function statusText(entry) {
+  return normalize(entry?.status);
+}
+
+function diagnosisText(entry) {
+  return String(entry?.diagnosis || entry?.explanation || entry?.note || "");
+}
+
+// A framework dimension can be held under its canonical camelCase key, under its display label, and
+// inside the display projection at the same time. Every occurrence must be repaired: repairing only
+// the first one leaves a stale twin that the visible report may render instead.
+function frameworkEntries(framework, displayName, canonicalKey) {
+  const found = [];
+  if (framework?.display && framework.display[displayName]) found.push({ container: framework.display, key: displayName, path: `frameworkScores.display["${displayName}"]` });
+  if (framework && framework[displayName]) found.push({ container: framework, key: displayName, path: `frameworkScores["${displayName}"]` });
+  if (canonicalKey && framework && framework[canonicalKey]) found.push({ container: framework, key: canonicalKey, path: `frameworkScores.${canonicalKey}` });
+  return found;
+}
+
+function frameworkEntry(framework, displayName, canonicalKey) {
+  return frameworkEntries(framework, displayName, canonicalKey)[0] || null;
+}
+
+// Earlier stages record their own consistency findings in a lighter shape ({ code, message, … }).
+// Persisting two shapes in one list makes the audit unreadable, so a legacy finding is lifted into
+// the full record contract without inventing values it never had.
+export function normalizeConsistencyAuditRecord(entry, sequence = 0) {
+  if (!entry || typeof entry !== "object") return null;
+  if (entry.ruleId && entry.repairAction) return entry;
+  return auditRecord({
+    ruleId: String(entry.ruleId || entry.rule || entry.code || "LEGACY_CONSISTENCY_FINDING"),
+    affectedObject: String(entry.affectedObject || entry.section || entry.target || "report"),
+    affectedPath: String(entry.affectedPath || entry.path || entry.section || entry.target || "report"),
+    previousValue: entry.previousValue ?? entry.previous ?? entry.message ?? null,
+    correctedValue: entry.correctedValue ?? entry.corrected ?? null,
+    evidenceSource: String(entry.evidenceSource || entry.source || "auditReportConsistency"),
+    exactEvidence: String(entry.exactEvidence || entry.evidence || ""),
+    repairAction: String(entry.repairAction || entry.action || "record-upstream-consistency-finding"),
+    repairStatus: String(entry.repairStatus || entry.status || "flagged"),
+    sequence
+  });
+}
+
+function labelKey(value) {
+  return normalize(value).replace(/,.*$/, "").trim();
+}
+
+function issuesForParagraph(issues, paragraph) {
+  const label = labelKey(paragraph.paragraphLabel);
+  return issues.filter((issue) => {
+    if (paragraph.paragraphId && issue.paragraphId && paragraph.paragraphId === issue.paragraphId) return true;
+    const issueLabel = labelKey(issue.paragraphLabel || issue.paragraphLocation);
+    return Boolean(label) && Boolean(issueLabel) && (issueLabel.startsWith(label) || label.startsWith(issueLabel));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The canonical cross-section consistency gate.
+//
+// Runs AFTER canonical route and issue reconciliation and BEFORE the Student View and the PDF are
+// rendered, so every visible section inherits one reconciled set of canonical objects. It compares
+// canonical OBJECTS — route assessment, task-aware route model, thesis dimensions, framework
+// statuses, frozen scoring, canonical issues, language profile, paragraph coverage, executive
+// summary, repair plan and the Student View projection — and never repairs by string substitution:
+// a contradiction is resolved by replacing the losing canonical value with the value the winning
+// canonical object already holds, and every replacement is recorded.
+//
+// Returns { audit, frameworkScores, paragraphCoverage, criteriaScores, repairsApplied }.
+// ---------------------------------------------------------------------------
+export function buildCanonicalConsistencyAudit({
+  taskRequirements = null,
+  routeAssessment = {},
+  taskAwareRouteModel = null,
+  thesisDimensions = null,
+  frozenScoring = null,
+  frameworkScores = {},
+  paragraphCoverage = [],
+  issues = [],
+  languageProfile = null,
+  criteriaScores = {},
+  executiveSummary = null,
+  repairPlan = [],
+  studentView = null,
+  conclusionFunction = null,
+  existingAudit = []
+} = {}) {
+  const audit = [];
+  const record = (fields) => audit.push(auditRecord({ ...fields, sequence: audit.length + 1 }));
+  const framework = { ...frameworkScores, ...(frameworkScores?.display ? { display: { ...frameworkScores.display } } : {}) };
+  const coverage = Array.isArray(paragraphCoverage) ? paragraphCoverage.map((item) => ({ ...item, dimensions: { ...(item.dimensions || {}) } })) : [];
+  const criteria = Object.fromEntries(Object.entries(criteriaScores || {}).map(([name, value]) => [name, { ...(value || {}) }]));
+  const canonicalIssues = Array.isArray(issues) ? issues : [];
+  const routeStatus = String(routeAssessment.overallRouteStatus || routeAssessment.status || "");
+  const routePresent = Boolean(routeStatus) && !["absent", "contradicted", "failed", "not_traceable"].includes(routeStatus);
+  const bodyRoutes = Array.isArray(routeAssessment.bodyRoutes) ? routeAssessment.bodyRoutes : [];
+  const missingRequirements = Array.isArray(routeAssessment.missingRequirements) ? routeAssessment.missingRequirements : [];
+
+  // Rule 1 — route present versus scoring text.
+  // A frozen criterion range is never altered here; only a diagnosis that contradicts the canonical
+  // route is replaced, with the canonical route status as the evidence.
+  if (routePresent) {
+    for (const [criterion, entry] of Object.entries(criteria)) {
+      const text = String(entry?.diagnosis || "");
+      if (!ABSENT_ROUTE_CLAIM.test(text)) continue;
+      const corrected = `The required task routes are present (${routeStatus.replace(/_/g, " ")}); the remaining Task Response limitation is depth of development, not a missing route.`;
+      criteria[criterion] = { ...entry, diagnosis: corrected };
+      record({
+        ruleId: "ROUTE_PRESENT_VS_SCORING_TEXT",
+        affectedObject: "criteriaScores",
+        affectedPath: `criteriaScores["${criterion}"].diagnosis`,
+        previousValue: text,
+        correctedValue: corrected,
+        evidenceSource: `routeAssessment.overallRouteStatus=${routeStatus}; routeAssessment.missingRequirements=[${missingRequirements.join(",")}]`,
+        exactEvidence: String(entry?.evidence || ""),
+        repairAction: "replace-diagnosis-with-canonical-route-status",
+        repairStatus: "repaired"
+      });
+    }
+  }
+
+  // Rule 2 — route present versus paragraph progression.
+  if (routePresent && bodyRoutes.length >= 2) {
+    const aligned = bodyRoutes.every((route) => !["absent", "contradicted", "unclear"].includes(String(route?.alignmentStatus || route?.status || "")));
+    for (const [criterion, entry] of Object.entries(criteria)) {
+      const text = String(entry?.diagnosis || "");
+      if (!aligned || !ABSENT_PROGRESSION_CLAIM.test(text)) continue;
+      const corrected = `Paragraph progression is traceable: ${bodyRoutes.map((route, index) => `Body ${index + 1} ${route?.label || route?.route || "aligned"}`).join("; ")}. The remaining Coherence limitation is local, not a missing progression.`;
+      criteria[criterion] = { ...entry, diagnosis: corrected };
+      record({
+        ruleId: "ROUTE_PRESENT_VS_PARAGRAPH_PROGRESSION",
+        affectedObject: "criteriaScores",
+        affectedPath: `criteriaScores["${criterion}"].diagnosis`,
+        previousValue: text,
+        correctedValue: corrected,
+        evidenceSource: `routeAssessment.bodyRoutes=[${bodyRoutes.map((route) => route?.label || route?.route).join(" | ")}]`,
+        repairAction: "replace-diagnosis-with-canonical-body-routes",
+        repairStatus: "repaired"
+      });
+    }
+  }
+
+  // Rule 3 — body route consistency. The route assessment is the single source of truth for what a
+  // body paragraph does; a framework dimension or a canonical issue may not contradict it.
+  for (const [index, route] of bodyRoutes.entries()) {
+    const canonicalRoute = String(route?.route || route?.primaryRoute || route?.label || "");
+    if (!canonicalRoute) continue;
+    const entry = frameworkEntry(framework, "Body Paragraph Route Alignment", "bodyRouteAlignment");
+    if (!entry) continue;
+    const text = diagnosisText(entry.container[entry.key]);
+    const claimsOther = /\bsolution\b/i.test(text) && /disadvantage/i.test(canonicalRoute);
+    const claimsUnclear = /\broute unclear\b|\bunclear from the controlling sentences\b/i.test(text);
+    if (!claimsOther && !claimsUnclear) continue;
+    const corrected = bodyRoutes.map((item, position) => `Body ${position + 1}: ${item?.label || item?.route || "aligned"}`).join(" | ");
+    const previous = text;
+    entry.container[entry.key] = { ...entry.container[entry.key], diagnosis: `${corrected}. This rating assesses route alignment only.` };
+    record({
+      ruleId: "BODY_ROUTE_CONSISTENCY",
+      affectedObject: "frameworkScores",
+      affectedPath: `frameworkScores["Body Paragraph Route Alignment"].diagnosis`,
+      previousValue: previous,
+      correctedValue: entry.container[entry.key].diagnosis,
+      evidenceSource: `routeAssessment.bodyRoutes[${index}]=${canonicalRoute}`,
+      exactEvidence: String(route?.exactEvidence || route?.evidence || ""),
+      repairAction: "restate-body-routes-from-route-assessment",
+      repairStatus: "repaired"
+    });
+    break;
+  }
+
+  // Rule 4 — thesis consistency. A thesis whose canonical dimensions record both required routes and
+  // an explicit position must not be described as missing a traceable route.
+  if (thesisDimensions && thesisDimensions.applicable !== false) {
+    const present = thesisDimensions.routePresent || {};
+    const requiredRoutes = Array.isArray(thesisDimensions.routeRequired) ? thesisDimensions.routeRequired : [];
+    const namedRoutes = requiredRoutes.filter((route) => present[route]);
+    const allNamed = requiredRoutes.length > 0 && namedRoutes.length === requiredRoutes.length;
+    const positionHeld = thesisDimensions.positionRequired ? Boolean(thesisDimensions.positionPresent) : true;
+    if (allNamed && positionHeld) {
+      const corrected = `The thesis names every required route (${namedRoutes.join(", ")}) and states an explicit position; lexical precision inside the thesis is assessed separately.`;
+      for (const entry of frameworkEntries(framework, "Thesis Route Clarity", "thesisRouteClarity")) {
+        const text = diagnosisText(entry.container[entry.key]);
+        if (!MISSING_EVERY_ROUTE_CLAIM.test(text)) continue;
+        entry.container[entry.key] = { ...entry.container[entry.key], diagnosis: corrected };
+        record({
+          ruleId: "THESIS_CONSISTENCY",
+          affectedObject: "frameworkScores",
+          affectedPath: `${entry.path}.diagnosis`,
+          previousValue: text,
+          correctedValue: corrected,
+          evidenceSource: `thesisDimensions.routePresent=${JSON.stringify(present)}; thesisDimensions.positionPresent=${positionHeld}`,
+          repairAction: "replace-diagnosis-with-canonical-thesis-dimensions",
+          repairStatus: "repaired"
+        });
+      }
+    }
+    // The same contradiction can appear between the canonical dimension object and its display twin.
+    const canonicalStatus = statusText(framework.thesisRouteClarity);
+    const displayStatus = statusText(framework.display?.["Thesis Route Clarity"]);
+    if (canonicalStatus && displayStatus && /strong/.test(canonicalStatus) && /needs work|weak|absent/.test(displayStatus)) {
+      const previous = framework.display["Thesis Route Clarity"].status;
+      framework.display["Thesis Route Clarity"] = {
+        ...framework.display["Thesis Route Clarity"],
+        status: framework.thesisRouteClarity.status
+      };
+      record({
+        ruleId: "THESIS_CONSISTENCY",
+        affectedObject: "frameworkScores.display",
+        affectedPath: `frameworkScores.display["Thesis Route Clarity"].status`,
+        previousValue: previous,
+        correctedValue: framework.thesisRouteClarity.status,
+        evidenceSource: `frameworkScores.thesisRouteClarity.status=${framework.thesisRouteClarity.status}`,
+        repairAction: "align-display-status-with-canonical-dimension",
+        repairStatus: "repaired"
+      });
+    }
+  }
+
+  // Rule 5 — conclusion consistency. Conclusion FUNCTION (does it close the established routes?) and
+  // conclusion LANGUAGE ACCURACY are separate judgements: a conclusion may close correctly and still
+  // need a language repair, and a language defect may not be reported as a closure failure.
+  const conclusionLabel = String(routeAssessment.conclusionLabel || "");
+  const conclusionCloses = Boolean(conclusionFunction?.complete) || /\brestates?\b|\bcloses?\b|\boutweigh/i.test(conclusionLabel);
+  if (conclusionCloses) {
+    const entry = frameworkEntry(framework, "Conclusion Closure", "conclusionClosure");
+    if (entry) {
+      const text = diagnosisText(entry.container[entry.key]);
+      if (CONCLUSION_DOES_NOT_CLOSE.test(text)) {
+        const corrected = `The conclusion performs its function: ${conclusionLabel || "it closes the established routes without opening a new one"}. Language accuracy inside the conclusion is reported separately as a language repair.`;
+        entry.container[entry.key] = { ...entry.container[entry.key], diagnosis: corrected };
+        record({
+          ruleId: "CONCLUSION_FUNCTION_VS_LANGUAGE",
+          affectedObject: "frameworkScores",
+          affectedPath: `frameworkScores["Conclusion Closure"].diagnosis`,
+          previousValue: text,
+          correctedValue: corrected,
+          evidenceSource: `routeAssessment.conclusionLabel=${conclusionLabel}; conclusionFunction.complete=${Boolean(conclusionFunction?.complete)}`,
+          exactEvidence: String(conclusionFunction?.exactEvidence || ""),
+          repairAction: "separate-conclusion-function-from-conclusion-language",
+          repairStatus: "repaired"
+        });
+      }
+    }
+    // A conclusion paragraph carrying only language issues must read "functionally strong" rather
+    // than as a closure failure.
+    for (const paragraph of coverage) {
+      if (!/Conclusion/i.test(String(paragraph.paragraphLabel || ""))) continue;
+      const paragraphIssues = issuesForParagraph(canonicalIssues, paragraph);
+      const onlyLanguage = paragraphIssues.length > 0 &&
+        paragraphIssues.every((issue) => LANGUAGE_CATEGORIES.test(String(issue.primaryCategory || issue.issueCategory || "")));
+      if (!onlyLanguage) continue;
+      if (paragraph.dimensions?.route !== "repair-needed" && paragraph.dimensions?.development !== "repair-needed") continue;
+      const previous = paragraph.status;
+      paragraph.dimensions = { ...paragraph.dimensions, route: "controlled", development: "controlled" };
+      paragraph.status = "Functionally Strong - Language Repair Needed";
+      record({
+        ruleId: "CONCLUSION_FUNCTION_VS_LANGUAGE",
+        affectedObject: "paragraphCoverage",
+        affectedPath: `paragraphCoverage["${paragraph.paragraphLabel}"].status`,
+        previousValue: previous,
+        correctedValue: paragraph.status,
+        evidenceSource: `canonicalIssues[${paragraphIssues.map((issue) => issue.primaryCategory || issue.issueCategory).join(",")}] are all language categories`,
+        repairAction: "reclassify-conclusion-as-functionally-strong-with-language-repair",
+        repairStatus: "repaired"
+      });
+    }
+  }
+
+  // Rule 6 — Explanation Depth may not read Strong while a validated causal-mechanism gap survives.
+  const mechanismIssues = canonicalIssues.filter((issue) => MECHANISM_CATEGORIES.test(String(issue.primaryCategory || issue.issueCategory || "")));
+  if (mechanismIssues.length) {
+    const diagnosis = `A validated development gap remains: ${mechanismIssues.map((issue) => `${issue.primaryCategory || issue.issueCategory} in ${issue.paragraphLabel || issue.paragraphLocation}`).join("; ")}.`;
+    for (const entry of frameworkEntries(framework, "Explanation Depth", "explanationDepth")) {
+      if (!/strong/.test(statusText(entry.container[entry.key]))) continue;
+      const previous = entry.container[entry.key].status;
+      entry.container[entry.key] = { ...entry.container[entry.key], status: "Moderate", diagnosis };
+      record({
+        ruleId: "EXPLANATION_DEPTH_CONSISTENCY",
+        affectedObject: "frameworkScores",
+        affectedPath: `${entry.path}.status`,
+        previousValue: previous,
+        correctedValue: "Moderate",
+        evidenceSource: `canonicalIssues=[${mechanismIssues.map((issue) => issue.issueId).filter(Boolean).join(",")}]`,
+        exactEvidence: String(mechanismIssues[0]?.exactSentence || mechanismIssues[0]?.exactEvidence || ""),
+        repairAction: "downgrade-strong-status-to-match-validated-development-evidence",
+        repairStatus: "repaired"
+      });
+    }
+  }
+
+  // Rule 7 — SAR Example Quality may not read Strong while an affected group, mechanism or observable
+  // consequence remains incomplete inside an example.
+  const exampleGapIssues = canonicalIssues.filter((issue) => {
+    const category = String(issue.primaryCategory || issue.issueCategory || "");
+    if (EXAMPLE_CATEGORIES.test(category)) return true;
+    return MECHANISM_CATEGORIES.test(category) && /example/i.test(String(issue.sentenceRole || issue.sentenceFunction || ""));
+  });
+  if (exampleGapIssues.length) {
+    for (const entry of frameworkEntries(framework, "SAR Example Quality", "sarExampleQuality")) {
+      if (!/strong/.test(statusText(entry.container[entry.key]))) continue;
+      const previous = entry.container[entry.key].status;
+      entry.container[entry.key] = { ...entry.container[entry.key], status: "Moderate" };
+      record({
+        ruleId: "SAR_EXAMPLE_QUALITY_CONSISTENCY",
+        affectedObject: "frameworkScores",
+        affectedPath: `${entry.path}.status`,
+        previousValue: previous,
+        correctedValue: "Moderate",
+        evidenceSource: `canonicalIssues=[${exampleGapIssues.map((issue) => issue.issueId).filter(Boolean).join(",")}]`,
+        exactEvidence: String(exampleGapIssues[0]?.exactSentence || exampleGapIssues[0]?.exactEvidence || ""),
+        repairAction: "downgrade-strong-status-to-match-validated-example-evidence",
+        repairStatus: "repaired"
+      });
+    }
+  }
+
+  // Rule 8 — language-control consistency. A paragraph cannot read Language Controlled while a
+  // validated language issue targets it. The validated language profile is also consulted, so an
+  // issue that was capped out of the visible card set still blocks a "controlled" claim.
+  const profileParagraphLabels = new Set(
+    (Array.isArray(languageProfile?.validatedIssues) ? languageProfile.validatedIssues : [])
+      .map((item) => labelKey(String(item.paragraphLocation || "")))
+      .filter(Boolean)
+  );
+  for (const paragraph of coverage) {
+    const label = labelKey(paragraph.paragraphLabel);
+    const languageIssues = issuesForParagraph(canonicalIssues, paragraph)
+      .filter((issue) => LANGUAGE_CATEGORIES.test(String(issue.primaryCategory || issue.issueCategory || "")));
+    const profileEvidence = [...profileParagraphLabels].some((item) => item.startsWith(label) || label.startsWith(item));
+    if (!languageIssues.length && !profileEvidence) continue;
+    const saysControlled = String(paragraph.dimensions?.language || "") === "controlled" ||
+      /language controlled/i.test(String(paragraph.status || "")) ||
+      /^strong$/i.test(String(paragraph.status || ""));
+    if (!saysControlled) continue;
+    const previous = paragraph.status;
+    paragraph.dimensions = { ...paragraph.dimensions, language: "repair-needed" };
+    paragraph.status = /Conclusion/i.test(String(paragraph.paragraphLabel || "")) && conclusionCloses
+      ? "Functionally Strong - Language Repair Needed"
+      : paragraphDimensionStatus(
+          languageIssues.length ? languageIssues : issuesForParagraph(canonicalIssues, paragraph),
+          paragraph.paragraphLabel,
+          paragraph.conclusionFunction || conclusionFunction
+        );
+    record({
+      ruleId: "LANGUAGE_CONTROL_CONSISTENCY",
+      affectedObject: "paragraphCoverage",
+      affectedPath: `paragraphCoverage["${paragraph.paragraphLabel}"].status`,
+      previousValue: previous,
+      correctedValue: paragraph.status,
+      evidenceSource: languageIssues.length
+        ? `canonicalIssues=[${languageIssues.map((issue) => issue.issueId).filter(Boolean).join(",")}]`
+        : `languageProfile.validatedIssues@${label}`,
+      exactEvidence: String(languageIssues[0]?.exactSentence || languageIssues[0]?.exactEvidence || ""),
+      repairAction: "mark-language-dimension-repair-needed",
+      repairStatus: "repaired"
+    });
+  }
+
+  // Rule 9 — revision consistency. A failed revision validator must never reach visible output. The
+  // canonical layer withholds it; this gate proves the visible projections are clean too.
+  const visibleSurfaces = [
+    ["canonicalIssues", canonicalIssues],
+    ["studentView.topIssues", Array.isArray(studentView?.topIssues) ? studentView.topIssues : []],
+    ["studentView.feedbackCards", Array.isArray(studentView?.feedbackCards) ? studentView.feedbackCards : []],
+    ["repairPlan", Array.isArray(repairPlan) ? repairPlan : []]
+  ];
+  for (const [surface, items] of visibleSurfaces) {
+    for (const item of items) {
+      if (String(item?.revisionTypeValidationStatus || "").toLowerCase() !== "fail") continue;
+      record({
+        ruleId: "REVISION_VALIDATION_CONSISTENCY",
+        affectedObject: surface,
+        affectedPath: `${surface}["${item.issueId || item.feedbackCardId || item.day || "?"}"].revisionType`,
+        previousValue: item.revisionType,
+        correctedValue: null,
+        evidenceSource: "revisionTypeValidationStatus=fail",
+        exactEvidence: String(item.exactSentence || item.exactEvidence || ""),
+        repairAction: "reject-failed-revision-before-render",
+        repairStatus: "rejected"
+      });
+    }
+  }
+
+  // Rule 10 — audit integrity. Nothing else in the report proves that a repair happened, so a repair
+  // recorded by an upstream stage while this audit is empty is itself a defect and is recorded.
+  const upstreamRepairs = [
+    ...(Array.isArray(frozenScoring?.repairs) ? frozenScoring.repairs : []),
+    ...canonicalIssues.flatMap((issue) => Array.isArray(issue.integrityRepairs) ? issue.integrityRepairs : [])
+  ];
+  const persistedAlready = Array.isArray(existingAudit) ? existingAudit.length : 0;
+  if (!audit.length && !persistedAlready && upstreamRepairs.length) {
+    record({
+      ruleId: "AUDIT_INTEGRITY",
+      affectedObject: "feedbackIntegrity.consistencyAudit",
+      affectedPath: "feedbackIntegrity.consistencyAudit",
+      previousValue: 0,
+      correctedValue: upstreamRepairs.length,
+      evidenceSource: `upstreamRepairs=[${upstreamRepairs.map((repair) => repair.code).filter(Boolean).join(",")}]`,
+      repairAction: "record-upstream-repairs-so-an-empty-audit-cannot-hide-them",
+      repairStatus: "recorded"
+    });
+  }
+
+  const requirementCoverage = Array.isArray(taskRequirements?.requirementChecks) ? taskRequirements.requirementChecks.length : 0;
+  return {
+    version: CONSISTENCY_AUDIT_VERSION,
+    audit,
+    frameworkScores: framework,
+    paragraphCoverage: coverage,
+    criteriaScores: criteria,
+    repairsApplied: audit.filter((item) => item.repairStatus === "repaired").length,
+    inputsSeen: {
+      taskRequirementChecks: requirementCoverage,
+      routeAssessment: Boolean(routeStatus),
+      taskAwareRouteModel: Boolean(taskAwareRouteModel),
+      thesisDimensions: Boolean(thesisDimensions),
+      frozenScoring: Boolean(frozenScoring),
+      frameworkAssessment: Object.keys(frameworkScores || {}).length > 0,
+      canonicalIssues: canonicalIssues.length,
+      languageProfile: Boolean(languageProfile),
+      paragraphCoverage: coverage.length,
+      executiveSummary: Boolean(executiveSummary),
+      repairPlan: Array.isArray(repairPlan) ? repairPlan.length : 0,
+      studentView: Boolean(studentView)
+    }
+  };
+}
+
 export function paragraphDimensionStatus(issues = [], paragraphRole = "", conclusionFunction = null) {
   const categories = new Set(issues.flatMap((issue) => [
     issue.issueCategory,
@@ -314,7 +797,8 @@ export function paragraphDimensionStatus(issues = [], paragraphRole = "", conclu
   const route = categories.has("Body Route Alignment") || categories.has("Thesis Route Clarity")
     ? "Route Repair Needed"
     : "Route Aligned";
-  const development = [...categories].some((category) => ["Causal Mechanism", "Solution Mechanism", "Explanation Depth"].includes(category))
+  const development = [...categories].some((category) =>
+    ["Causal Mechanism", "Solution Mechanism", "Explanation Depth", "Comparative Judgement", "Thesis-to-Body Promise"].includes(category))
     ? "Development Repair Needed"
     : "Development Controlled";
   const example = [...categories].some((category) => ["Example Development", "SAR Example Quality"].includes(category)) ||
@@ -427,6 +911,15 @@ function repairActivityForIssue(issue = {}, phaseIndex = 0, context = {}) {
       ["Check the paragraph", `Re-read ${location} and trace each pronoun back to one named noun.`],
       ["Final learner checklist", "Tick each pronoun only after its antecedent is explicit and unambiguous."]
     ],
+    comparison: [
+      ["Map the two sides", `List, in two columns, exactly what each side of the question produces, using only claims already made in ${location} and the other body paragraph.`],
+      ["Practise weighing", "Write three sentences of the form: X produces A, but Y produces B, which affects more people / lasts longer / is harder to reverse."],
+      ["Write the comparison", action],
+      ["Check the judgement", "Confirm that the new sentence states which side is stronger AND why, using a comparison rather than a repeated assertion."],
+      ["Transfer the skill", "Take a different outweigh prompt and write one comparative sentence that weighs its two sides against each other."],
+      ["Check the conclusion", "Re-read the conclusion and confirm it restates the same comparative judgement your body now demonstrates."],
+      ["Final learner checklist", "Confirm the essay compares the two sides at least once in the body, not only in the introduction and conclusion."]
+    ],
     thesis: [
       ["Map the task routes", "List every route required by the prompt before revising the thesis."],
       ["Practise route order", "Write two thesis plans that present the required routes in the same order as the body paragraphs."],
@@ -465,8 +958,9 @@ function repairActivityFamily(category) {
   if (category === "Sentence Completion") return "fragment";
   if (["Lexical Precision", "Meaning Control", "Word Choice", "Collocation", "Word Form"].includes(category)) return "lexical";
   if (["Reference Control", "Pronoun Control"].includes(category)) return "reference";
+  if (category === "Comparative Judgement") return "comparison";
   if (["Causal Mechanism", "Solution Mechanism", "Explanation Depth", "Example Development", "SAR Example Quality"].includes(category)) return "development";
-  if (["Thesis Route Clarity", "Cause Route Clarity", "Solution Route Clarity", "Position Clarity", "Prompt Coverage"].includes(category)) return "thesis";
+  if (["Thesis Route Clarity", "Cause Route Clarity", "Solution Route Clarity", "Position Clarity", "Prompt Coverage", "Thesis-to-Body Promise"].includes(category)) return "thesis";
   if (["Overview Quality", "Overview Accuracy", "Mixed-Visual Coverage"].includes(category)) return "task1Overview";
   return "general";
 }
@@ -529,6 +1023,41 @@ function controlledReviewChecks({ taskType = "Task 2", visualType = "" } = {}) {
     "Check every selected figure, unit, category and time point against the visual.",
     "Use direct comparisons and group details by the most meaningful visual pattern."
   ];
+}
+
+// Rebuilds the two executive-summary lines from the CORRECTED canonical issue set, so the Most
+// Urgent Repair can never name a local mechanical fix while a higher-priority task-level defect is
+// present in the same report. Returns null when there is nothing to rank.
+export function buildExecutiveSummaryFromIssues(issues = []) {
+  const ranked = rankIssues((Array.isArray(issues) ? issues : []).filter((issue) => issue.severity !== "Pass / Strong"));
+  if (!ranked.length) return null;
+  return {
+    mainScoreLimitingFactor: buildMainScoreLimiter(ranked),
+    mostUrgentRepair: buildUrgentRepair(ranked),
+    leadIssueId: ranked[0].issueId || "",
+    leadIssueCategory: ranked[0].issueCategory || ranked[0].primaryCategory || ""
+  };
+}
+
+// Semantic families used to decide whether an existing Executive Summary already addresses a
+// defect. A summary that already names the same limitation in the engine's own words is kept, so
+// promotion never rewrites prose that was already correct.
+const SUMMARY_ADDRESSES = Object.freeze({
+  "Comparative Judgement": /\bcompar|\bweigh|\boutweigh|relative importance/i,
+  "Thesis-to-Body Promise": /\bthesis\b|\bpromise|declared|not developed|undeveloped/i,
+  "Causal Mechanism": /\bmechanism|\bcausal\b|cause[- ]and[- ]effect/i,
+  "Solution Mechanism": /\bmechanism|\bsolution\b/i,
+  "Reference Control": /\breference|\bpronoun|antecedent/i,
+  "Explanation Depth": /\bexplanation|\bdevelop|\bmechanism/i
+});
+
+export function summaryAlreadyAddresses(text = "", category = "") {
+  const value = String(text || "");
+  if (!value) return false;
+  const pattern = SUMMARY_ADDRESSES[category];
+  if (pattern) return pattern.test(value);
+  const name = String(category || "").trim();
+  return Boolean(name) && new RegExp(escapeRegExp(name), "i").test(value);
 }
 
 function buildMainScoreLimiter(ranked) {

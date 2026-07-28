@@ -43,9 +43,20 @@ import { getWordCountMetadata } from "../wordCount.js";
 import { buildStudentReportViewModel } from "../domain/reportViewModels.js";
 import {
   createStorage,
+  resolveDataDir,
   sanitizeUserForAdmin,
   sanitizeUserForClient
 } from "./storage.js";
+import {
+  ACCOUNT_STATUSES,
+  checkAdminLifecycleGuard,
+  checkSameOrigin,
+  createAdminSecurity,
+  describeLifecycleIntent,
+  issueCsrfToken,
+  normalizeAccountStatus,
+  verifyCsrfToken
+} from "./adminSecurity.js";
 
 const MAX_JSON_BYTES = 8 * 1024 * 1024;
 const SESSION_COOKIE = "ielts_session";
@@ -56,6 +67,21 @@ const GENERIC_ANALYSIS_ERROR = "Analysis could not be completed. Please try agai
 const QUOTA_USED_MESSAGE = "Your early access quota has been used. Please contact Kru Pom IELTS to extend access.";
 const TEACHER_DAILY_LIMIT_MESSAGE = "Teacher daily safety limit reached. Please try again tomorrow or increase TEACHER_DAILY_SAFETY_LIMIT in Render environment variables.";
 const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+// Durable admin security state (CSRF is stateless; the audit log and session revocations are not).
+// One instance per data directory, so a restart reopens the same files.
+const adminSecurityByDataDir = new Map();
+function adminSecurityFor(rootDir = process.cwd()) {
+  const dataDir = resolveDataDir(rootDir);
+  if (!adminSecurityByDataDir.has(dataDir)) adminSecurityByDataDir.set(dataDir, createAdminSecurity({ dataDir }));
+  return adminSecurityByDataDir.get(dataDir);
+}
+// The session middleware runs outside the admin router and still needs the revocation registry.
+let activeAdminSecurity = null;
+function currentAdminSecurity() {
+  if (!activeAdminSecurity) activeAdminSecurity = adminSecurityFor(process.cwd());
+  return activeAdminSecurity;
+}
 
 const TASK1_VISUAL_TYPES = new Set(TASK1_PUBLIC_VISUAL_TYPES);
 const TASK2_ESSAY_TYPES = new Set(TASK2_PUBLIC_TYPES);
@@ -107,6 +133,9 @@ export function createApiHandler(options = {}) {
   const storage = options.storage || createStorage({ rootDir });
   const jobStore = options.jobStore || createAnalysisJobStore({ rootDir });
   const failureLog = options.failureLog || createAnalysisFailureLog({ rootDir });
+  // Bind the durable admin-security state to this handler's data directory so session revocation and
+  // the audit log survive a restart and are visible to the session middleware.
+  activeAdminSecurity = adminSecurityFor(rootDir);
 
   return async function handleApiRequest(request) {
     const method = request.method || request.httpMethod || "GET";
@@ -287,8 +316,29 @@ export function createApiHandler(options = {}) {
         if (body.permanent !== true || confirmedName !== normalizeStudentConfirmation(profile.displayName)) {
           throw statusError(`Type ${profile.displayName} exactly to confirm permanent deletion.`, 400, "VALIDATION_ERROR");
         }
+        // Deleting a learner profile deletes that learner's reports, so it is a privileged data
+        // mutation and belongs in the durable audit trail alongside the account lifecycle actions.
+        const qaStoreForProfile = createQaCanonicalStore({ rootDir });
+        const ownedByProfile = (typeof storage.readHistory === "function" ? await storage.readHistory() : [])
+          .filter((record) => String(record.ownerAccountId || record.username || "") === String(session.user.username) && String(record.studentProfileId || "") === String(profile.id));
+        const profileSubmissionIds = ownedByProfile.map((record) => String(record.submissionId || "")).filter(Boolean);
         const deletion = await storage.deleteStudentProfile(session.user.username, profile.id);
         const deletedJobCount = await jobStore.deleteForStudent(session.user.username, profile.id);
+        for (const submissionId of profileSubmissionIds) {
+          await qaStoreForProfile.delete(submissionId).catch(() => {});
+        }
+        await adminSecurityFor(rootDir).appendAudit({
+          action: "report-delete",
+          adminAccountId: session.user.username,
+          targetId: profile.id,
+          result: "ok",
+          metadata: {
+            scope: "student-profile",
+            deletedReportCount: deletion.deletedReportCount,
+            deletedJobCount,
+            qaSnapshotIdCount: profileSubmissionIds.length
+          }
+        }).catch(() => null);
         return jsonResponse(200, {
           ok: true,
           deleted: true,
@@ -544,13 +594,42 @@ async function handleLogin(request, storage) {
   }
   const updatedUser = await storage.updateUser(user.username, loginPatch).catch(() => user);
 
+  const security = currentAdminSecurity();
+  const isAdmin = String(updatedUser.role || user.role || "").toLowerCase() === "admin";
+  // The new session is minted at the account's CURRENT durable session version, so it survives an
+  // earlier revocation of the same username while every pre-revocation token stays dead.
+  const sessionVersion = await security.getSessionVersion(user.username);
+  if (isAdmin) {
+    await security.appendAudit({
+      action: "admin-login",
+      adminAccountId: user.username,
+      targetId: user.username,
+      result: "ok",
+      metadata: { sessionVersion }
+    }).catch(() => null);
+  }
+
+  // `next` is honoured only after the server has confirmed the role the destination requires, and
+  // only for a same-site path — never an absolute URL.
+  const requestedNext = safeNextPath(body.next);
+  const redirectTo = requestedNext && (!requestedNext.startsWith("/admin") || isAdmin) ? requestedNext : "";
+
   return jsonResponse(200, {
     ok: true,
     authenticated: true,
+    redirectTo,
     user: withExpiryFlags(addDailyLimitFlags(sanitizeUserForClient(updatedUser)))
   }, {
-    "Set-Cookie": buildSessionCookie(createSessionToken(user.username))
+    "Set-Cookie": buildSessionCookie(createSessionToken(user.username, sessionVersion))
   });
+}
+
+// Accepts only a same-site absolute path. Anything protocol-relative, absolute-URL or containing a
+// backslash is refused, so `next` can never send the admin to another origin.
+export function safeNextPath(value) {
+  const raw = String(value || "").trim();
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\") || raw.includes("://")) return "";
+  return raw.slice(0, 200);
 }
 
 async function handleAnalyze(request, storage, jobStore, failureLog = null, rootDir = process.cwd()) {
@@ -1134,7 +1213,31 @@ async function handleDebugAnalyzeHealth(request, storage) {
 
 async function maybeHandleAdminRoute(method, apiPath, request, storage, context = {}) {
   if (!apiPath.startsWith("/api/admin/")) return null;
-  await requireAdmin(request, storage);
+  const security = adminSecurityFor(context.rootDir || process.cwd());
+  const adminSession = await requireAdmin(request, storage, security);
+  const actor = adminSession?.user?.username || "";
+
+  // The admin console fetches a CSRF token bound to this session. Read-only, so it needs no token.
+  if (method === "GET" && apiPath === "/api/admin/csrf-token") {
+    return jsonResponse(200, { ok: true, csrfToken: issueCsrfToken(csrfSubject(adminSession)) });
+  }
+
+  // ---- CSRF: every privileged write must prove it came from this origin for this session --------
+  // Read-only GETs are exempt; every mutating method is not. A rejection is recorded in the audit so
+  // an attempted forgery is visible.
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const guard = verifyAdminWriteRequest(request, adminSession);
+    if (!guard.ok) {
+      await security.appendAudit({
+        action: "admin-csrf-rejected",
+        adminAccountId: actor,
+        targetId: apiPath,
+        result: "rejected",
+        metadata: { method, reason: guard.reason }
+      }).catch(() => null);
+      return jsonResponse(403, { ok: false, error: guard.reason, errorCode: "CSRF_REJECTED" });
+    }
+  }
 
   // ---- System Diagnostics (admin session only; never expose secrets or student data) ----
   if (method === "POST" && apiPath === "/api/admin/diagnostics/provider-connectivity") {
@@ -1360,8 +1463,6 @@ async function maybeHandleAdminRoute(method, apiPath, request, storage, context 
   if (accountActionMatch && ["POST", "DELETE"].includes(method)) {
     const targetUsername = decodeURIComponent(accountActionMatch[1]);
     const action = accountActionMatch[2];
-    const session = await getSessionUser(request, storage);
-    const actor = session?.user?.username || "";
     const target = await storage.getUserByUsername(targetUsername);
     if (!target) {
       return jsonResponse(404, { ok: false, error: "Account was not found.", errorCode: "ACCOUNT_NOT_FOUND" });
@@ -1369,13 +1470,18 @@ async function maybeHandleAdminRoute(method, apiPath, request, storage, context 
     const body = readJsonBody(request);
 
     if (action === "archive" || action === "restore") {
-      const nextStatus = action === "archive" ? "archived" : "active";
-      // An admin must not archive themselves out of the console, and the last admin must remain usable.
-      if (action === "archive" && (await violatesAdminFloor(storage, target, actor))) {
-        return jsonResponse(409, { ok: false, error: adminFloorMessage(target.username === actor), errorCode: "ADMIN_PROTECTED" });
+      const guard = action === "archive"
+        ? await enforceAdminLifecycleGuard(storage, { target, actor, action: "account-archive" })
+        : null;
+      if (guard) {
+        await security.appendAudit({ action: `account-${action}`, adminAccountId: actor, targetId: targetUsername, result: "blocked", metadata: { code: guard.code } });
+        return jsonResponse(409, { ok: false, error: guard.message, errorCode: guard.code });
       }
+      const nextStatus = action === "archive" ? "archived" : "active";
       const updated = await storage.updateUser(targetUsername, { status: nextStatus });
-      await appendAdminAudit(storage, { actor, action: `account-${action}`, target: targetUsername, result: "ok" });
+      // Archiving takes the account out of service, so its sessions must stop working immediately.
+      if (action === "archive") await security.revokeSessions(targetUsername, { reason: "account-archive" });
+      await security.appendAudit({ action: `account-${action}`, adminAccountId: actor, targetId: targetUsername, result: "ok", metadata: { status: nextStatus } });
       return jsonResponse(200, { ok: true, action, user: sanitizeUserForAdmin(updated) });
     }
 
@@ -1384,34 +1490,69 @@ async function maybeHandleAdminRoute(method, apiPath, request, storage, context 
     if (confirmation !== normalizeStudentConfirmation(targetUsername)) {
       return jsonResponse(400, { ok: false, error: `Type ${targetUsername} exactly to confirm permanent deletion.`, errorCode: "CONFIRMATION_REQUIRED" });
     }
-    if (await violatesAdminFloor(storage, target, actor)) {
-      return jsonResponse(409, { ok: false, error: adminFloorMessage(target.username === actor), errorCode: "ADMIN_PROTECTED" });
+    const deleteGuard = await enforceAdminLifecycleGuard(storage, { target, actor, action: "account-delete" });
+    if (deleteGuard) {
+      await security.appendAudit({ action: "account-delete", adminAccountId: actor, targetId: targetUsername, result: "blocked", metadata: { code: deleteGuard.code } });
+      return jsonResponse(409, { ok: false, error: deleteGuard.message, errorCode: deleteGuard.code });
     }
     const reportMode = body.reportMode === "delete" ? "delete" : "anonymise";
     if (typeof storage.deleteUser !== "function") {
       return jsonResponse(501, { ok: false, error: "Permanent deletion is not supported by this storage adapter.", errorCode: "NOT_SUPPORTED" });
     }
-    const result = await storage.deleteUser(targetUsername, { reportMode });
-    // Remove the account's QA snapshots and revoke every session it holds.
-    await deleteQaSnapshotsForUser(context.rootDir, storage, targetUsername).catch(() => {});
-    revokeSessionsForUser(targetUsername);
-    await appendAdminAudit(storage, {
-      actor, action: "account-delete", target: targetUsername, result: "ok",
-      metadata: { reportMode, deletedReportCount: result.deletedReportCount, anonymisedReportCount: result.anonymisedReportCount }
+    // ---- Deletion ORDER (brief §F) ----
+    // Ownership is the only thing that links a report or a QA snapshot to this account, and deletion
+    // erases it. So every id is collected FIRST, from data that still carries ownership; then the
+    // sessions are revoked; then history is mutated; then the collected snapshots are removed by id
+    // and the result is verified for orphans.
+    const owned = await collectOwnedRecordIds(storage, targetUsername);
+    await security.revokeSessions(targetUsername, { reason: "account-delete" });
+    const qaStore = createQaCanonicalStore({ rootDir: context.rootDir });
+    const result = await storage.deleteUser(targetUsername, { reportMode, removeEvidenceText: body.removeEvidenceText === true });
+    let removedSnapshots = 0;
+    for (const submissionId of owned.submissionIds) {
+      const removed = await qaStore.delete(submissionId).then(() => true).catch(() => false);
+      if (removed) removedSnapshots += 1;
+    }
+    const orphans = await findOrphanedRecords(storage, targetUsername, owned);
+    await security.appendAudit({
+      action: "account-delete",
+      adminAccountId: actor,
+      targetId: targetUsername,
+      result: orphans.length ? "incomplete" : "ok",
+      metadata: {
+        reportMode,
+        reportIdCount: owned.reportIds.length,
+        qaSnapshotIdCount: owned.submissionIds.length,
+        removedSnapshots,
+        deletedReportCount: result.deletedReportCount,
+        anonymisedReportCount: result.anonymisedReportCount,
+        studentProfileCount: owned.studentProfileIds.length,
+        orphanCount: orphans.length
+      }
     });
-    return jsonResponse(200, { ok: true, deleted: true, reportMode, ...result });
+    return jsonResponse(200, {
+      ok: true,
+      deleted: true,
+      reportMode,
+      ...result,
+      deletionOrder: ["collect-report-ids", "collect-qa-snapshot-ids", "revoke-sessions", "mutate-history", "remove-qa-snapshots", "verify-no-orphans"],
+      reportIds: owned.reportIds,
+      qaSnapshotIds: owned.submissionIds,
+      removedSnapshots,
+      orphanedRecords: orphans
+    });
   }
 
-  // ---- Admin audit log (paginated, searchable, no sensitive values) ----
+  // ---- Admin audit log: durable, paginated, searchable, filterable, no sensitive values ----
   if (method === "GET" && apiPath === "/api/admin/audit-log") {
-    const query = String(getQueryParam(request.path, "q") || "").trim().toLowerCase();
-    const page = Math.max(1, Number(getQueryParam(request.path, "page")) || 1);
-    const pageSize = Math.min(200, Math.max(10, Number(getQueryParam(request.path, "pageSize")) || 50));
-    const events = (await readAdminAudit(storage))
-      .filter((event) => !query || JSON.stringify(event).toLowerCase().includes(query))
-      .reverse();
-    const start = (page - 1) * pageSize;
-    return jsonResponse(200, { ok: true, events: events.slice(start, start + pageSize), page, pageSize, total: events.length });
+    const result = await security.readAudit({
+      q: getQueryParam(request.path, "q") || "",
+      action: getQueryParam(request.path, "action") || "",
+      result: getQueryParam(request.path, "result") || "",
+      page: getQueryParam(request.path, "page"),
+      pageSize: getQueryParam(request.path, "pageSize")
+    });
+    return jsonResponse(200, { ok: true, ...result });
   }
 
   if (method === "GET" && apiPath === "/api/admin/usage-summary") {
@@ -1425,6 +1566,13 @@ async function maybeHandleAdminRoute(method, apiPath, request, storage, context 
     const body = readJsonBody(request);
     const prepared = prepareAdminUserInput(body);
     const user = await storage.createUser(prepared.user);
+    await security.appendAudit({
+      action: "user-create",
+      adminAccountId: actor,
+      targetId: user.username,
+      result: "ok",
+      metadata: { role: user.role, quotaMode: user.quotaMode, quotaLimit: user.quotaLimit, expiryDate: user.expiryDate, status: user.status }
+    });
     return jsonResponse(201, {
       ok: true,
       user: sanitizeUserForAdmin(user),
@@ -1436,7 +1584,36 @@ async function maybeHandleAdminRoute(method, apiPath, request, storage, context 
   if (method === "PATCH" && userMatch) {
     const username = decodeURIComponent(userMatch[1]);
     const body = readJsonBody(request);
-    const user = await storage.updateUser(username, sanitizeAdminUserPatch(body));
+    const target = await storage.getUserByUsername(username);
+    if (!target) {
+      return jsonResponse(404, { ok: false, error: "Account was not found.", errorCode: "ACCOUNT_NOT_FOUND" });
+    }
+    let patch;
+    try {
+      patch = sanitizeAdminUserPatch(body);
+    } catch (error) {
+      return jsonResponse(error.statusCode || 400, { ok: false, error: error.message, errorCode: error.errorCode || "VALIDATION_ERROR" });
+    }
+    // The generic PATCH is the same lifecycle surface as the dedicated actions — a role change to
+    // non-admin, or a status change to inactive/archived, must pass exactly the same guards.
+    const guard = await enforceAdminLifecycleGuard(storage, { target, actor, patch, action: "user-update" });
+    if (guard) {
+      await security.appendAudit({ action: "user-update", adminAccountId: actor, targetId: username, result: "blocked", metadata: { code: guard.code, ...changedFields(target, patch) } });
+      return jsonResponse(409, { ok: false, error: guard.message, errorCode: guard.code });
+    }
+    const changes = changedFields(target, patch);
+    const user = await storage.updateUser(username, patch);
+    // A change that takes the account out of service, or that removes privileges, invalidates the
+    // sessions issued under the old state.
+    const deactivated = ["inactive", "archived"].includes(String(patch.status || "").toLowerCase());
+    const demoted = Object.prototype.hasOwnProperty.call(patch, "role") && String(target.role || "").toLowerCase() === "admin" && String(patch.role || "").toLowerCase() !== "admin";
+    if (deactivated || demoted) {
+      await security.revokeSessions(username, { reason: deactivated ? "status-change" : "role-change" });
+      await security.appendAudit({ action: "session-revoke", adminAccountId: actor, targetId: username, result: "ok", metadata: { cause: deactivated ? "status-change" : "role-change" } });
+    }
+    for (const action of auditActionsForPatch(patch)) {
+      await security.appendAudit({ action, adminAccountId: actor, targetId: username, result: "ok", metadata: changes });
+    }
     return jsonResponse(200, { ok: true, user: sanitizeUserForAdmin(user) });
   }
 
@@ -1448,6 +1625,10 @@ async function maybeHandleAdminRoute(method, apiPath, request, storage, context 
       password: "",
       passwordHash: hashPassword(generatedPassword)
     });
+    // A reset password must not leave a live session behind that was authenticated with the old one.
+    await security.revokeSessions(username, { reason: "password-reset" });
+    await security.appendAudit({ action: "password-reset", adminAccountId: actor, targetId: username, result: "ok", metadata: {} });
+    await security.appendAudit({ action: "session-revoke", adminAccountId: actor, targetId: username, result: "ok", metadata: { cause: "password-reset" } });
     return jsonResponse(200, {
       ok: true,
       user: sanitizeUserForAdmin(user),
@@ -1458,24 +1639,137 @@ async function maybeHandleAdminRoute(method, apiPath, request, storage, context 
   const statusMatch = apiPath.match(/^\/api\/admin\/users\/([^/]+)\/(disable|enable)$/);
   if (method === "POST" && statusMatch) {
     const username = decodeURIComponent(statusMatch[1]);
-    const user = statusMatch[2] === "disable"
+    const action = statusMatch[2];
+    const target = await storage.getUserByUsername(username);
+    if (!target) {
+      return jsonResponse(404, { ok: false, error: "Account was not found.", errorCode: "ACCOUNT_NOT_FOUND" });
+    }
+    if (action === "disable") {
+      const guard = await enforceAdminLifecycleGuard(storage, { target, actor, action: "account-disable" });
+      if (guard) {
+        await security.appendAudit({ action: "account-disable", adminAccountId: actor, targetId: username, result: "blocked", metadata: { code: guard.code } });
+        return jsonResponse(409, { ok: false, error: guard.message, errorCode: guard.code });
+      }
+    }
+    const user = action === "disable"
       ? await storage.disableUser(username)
       : await storage.enableUser(username);
+    if (action === "disable") {
+      await security.revokeSessions(username, { reason: "account-disable" });
+      await security.appendAudit({ action: "session-revoke", adminAccountId: actor, targetId: username, result: "ok", metadata: { cause: "account-disable" } });
+    }
+    await security.appendAudit({ action: `account-${action}`, adminAccountId: actor, targetId: username, result: "ok", metadata: { status: user.status } });
     return jsonResponse(200, { ok: true, user: sanitizeUserForAdmin(user) });
   }
 
   return jsonResponse(404, { ok: false, error: "API route not found." });
 }
 
-async function requireAdmin(request, storage) {
+// ---- Admin lifecycle guard, applied identically on every mutating surface -----------------------
+async function enforceAdminLifecycleGuard(storage, { target, actor, patch = {}, action = "" } = {}) {
+  const intent = describeLifecycleIntent(patch, { action });
+  if (!intent.demotes && !intent.deactivates && !intent.deletes) return null;
+  const activeAdmins = (await storage.listUsers()).filter((user) =>
+    String(user.role || "").toLowerCase() === "admin" && String(user.status || "active").toLowerCase() === "active"
+  );
+  return checkAdminLifecycleGuard({ target, actorUsername: actor, activeAdmins, intent });
+}
+
+// Which audit actions a generic PATCH represents. One PATCH can be several auditable changes.
+function auditActionsForPatch(patch = {}) {
+  const actions = ["user-update"];
+  if ("role" in patch) actions.push("role-change");
+  if ("status" in patch) actions.push("status-change");
+  if ("quotaLimit" in patch || "quotaUsed" in patch || "quotaMode" in patch) actions.push("quota-change");
+  if ("expiryDate" in patch) actions.push("expiry-change");
+  return actions;
+}
+
+// Safe before/after metadata for the audit: operational fields only, never credentials.
+function changedFields(before = {}, patch = {}) {
+  const changes = {};
+  for (const key of ["role", "status", "quotaMode", "quotaLimit", "quotaUsed", "expiryDate", "plan", "displayName"]) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+    changes[key] = `${before[key] ?? ""} -> ${patch[key] ?? ""}`;
+  }
+  return changes;
+}
+
+// Collects every id that links data to this account, BEFORE any ownership field is erased.
+async function collectOwnedRecordIds(storage, username) {
+  const owner = String(username || "");
+  const records = typeof storage.readHistory === "function" ? await storage.readHistory() : [];
+  const owned = (Array.isArray(records) ? records : []).filter((record) =>
+    String(record.username || "") === owner || String(record.ownerAccountId || "") === owner
+  );
+  const profiles = typeof storage.readStudentProfiles === "function" ? await storage.readStudentProfiles() : [];
+  return {
+    reportIds: owned.map((record) => String(record.reportId || record.submissionId || "")).filter(Boolean),
+    submissionIds: owned.map((record) => String(record.submissionId || "")).filter(Boolean),
+    studentProfileIds: (Array.isArray(profiles) ? profiles : [])
+      .filter((profile) => String(profile.ownerAccountId || "") === owner)
+      .map((profile) => String(profile.id || ""))
+      .filter(Boolean)
+  };
+}
+
+// Verifies that nothing still points at the deleted account after the deletion completed.
+async function findOrphanedRecords(storage, username, owned) {
+  const owner = String(username || "");
+  const orphans = [];
+  const records = typeof storage.readHistory === "function" ? await storage.readHistory() : [];
+  for (const record of Array.isArray(records) ? records : []) {
+    if (String(record.username || "") === owner || String(record.ownerAccountId || "") === owner) {
+      orphans.push({ type: "history", id: String(record.submissionId || record.reportId || "") });
+    }
+  }
+  const profiles = typeof storage.readStudentProfiles === "function" ? await storage.readStudentProfiles() : [];
+  for (const profile of Array.isArray(profiles) ? profiles : []) {
+    if (String(profile.ownerAccountId || "") === owner) orphans.push({ type: "student-profile", id: String(profile.id || "") });
+  }
+  const users = await storage.listUsers();
+  if (users.some((user) => String(user.username || "") === owner)) orphans.push({ type: "user", id: owner });
+  return orphans;
+}
+
+async function requireAdmin(request, storage, security = null) {
   const session = await getSessionUser(request, storage);
   if (session?.user?.role === "admin") return session;
+  // A refused privileged access attempt is itself an auditable security event.
+  await (security || currentAdminSecurity()).appendAudit({
+    action: "admin-access-denied",
+    adminAccountId: session?.user?.username || "",
+    targetId: String(request.path || ""),
+    result: session ? "forbidden" : "unauthenticated",
+    metadata: { method: request.method || request.httpMethod || "GET" }
+  }).catch(() => null);
   // Distinguish "not signed in" (401) from "signed in without admin rights" (403), and use a specific
   // code so the frontend can route to login instead of showing a dead end.
   if (!session) {
     throw statusError("Please sign in with an administrator account.", 401, "ADMIN_REQUIRED");
   }
   throw statusError("Admin access is required.", 403, "ADMIN_REQUIRED");
+}
+
+// The CSRF subject binds a token to one session, so a token minted for another admin cannot be
+// replayed. The session id is used when present; the username is the floor.
+function csrfSubject(session) {
+  return `${session?.user?.username || ""}:${session?.session?.sessionId || ""}`;
+}
+
+function verifyAdminWriteRequest(request, session) {
+  const headers = request.headers || {};
+  const token = getHeader(headers, "x-csrf-token") || readJsonBody(request)?.csrfToken || "";
+  const csrf = verifyCsrfToken(csrfSubject(session), token);
+  if (csrf.ok) return { ok: true };
+  // A securely equivalent same-origin proof is accepted only when no token was supplied at all, so a
+  // present-but-invalid token is always a rejection.
+  if (!token) {
+    const origin = checkSameOrigin(headers, getHeader(headers, "host"));
+    if (origin.ok) return { ok: true, via: "same-origin" };
+    return { ok: false, reason: `${csrf.reason} ${origin.reason}`.trim() };
+  }
+  return { ok: false, reason: csrf.reason };
 }
 
 async function requireSession(request, storage) {
@@ -1493,10 +1787,11 @@ async function getSessionUser(request, storage) {
 
   const user = await storage.getUserByUsername(session.username);
   if (!user || user.status !== "active") return null;
-  // A deleted account's outstanding sessions are revoked immediately (brief §18).
-  if (isSessionRevoked(session.username, session.issuedAt)) return null;
+  // Durable revocation: survives a restart, and distinguishes a token minted before the revoking
+  // event (dead) from one minted after it (valid), even when the username was recreated.
+  if (await currentAdminSecurity().isSessionRevoked(session.username, session.issuedAt, session.sessionVersion)) return null;
 
-  return { user };
+  return { user, session };
 }
 
 function getSessionToken(request) {
@@ -1512,9 +1807,20 @@ function parseCookies(header) {
   }).filter(([key]) => key));
 }
 
-function createSessionToken(username) {
-  const expiresAt = Date.now() + SESSION_MAX_AGE_SECONDS * 1000;
-  const payload = base64UrlEncode(JSON.stringify({ username, expiresAt }));
+// A session token carries its own identity (sessionId), the instant it was minted (issuedAt) and the
+// account's session version. Durable revocation compares all three, which is what makes "password
+// reset kills existing sessions", "a recreated username cannot revive an old token" and "a session
+// issued after the event stays valid" simultaneously true.
+function createSessionToken(username, sessionVersion = 0) {
+  const issuedAt = Date.now();
+  const expiresAt = issuedAt + SESSION_MAX_AGE_SECONDS * 1000;
+  const payload = base64UrlEncode(JSON.stringify({
+    username,
+    expiresAt,
+    issuedAt,
+    sessionId: randomBytes(12).toString("base64url"),
+    sessionVersion: Number(sessionVersion) || 0
+  }));
   const signature = sign(payload);
   return `${payload}.${signature}`;
 }
@@ -1639,7 +1945,10 @@ function sanitizeAdminUserPatch(body = {}) {
     patch.quotaUsed = Math.max(0, Number(body.quotaUsed ?? body.usedQuota ?? body.used ?? 0) || 0);
   }
   if ("expiryDate" in body || "expiresAt" in body) patch.expiryDate = String(body.expiresAt || body.expiryDate || "").slice(0, 10);
-  if ("status" in body) patch.status = normalizeStatusValue(body.status);
+  // `archived` is a real lifecycle state, so the generic status field must not silently turn it into
+  // `active`. The generic dropdown offers active/inactive only; archiving requires the Archive action,
+  // which also revokes sessions and records its own audit event.
+  if ("status" in body) patch.status = normalizeAccountStatus(body.status, { allowArchived: false });
   return patch;
 }
 
@@ -1660,10 +1969,9 @@ function normalizeQuotaModeValue(value) {
   return String(value || "limited").toLowerCase() === "unlimited" ? "unlimited" : "limited";
 }
 
+// Account creation may set active or inactive; `archived` is reached only through the Archive action.
 function normalizeStatusValue(value) {
-  return String(value || "active").toLowerCase() === "inactive" || String(value || "").toLowerCase() === "disabled"
-    ? "inactive"
-    : "active";
+  return normalizeAccountStatus(value, { allowArchived: false });
 }
 
 function defaultExpiryDate() {
@@ -2481,86 +2789,12 @@ async function persistQaSnapshot({ rootDir, analysis, savedRecord, payload }) {
 // ---- Admin account-safety rails -------------------------------------------------------------
 // An admin may never remove their own console access, and the system must always retain at least one
 // usable admin account.
-async function violatesAdminFloor(storage, target, actorUsername) {
-  if (String(target.username) === String(actorUsername)) return true;
-  if (String(target.role || "").toLowerCase() !== "admin") return false;
-  const users = await storage.listUsers();
-  const remainingAdmins = users.filter((user) =>
-    String(user.role || "").toLowerCase() === "admin" &&
-    String(user.status || "active").toLowerCase() === "active" &&
-    String(user.username) !== String(target.username)
-  );
-  return remainingAdmins.length === 0;
-}
-
-function adminFloorMessage(isSelf) {
-  return isSelf
-    ? "You cannot archive or delete the account you are currently signed in with."
-    : "This is the last active admin account. Assign another admin first.";
-}
-
-// ---- Admin audit log -------------------------------------------------------------------------
-// Bounded, safe operational history of privileged actions. Never stores passwords, hashes, cookies,
-// keys, essay text or environment values.
-const ADMIN_AUDIT_LIMIT = 500;
-const adminAuditMemory = [];
-
-async function appendAdminAudit(storage, { actor = "", action = "", target = "", result = "ok", metadata = {} } = {}) {
-  const event = {
-    eventId: `evt-${Date.now().toString(36)}-${randomBytes(4).toString("hex")}`,
-    timestamp: new Date().toISOString(),
-    adminAccountId: String(actor || ""),
-    action: String(action || ""),
-    target: String(target || ""),
-    result: String(result || "ok"),
-    metadata: redactForQa(metadata || {})
-  };
-  adminAuditMemory.push(event);
-  while (adminAuditMemory.length > ADMIN_AUDIT_LIMIT) adminAuditMemory.shift();
-  // Mirror into the durable audit trail when the adapter provides one; never fail the action if not.
-  if (typeof storage.appendAuditLog === "function") {
-    await storage.appendAuditLog({
-      username: event.adminAccountId,
-      role: "admin",
-      taskType: "",
-      taskSubtype: `admin:${event.action}`,
-      openAiCalled: false,
-      quotaDeducted: false,
-      duplicateCacheUsed: false,
-      blocked: event.result !== "ok",
-      reason: `${event.action}:${event.target}`.slice(0, 120)
-    }).catch(() => null);
-  }
-  return event;
-}
-
-async function readAdminAudit() {
-  return [...adminAuditMemory];
-}
-
-// ---- Session revocation ----------------------------------------------------------------------
-// Sessions are signed tokens, so revocation is enforced by a deny-list consulted on every lookup.
-const revokedSessionUsers = new Map();
-
-function revokeSessionsForUser(username) {
-  if (!username) return;
-  revokedSessionUsers.set(String(username), Date.now());
-}
-
-export function isSessionRevoked(username, issuedAtMs = 0) {
-  const revokedAt = revokedSessionUsers.get(String(username || ""));
-  if (!revokedAt) return false;
-  return !issuedAtMs || issuedAtMs <= revokedAt;
-}
-
-// Removes every QA snapshot belonging to a deleted account.
-async function deleteQaSnapshotsForUser(rootDir, storage, username) {
-  const qaStore = createQaCanonicalStore({ rootDir });
-  const records = typeof storage.readHistory === "function" ? await storage.readHistory() : [];
-  for (const record of Array.isArray(records) ? records : []) {
-    if (String(record.username || record.ownerAccountId || "") !== String(username)) continue;
-    if (record.submissionId) await qaStore.delete(record.submissionId).catch(() => {});
-  }
+// Session revocation and the admin audit are provided by `services/adminSecurity.js`, which persists
+// both to the data directory so they survive a process restart. The previous in-memory deny-list and
+// in-memory audit array have been removed: neither survived a restart, which is exactly the property
+// the security requirement needs.
+export async function isSessionRevoked(username, issuedAtMs = 0, sessionVersion = 0) {
+  return currentAdminSecurity().isSessionRevoked(username, issuedAtMs, sessionVersion);
 }
 
 function normalizeQaQuery(value) {
@@ -2578,9 +2812,18 @@ function sanitizeDownloadName(value) {
 }
 
 // Safe admin audit event for a QA export: who exported which report — never the exported content.
-async function auditQaExport(storage, request, record) {
-  if (typeof storage.appendAuditLog !== "function") return;
+async function auditQaExport(storage, request, record, security = null) {
   const session = await getSessionUser(request, storage).catch(() => null);
+  // A QA export is a privileged read of a student's report, so it is recorded in the durable admin
+  // audit as well as the usage trail — safe metadata only, never the exported content.
+  await (security || currentAdminSecurity()).appendAudit({
+    action: "qa-export",
+    adminAccountId: session?.user?.username || "admin",
+    targetId: String(record.submissionId || record.reportId || ""),
+    result: "ok",
+    metadata: { taskType: String(record.taskType || "") }
+  }).catch(() => null);
+  if (typeof storage.appendAuditLog !== "function") return;
   await storage.appendAuditLog({
     username: session?.user?.username || "admin",
     role: session?.user?.role || "admin",

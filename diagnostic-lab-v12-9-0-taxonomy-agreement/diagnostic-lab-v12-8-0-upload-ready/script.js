@@ -2351,9 +2351,12 @@ function prepareReanalysis(record) {
   pendingParentReportId = record.submissionId;
   updateWordCountPreviews();
   showSection("submission");
+  // The button says "Re-analyze with Current Engine", and that is what submitting now does: unchanged
+  // work is re-analysed by the current engine as a NEW report version beside the old one. Saying it
+  // would reopen the cached report would contradict both the button and the behaviour.
   showToast(source.imageRequired
-    ? "The saved writing is ready. Re-upload the original Task 1 image, or upload a revised image, before analyzing."
-    : "The saved submission is ready. Edit it for a revised version, or submit it unchanged to open the same cached report.");
+    ? "Ready to re-analyze. Re-upload the original Task 1 image, or upload a revised image, then submit. Unchanged work is re-analyzed with the current engine as a new report version — one credit is used and the earlier report is kept."
+    : "Ready to re-analyze. Submit unchanged to re-run this work through the current engine as a new report version, or edit it first for a revised submission. Either way one credit is used and the earlier report is kept.");
 }
 
 function getTaskProgressConfig(taskType) {

@@ -649,15 +649,31 @@ async function handleAnalyze(request, storage, jobStore, failureLog = null, root
     studentDisplayNameSnapshot: studentProfile.displayName
   });
   delete payload.studentProfileToken;
+  // A browser can never assert rerun status directly: the flag is server-set here, and
+  // validateAnalyzePayload already rebuilt the payload from an allowlist so an injected value cannot
+  // survive. Deleted defensively in case this function is ever called with a raw object.
+  delete payload.explicitRerun;
   const submissionHash = createSubmissionHash(user.username, payload);
   payload.inputFingerprint = submissionHash;
+  // The fingerprints describe the STUDENT'S WORK only. Rerun intent, parent id and analysis reason
+  // are deliberately excluded, so a rerun of unchanged writing keeps the same work identity and
+  // therefore the same submissionGroupId and progression grouping.
   payload.studentWorkFingerprint = createStudentWorkFingerprint(user.username, payload);
   const idempotencyKey = payload.clientSubmissionId;
 
+  // Resolved BEFORE the historical cache is consulted. Throws on a forged or foreign parent id.
+  const rerunIntent = await resolveRerunIntent(storage, user.username, payload);
+  payload.explicitRerun = rerunIntent.verified;
+
+  // Request idempotency always applies — a retried click returns the same analysis.
   const existingRecord = idempotencyKey
     ? await storage.findSubmissionByKey(user.username, idempotencyKey, payload.studentProfileId)
     : null;
-  const duplicateRecord = existingRecord || await storage.findSubmissionByHash?.(user.username, submissionHash, payload.studentProfileId);
+  // ONLY the historical exact-input shortcut is skipped for a verified rerun. Without a verified
+  // rerun the behaviour is byte-for-byte what it was before.
+  const duplicateRecord = existingRecord || (rerunIntent.verified
+    ? null
+    : await storage.findSubmissionByHash?.(user.username, submissionHash, payload.studentProfileId));
 
   if (duplicateRecord) {
     const latestUser = await storage.getUserByUsername(user.username);
@@ -1024,13 +1040,22 @@ export async function processAnalyzeJob({
 
     const submissionHash = job.payload?.submissionHash || createSubmissionHash(user.username, job.payload || {});
 
+    // Rerun intent is RE-VERIFIED here rather than trusted from the stored job payload, so a restart
+    // cannot act on a stale flag (for example if the parent report was deleted while the job was
+    // queued). A parent that no longer resolves simply degrades the job to a normal submission.
+    const rerunIntent = await resolveRerunIntent(storage, user.username, job.payload || {}).catch(() => ({ verified: false }));
+
     // Restart-safety idempotency checkpoint: if a report for this submission already exists (a prior
     // attempt committed but crashed before marking the job complete), project it — no provider call,
-    // no second credit (brief §6.5, §11).
+    // no second credit (brief §6.5, §11). The clientSubmissionId lookup is what makes this safe, and
+    // it stays active for reruns too, so a rerun that already committed is never run twice.
     const existingRecord = job.payload?.clientSubmissionId
       ? await storage.findSubmissionByKey(user.username, job.payload.clientSubmissionId, job.payload.studentProfileId)
       : null;
-    const duplicateRecord = existingRecord || await storage.findSubmissionByHash?.(user.username, submissionHash, job.payload.studentProfileId);
+    // Same rule as the synchronous path: skip only the historical exact-input shortcut.
+    const duplicateRecord = existingRecord || (rerunIntent.verified
+      ? null
+      : await storage.findSubmissionByHash?.(user.username, submissionHash, job.payload.studentProfileId));
 
     if (duplicateRecord) {
       const latestUser = await storage.getUserByUsername(user.username);
@@ -2488,6 +2513,63 @@ function bandRangeMidpoint(value) {
   return range.min === null || range.max === null ? null : (range.min + range.max) / 2;
 }
 
+// ---------------------------------------------------------------------------
+// Explicit rerun ("Re-analyze with Current Engine").
+//
+// Three separate concerns that were previously collapsed into one hash lookup:
+//
+//   1. REQUEST IDEMPOTENCY  — keyed on clientSubmissionId. Always active. A retried click, a
+//      restart, or a second request carrying the same key returns the same analysis and never calls
+//      the provider twice.
+//   2. HISTORICAL EXACT-INPUT CACHE — keyed on submissionHash. "You already analysed this exact
+//      work; here is the saved report." Correct for a normal submission, wrong for a rerun.
+//   3. EXPLICIT RERUN LINEAGE — a verified request to analyse unchanged work again with the current
+//      engine, producing a NEW version alongside the old one.
+//
+// Only (2) is skipped for a verified rerun. (1) and (3) stay in force, so exactly-once quota,
+// duplicate-job collapse and restart recovery are unaffected.
+//
+// Rerun intent is never taken on the client's word. A bare boolean is not accepted: the request must
+// name a parent report that actually exists for THIS account, THIS student profile and THIS task
+// type, and the reason must normalise to a value the server allows a client to ask for.
+// ---------------------------------------------------------------------------
+
+// Reasons a client may request. `engine-upgrade` is derived by the server from the stored
+// engineVersion and is deliberately NOT accepted from a browser.
+const CLIENT_REQUESTABLE_ANALYSIS_REASONS = new Set(["explicit-rerun"]);
+
+export function normalizeRequestedAnalysisReason(value) {
+  const reason = String(value || "").trim().toLowerCase();
+  return CLIENT_REQUESTABLE_ANALYSIS_REASONS.has(reason) ? reason : "";
+}
+
+// Resolves and validates rerun intent BEFORE the historical hash cache is consulted.
+// Returns { verified, parent, requestedReason }. Throws when a parent was explicitly named but does
+// not belong to this account/student/task — a forged or foreign id is an error, not a silent
+// downgrade. A request with no parentReportId simply is not a rerun, so it can never force a bypass.
+export async function resolveRerunIntent(storage, username, payload) {
+  const requestedParentId = String(payload?.options?.parentReportId || "").trim();
+  const requestedReason = normalizeRequestedAnalysisReason(payload?.options?.analysisReason);
+  if (!requestedParentId) return { verified: false, parent: null, requestedReason };
+
+  // Scoped read: same owner, same student profile, same task type. A parent outside that scope is
+  // simply not found, so a foreign report id cannot be borrowed.
+  const records = await storage.getSubmissionHistory(username, payload.studentProfileId, payload.taskType);
+  const parent = records.find((record) =>
+    String(record.submissionId || "") === requestedParentId &&
+    String(record.username || "") === String(username) &&
+    String(record.studentProfileId || "") === String(payload.studentProfileId) &&
+    String(record.taskType || "") === String(payload.taskType) &&
+    record.analysisValidity !== "invalid"
+  ) || null;
+
+  if (!parent) {
+    throw statusError("The parent report was not found for this student and task.", 404, "VALIDATION_ERROR");
+  }
+  // A named, owned, valid parent plus an allowed reason is a verified rerun.
+  return { verified: Boolean(requestedReason), parent, requestedReason };
+}
+
 async function buildAnalysisLineage(storage, username, payload) {
   const records = await storage.getSubmissionHistory(username, payload.studentProfileId, payload.taskType);
   const requestedParentId = String(payload.options?.parentReportId || "").trim();
@@ -2515,7 +2597,11 @@ async function buildAnalysisLineage(storage, username, payload) {
     }
   }));
   const inputChanged = Boolean(parent && !sameWork);
-  const explicitReason = String(payload.options?.analysisReason || "").trim().toLowerCase();
+  // The client's requested reason is honoured only for a VERIFIED rerun (a named, owned, valid
+  // parent). Without that, an unchanged submission is not relabelled on the client's say-so.
+  const explicitReason = payload.explicitRerun === true
+    ? normalizeRequestedAnalysisReason(payload.options?.analysisReason)
+    : "";
   const analysisReason = engineChanged && sameWork
     ? "engine-upgrade"
     : inputChanged
@@ -2532,7 +2618,11 @@ async function buildAnalysisLineage(storage, username, payload) {
     parentReportId: parent?.submissionId || "",
     submissionGroupId,
     analysisReason,
-    progressEligible: !parent || !sameWork
+    // Identical work never advances progression, whether it was reopened or explicitly re-analysed.
+    progressEligible: !parent || !sameWork,
+    // Carried onto the stored record so the commit layer can tell a new VERSION of the same work
+    // apart from a duplicate of it.
+    explicitRerun: payload.explicitRerun === true && sameWork
   };
 }
 
@@ -2600,6 +2690,9 @@ function buildSubmissionHistoryRecord(username, payload, analysis, submissionHas
     parentReportId: payload.parentReportId || "",
     analysisReason: payload.analysisReason || "first-analysis",
     progressEligible: payload.progressEligible !== false,
+    // Server-verified marker. The commit layer uses it to allow this record alongside the parent it
+    // supersedes instead of collapsing it back onto the identical submissionHash.
+    explicitRerun: payload.explicitRerun === true,
     wordCount: payload.wordCount,
     minimumWordCount: payload.minimumWordCount,
     wordCountStatus: payload.wordCountStatus,

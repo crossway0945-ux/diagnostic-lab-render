@@ -447,7 +447,10 @@ class JsonFileStorage {
         const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.clientSubmissionId === record.clientSubmissionId && item.analysisValidity !== "invalid");
         if (existing) return existing;
       }
-      if (record.submissionHash) {
+      // A verified explicit rerun is a new VERSION of the same work, so its hash matches its parent by
+      // design and must not collapse onto it. Request idempotency is preserved by the
+      // clientSubmissionId check above, so a retried rerun still resolves to the record it created.
+      if (record.submissionHash && !isExplicitRerunRecord(record)) {
         const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.submissionHash === record.submissionHash && item.analysisValidity !== "invalid");
         if (existing) return existing;
       }
@@ -725,7 +728,10 @@ class MemoryStorage {
       const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.clientSubmissionId === record.clientSubmissionId && item.analysisValidity !== "invalid");
       if (existing) return existing;
     }
-    if (record.submissionHash) {
+    // A verified explicit rerun is a new VERSION of the same work, so its hash matches its parent by
+    // design and must not collapse onto it. Request idempotency is preserved by the
+    // clientSubmissionId check above, so a retried rerun still resolves to the record it created.
+    if (record.submissionHash && !isExplicitRerunRecord(record)) {
       const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.submissionHash === record.submissionHash && item.analysisValidity !== "invalid");
       if (existing) return existing;
     }
@@ -980,7 +986,10 @@ class BlobJsonStorage {
       const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.clientSubmissionId === record.clientSubmissionId && item.analysisValidity !== "invalid");
       if (existing) return existing;
     }
-    if (record.submissionHash) {
+    // A verified explicit rerun is a new VERSION of the same work, so its hash matches its parent by
+    // design and must not collapse onto it. Request idempotency is preserved by the
+    // clientSubmissionId check above, so a retried rerun still resolves to the record it created.
+    if (record.submissionHash && !isExplicitRerunRecord(record)) {
       const existing = records.find((item) => item.username === record.username && item.studentProfileId === record.studentProfileId && item.submissionHash === record.submissionHash && item.analysisValidity !== "invalid");
       if (existing) return existing;
     }
@@ -1160,14 +1169,26 @@ function buildResetManifest(storage, history, profiles, users, audit) {
   };
 }
 
+// A verified explicit rerun is a NEW VERSION of work that was already analysed, so its
+// submissionHash is identical to its parent's by design. Matching it back onto that parent would
+// silently discard the report the user asked for. The clientSubmissionId arm still applies, so
+// request idempotency, restart recovery and exactly-once quota are unchanged: a retry of the same
+// rerun still resolves to the record that rerun already created.
+export function isExplicitRerunRecord(record = {}) {
+  return record.explicitRerun === true && Boolean(String(record.parentReportId || "").trim());
+}
+
 function findDuplicateSubmission(records, record) {
+  const rerunVersion = isExplicitRerunRecord(record);
   return records.find((item) =>
     item.username === record.username &&
     item.studentProfileId === record.studentProfileId &&
     item.analysisValidity !== "invalid" && (
       (record.clientSubmissionId && item.clientSubmissionId === record.clientSubmissionId) ||
-      (record.inputFingerprint && (item.inputFingerprint === record.inputFingerprint || item.submissionHash === record.inputFingerprint)) ||
-      (record.submissionHash && (item.submissionHash === record.submissionHash || item.inputFingerprint === record.submissionHash))
+      (!rerunVersion && (
+        (record.inputFingerprint && (item.inputFingerprint === record.inputFingerprint || item.submissionHash === record.inputFingerprint)) ||
+        (record.submissionHash && (item.submissionHash === record.submissionHash || item.inputFingerprint === record.submissionHash))
+      ))
     )
   ) || null;
 }

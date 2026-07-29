@@ -268,22 +268,70 @@ function assessAffectedGroupMechanism({ paragraphs }) {
 // ---------------------------------------------------------------------------
 // 4. Local reference control: a bare demonstrative subject after a multi-clause sentence.
 // ---------------------------------------------------------------------------
+// A leading subordinate clause ("When residents divert …, small-town businesses are forced into
+// bankruptcy.") does not compete to be the antecedent: the main clause it introduces dominates.
+const LEADING_SUBORDINATE = /^\s*(?:when|if|although|though|because|while|whereas|since|as|after|before|unless|once|whenever)\b[^,]{0,160},\s*/i;
+// A trailing participial result ("…, allowing them to complete a month of shopping") or a coordinated
+// finite clause ("…, and shoppers save time") DOES compete — it adds a second proposition at the same
+// level, so a following bare "this" has two plausible referents.
+const TRAILING_PARTICIPIAL = /,\s*(?:thereby\s+|thus\s+)?(?:allowing|enabling|making|creating|leaving|forcing|causing|giving|helping|letting|resulting|meaning|producing)\b/gi;
+const COORDINATED_CLAUSE = /,\s*(?:and|but|so|yet)\s+(?:the\s+|a\s+|an\s+|this\s+|these\s+|they\b|it\b|he\b|she\b|we\b)?[a-z]+\s+(?:is|are|was|were|has|have|can|could|will|would|may|might|do|does|did|[a-z]+s)\b/gi;
+// A consequence predicate is what makes a demonstrative subject worth checking at all.
+const CONSEQUENCE_PREDICATE = /^(?:leads?|causes?|results?|means?|creates?|produces?|eliminates?|removes?|reduces?|increases?|forces?|allows?|prevents?|makes?|explains?|shows?|demonstrates?|worsens?|improves?)/i;
+// A dangling adjunct inside the referring sentence itself ("…while providing items with greater
+// deals") means the sentence has a second, separate subject-control problem — a real reason to flag.
+const UNANCHORED_ADJUNCT = /,?\s*(?:while|by|when|after|before|through)\s+[a-z]+ing\b/i;
+
+/**
+ * Semantic antecedent validation.
+ *
+ * The previous rule flagged a demonstrative whenever the preceding sentence had more than one finite
+ * verb. That is a syntactic proxy, not a reading of the text, and it produced a false Moderate issue
+ * for "…businesses are forced into bankruptcy. This leads to immediate local job losses…", where the
+ * antecedent is plainly the bankruptcy.
+ *
+ * Returns "clear" | "refinable" | "ambiguous". Only "ambiguous" becomes a visible issue.
+ */
+export function classifyDemonstrativeReference(previousSentence = "", referringSentence = "", verb = "") {
+  const previous = String(previousSentence || "");
+  // Competing antecedents are counted AFTER removing a leading subordinate clause, because that
+  // clause is subordinate to — not a rival of — the proposition that follows it.
+  const core = previous.replace(LEADING_SUBORDINATE, "");
+  const competing = 1 +
+    (core.match(TRAILING_PARTICIPIAL) || []).length +
+    (core.match(COORDINATED_CLAUSE) || []).length;
+
+  const causallyCompatible = CONSEQUENCE_PREDICATE.test(String(verb || ""));
+  const selfUnanchored = UNANCHORED_ADJUNCT.test(String(referringSentence || ""));
+
+  // One dominant proposition, and the referring verb reads as its consequence: recoverable.
+  if (competing <= 1 && causallyCompatible) return selfUnanchored ? "refinable" : "clear";
+  // One proposition but no consequence reading: understandable, worth tightening, not a defect.
+  if (competing <= 1) return "refinable";
+  // Two or more rival propositions. Genuinely ambiguous when the sentence also carries its own
+  // subject-control problem, or when the alternatives would change what the claim asserts.
+  return selfUnanchored || causallyCompatible ? "ambiguous" : "refinable";
+}
+
 function assessReferenceControl({ paragraphs }) {
   const findings = [];
   for (const paragraph of paragraphs) {
     if (/^Introduction$/i.test(String(paragraph.role || ""))) continue;
     const sentences = paragraph.sentences || [];
     for (let index = 1; index < sentences.length; index += 1) {
-      const match = BARE_DEMONSTRATIVE_SUBJECT.exec(sentences[index].exactText);
+      const text = sentences[index].exactText;
+      const match = BARE_DEMONSTRATIVE_SUBJECT.exec(text);
       if (!match) continue;
       const previous = sentences[index - 1].exactText;
-      // Ambiguity requires competing antecedents: at least two finite clauses in the previous
-      // sentence. A single-clause antecedent leaves "this" unambiguous.
-      if (countFiniteVerbs(previous) < 2) continue;
+      const classification = classifyDemonstrativeReference(previous, text, match[2]);
+      // Only genuine ambiguity is a visible Moderate issue. A refinable reference is recorded so the
+      // language-pattern summary can mention it, but it never displaces a stronger issue.
+      if (classification !== "ambiguous") continue;
       findings.push({
         ...sentenceRecord(paragraph, sentences[index]),
         exactProblemSpan: match[1],
-        antecedentSentence: previous
+        antecedentSentence: previous,
+        referenceClassification: classification
       });
       break; // one reference finding per paragraph
     }

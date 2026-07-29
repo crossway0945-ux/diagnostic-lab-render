@@ -184,7 +184,25 @@ export function resolveFiniteVerbSubject(text = "", verbStart = -1) {
       confidence: "high"
     };
   }
-  if (!SUBJECT_DETERMINERS.has(first) && !EXPLICIT_SINGULAR_HEADS.has(first) && !IRREGULAR_PLURALS.has(first)) return null;
+  // A gerund heading the subject is a singular nominal: "Shopping in metropolitan centers PROVIDES".
+  // Without this the clause was skipped entirely, so a real agreement defect on a gerund subject was
+  // never detected. Recognised only when the gerund is followed by a preposition (a nominal frame)
+  // or stands alone before the finite verb — a participial adjunct never reaches here because
+  // findClauseStart cuts the clause at the preceding comma.
+  const gerundHead = /^[a-z]{4,}ing$/.test(first) &&
+    (tokens.length === 1 || PREPOSITION_BOUNDARIES.has(tokens[1]?.lower || ""));
+  if (!gerundHead && !SUBJECT_DETERMINERS.has(first) && !EXPLICIT_SINGULAR_HEADS.has(first) && !IRREGULAR_PLURALS.has(first)) return null;
+  if (gerundHead) {
+    const start = normalizedStart;
+    return {
+      span: subjectText,
+      head: tokens[0].value,
+      number: "singular",
+      start,
+      end: start + subjectText.length,
+      confidence: "high"
+    };
+  }
 
   const prepositionIndex = tokens.findIndex((token, index) => index > 0 && PREPOSITION_BOUNDARIES.has(token.lower));
   const coreTokens = prepositionIndex > 0 ? tokens.slice(0, prepositionIndex) : tokens;

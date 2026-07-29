@@ -31,6 +31,77 @@ export function normalizeVisibleText(value) {
     .replace(/\r\n?/gu, "\n");
 }
 
+// ---------------------------------------------------------------------------
+// PDF text-layer integrity (V12.9.4).
+//
+// The canonical report data is clean \u2014 the production QA export contains a normal "cost-efficiency"
+// and zero noncharacters. The corruption seen as `cost\ufffeefficiency` is introduced BELOW the canonical
+// layer, in the printable projection, where a soft hyphen or zero-width break inserted for line
+// breaking survives into the PDF text layer and extracts as U+FFFE.
+//
+// So the repair belongs here: strip anything that cannot legitimately appear in extracted text,
+// while preserving every character a reader expects. A real hyphen, en dash, em dash and
+// non-breaking hyphen all survive; only the invisible break characters and noncharacters are removed.
+// ---------------------------------------------------------------------------
+
+// Unicode noncharacters: U+FDD0-U+FDEF and the last two code points of every plane.
+const NONCHARACTER_PATTERN = /[\ufdd0-\ufdef\ufffe\uffff]|[\uD83F\uD87F\uD8BF\uD8FF\uD93F\uD97F\uD9BF\uD9FF\uDA3F\uDA7F\uDABF\uDAFF\uDB3F\uDB7F\uDBBF\uDBFF][\uDFFE\uDFFF]/gu;
+// Invisible characters a layout engine may inject for hyphenation or line breaking. They are the
+// actual source of the corruption, and none of them carries meaning in extracted text.
+const INVISIBLE_BREAK_PATTERN = /[\u00ad\u200b\u200c\u200d\u2060\ufeff]/gu;
+const REPLACEMENT_CHARACTER_PATTERN = /\ufffd/gu;
+
+/**
+ * Makes a string safe for the PDF text layer without changing what the reader sees.
+ * Hyphens and dashes are preserved: only invisible breaks and noncharacters are removed.
+ */
+export function sanitizePrintableText(value) {
+  return String(value ?? "")
+    .normalize("NFC")
+    // A noncharacter or replacement character sitting BETWEEN two letters means a real character was
+    // destroyed, and in this report the only character that appears there is a hyphen
+    // ("cost-efficiency" → "cost￾efficiency"). Restoring the hyphen recovers the source word;
+    // deleting it would silently produce "costefficiency".
+    .replace(/(?<=[A-Za-z])(?:[﷐-﷯￾￿�])(?=[A-Za-z])/gu, "-")
+    .replace(NONCHARACTER_PATTERN, "")
+    // Discretionary and zero-width breaks carry no meaning of their own, so they are simply removed.
+    .replace(INVISIBLE_BREAK_PATTERN, "")
+    .replace(REPLACEMENT_CHARACTER_PATTERN, "")
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/gu, "")
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/gu, "");
+}
+
+export function sanitizePrintableTree(value) {
+  if (typeof value === "string") return sanitizePrintableText(value);
+  if (Array.isArray(value)) return value.map(sanitizePrintableTree);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, sanitizePrintableTree(child)]));
+}
+
+/** Returns the forbidden code points still present, so an export can fail closed with a reason. */
+export function printableTextViolations(value) {
+  const text = String(value ?? "");
+  const violations = [];
+  if (NONCHARACTER_PATTERN.test(text)) violations.push("UNICODE_NONCHARACTER");
+  NONCHARACTER_PATTERN.lastIndex = 0;
+  if (REPLACEMENT_CHARACTER_PATTERN.test(text)) violations.push("REPLACEMENT_CHARACTER");
+  REPLACEMENT_CHARACTER_PATTERN.lastIndex = 0;
+  if (INVISIBLE_BREAK_PATTERN.test(text)) violations.push("INVISIBLE_BREAK_CHARACTER");
+  INVISIBLE_BREAK_PATTERN.lastIndex = 0;
+  if (hasUnpairedSurrogate(text)) violations.push("UNPAIRED_SURROGATE");
+  return violations;
+}
+
+/** PDF export must refuse rather than ship a corrupted text layer. */
+export function assertPrintableTextIntegrity(value) {
+  const violations = printableTextViolations(value);
+  if (!violations.length) return true;
+  const error = new Error(`The PDF text layer contains characters that would corrupt copied text: ${violations.join(", ")}.`);
+  error.errorCode = "PDF_TEXT_INTEGRITY_FAILED";
+  error.validationDetails = violations;
+  throw error;
+}
+
 export function unicodeIntegrityIssues(value, options = {}) {
   const text = String(value ?? "");
   const issues = [];

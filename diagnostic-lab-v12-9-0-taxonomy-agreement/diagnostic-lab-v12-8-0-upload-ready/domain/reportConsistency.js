@@ -855,6 +855,9 @@ function repairActivityForIssue(issue = {}, phaseIndex = 0, context = {}) {
   const category = String(issue.issueCategory || "");
   const location = String(issue.paragraphLabel || issue.paragraphLocation || "the quoted sentence");
   const action = String(issue.studentAction || "Repair the identified point in the quoted sentence.");
+  // The exact item the issue is about, so a plan day names the learner's own words rather than a
+  // category. For a Thesis-to-Body Promise this is the promise the body never developed.
+  const promisedItem = String(issue.targetSpan || "").trim().replace(/^["“']|["”']$/g, "").slice(0, 60);
   const family = repairActivityFamily(category);
   const tasks = {
     punctuation: [
@@ -920,6 +923,17 @@ function repairActivityForIssue(issue = {}, phaseIndex = 0, context = {}) {
       ["Check the conclusion", "Re-read the conclusion and confirm it restates the same comparative judgement your body now demonstrates."],
       ["Final learner checklist", "Confirm the essay compares the two sides at least once in the body, not only in the introduction and conclusion."]
     ],
+    promise: [
+      ["Name the dropped promise", `Underline every route your thesis names. Mark the one the body never develops${promisedItem ? ` — here it is "${promisedItem}"` : ""}.`],
+      ["Decide: develop or remove", `Choose one path for ${promisedItem ? `"${promisedItem}"` : "the dropped promise"} — either give it a body paragraph, or take it out of the thesis. Write one sentence saying which you chose and why.`],
+      ["Do it", action],
+      ["Check the promise is kept", `Re-read the thesis and each body topic sentence. Every route the thesis names must appear in a body paragraph${promisedItem ? `, including "${promisedItem}" if you kept it` : ""}.`],
+      ["Build the missing mechanism", promisedItem
+        ? `If you kept "${promisedItem}", write its chain: cause -> who or what is affected -> observable consequence. Three sentences, no new routes.`
+        : "Write the missing route's chain: cause -> who is affected -> observable consequence."],
+      ["Check the conclusion", "Confirm the conclusion closes only the routes the body actually developed — a promise you removed must not reappear there."],
+      ["Final learner checklist", "For every noun phrase your thesis promises, point to the body paragraph that delivers it. Anything you cannot point to must be cut."]
+    ],
     thesis: [
       ["Map the task routes", "List every route required by the prompt before revising the thesis."],
       ["Practise route order", "Write two thesis plans that present the required routes in the same order as the body paragraphs."],
@@ -959,6 +973,10 @@ function repairActivityFamily(category) {
   if (["Lexical Precision", "Meaning Control", "Word Choice", "Collocation", "Word Form"].includes(category)) return "lexical";
   if (["Reference Control", "Pronoun Control"].includes(category)) return "reference";
   if (category === "Comparative Judgement") return "comparison";
+  // A declared-but-undeveloped promise is NOT a route-order problem. Sending it to the generic
+  // `thesis` family produced "Practise route order" for an essay whose route order was already
+  // correct — the actual defect was that "environmental degradation" was named and then dropped.
+  if (category === "Thesis-to-Body Promise") return "promise";
   if (["Causal Mechanism", "Solution Mechanism", "Explanation Depth", "Example Development", "SAR Example Quality"].includes(category)) return "development";
   if (["Thesis Route Clarity", "Cause Route Clarity", "Solution Route Clarity", "Position Clarity", "Prompt Coverage", "Thesis-to-Body Promise"].includes(category)) return "thesis";
   if (["Overview Quality", "Overview Accuracy", "Mixed-Visual Coverage"].includes(category)) return "task1Overview";

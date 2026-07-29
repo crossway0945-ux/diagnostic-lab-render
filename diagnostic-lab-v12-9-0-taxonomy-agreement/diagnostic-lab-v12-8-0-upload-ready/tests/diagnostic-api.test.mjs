@@ -1937,8 +1937,13 @@ async function testEvinSemanticOutweighAndIssueMapping() {
     assert.ok(Object.values(repaired.criteriaScores).every((criterion) => maxBand(criterion.range) <= 7.0));
     assert.ok(repaired.top3Issues.length >= 3 && repaired.top3Issues.length <= 5);
     assert.equal(new Set(repaired.top3Issues.map((issue) => issue.feedbackCardId)).size, repaired.top3Issues.length);
-    const grammarIssue = repaired.top3Issues.find((issue) => /grammar and punctuation/i.test(issue.issueType));
-    assert.ok(grammarIssue);
+    // V12.9.3: Top Issues are the top of ONE canonical priority order, so a Moderate punctuation
+    // defect no longer holds a slot ahead of the Major task-level defect. The mapping of that
+    // provider issue is still asserted in full — it must reach the report, under its canonical
+    // category, with the same evidence sentence, location and band explanation.
+    assert.equal(repaired.top3Issues[0].severity, "Major", "Top Issues lead with the Major task-level defect");
+    const grammarIssue = repaired.feedbackCards.find((issue) => /Punctuation|Grammar/i.test(issue.issueCategory) && issue.exactSentence === grammarEvidence);
+    assert.ok(grammarIssue, "the punctuation defect still reaches the report under its canonical category");
     assert.equal(grammarIssue.exactSentence, grammarEvidence);
     assert.match(grammarIssue.paragraphLocation, /^Body Paragraph 2/);
     assert.match(grammarIssue.whyItLimitsBand, /missing space after the full stop/i);

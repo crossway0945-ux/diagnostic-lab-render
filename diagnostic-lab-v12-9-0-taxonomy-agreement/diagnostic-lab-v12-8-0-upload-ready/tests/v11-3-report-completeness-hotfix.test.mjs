@@ -37,8 +37,14 @@ assert.equal(report.positionConfidence, "high");
 
 assert.ok(report.top3Issues.length >= 3 && report.top3Issues.length <= 5);
 assert.equal(new Set(report.top3Issues.map((issue) => issue.feedbackCardId)).size, report.top3Issues.length);
-assert.ok(report.top3Issues.some((issue) => /grammar|sentence control/i.test(issue.issueType)));
-assert.ok(report.top3Issues.some((issue) => /development|explanation|example/i.test(issue.issueType)));
+// V12.9.3: Top Issues are the head of ONE canonical priority order and carry the canonical category
+// rather than the provider's free-text `issueType`, so the report — not the three-slot summary — is
+// where breadth is asserted. Top Issues themselves must be in canonical priority order.
+const canonicalCategories = report.feedbackCards.map((issue) => issue.issueCategory).join(" | ");
+assert.match(canonicalCategories, /Grammar|Sentence|Agreement|Punctuation|Lexical|Collocation|Reference/i, "the report covers a language defect");
+assert.match(canonicalCategories, /Causal Mechanism|Explanation Depth|Example Development|SAR Example Quality|Comparative Judgement|Thesis-to-Body Promise/i, "the report covers a development defect");
+const topRanks = report.top3Issues.map((issue) => report.feedbackCards.findIndex((card) => card.issueId === issue.issueId));
+assert.deepEqual(topRanks, [...topRanks].sort((a, b) => a - b), "Top Issues follow the canonical order used by Detailed Feedback");
 
 assert.ok(report.feedbackCards.length >= 4);
 for (const card of report.feedbackCards) {

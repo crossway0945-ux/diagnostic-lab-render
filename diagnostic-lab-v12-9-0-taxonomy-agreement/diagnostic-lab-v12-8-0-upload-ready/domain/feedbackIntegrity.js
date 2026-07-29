@@ -240,6 +240,15 @@ export function buildFeedbackIntegrityModel({
     }
   };
   model.consistencyAudit = auditReportConsistency(model);
+  // Populated by the analyzer once every section has been projected from the frozen canonical issue
+  // graph. Declared here so it is part of the validated model shape rather than a late addition.
+  model.projectionConsistencyAudit = [];
+  // V12.9.5 report density. `reportDensityPlan` records which issues keep a full Detailed Feedback
+  // card; `languagePatternSummary` carries the compact rows for the rest plus the canonical
+  // `refinements`. Both are declared here so they are part of the validated model shape — adding a
+  // top-level report key instead would fail validateReportOutput with 502.
+  model.reportDensityPlan = null;
+  model.languagePatternSummary = [];
   return model;
 }
 
@@ -1146,11 +1155,18 @@ function selectCanonicalTopIssueIds(topIssues, canonicalIssues, taskType, execut
   const limit = 3;
   const selected = [];
   for (const top of Array.isArray(topIssues) ? topIssues : []) {
-    const match = canonicalIssues.find((issue) => !selected.includes(issue.issueId) && (
-      normalizeText(top?.exactEvidence || top?.exactSentence) === normalizeText(issue.exactEvidence) ||
-      String(top?.issueId || "") === issue.issueId ||
-      normalizeIssueCategory(top?.issueCategory || top?.issueType, top) === issue.issueCategory
-    ));
+    // Bind by IDENTITY, then by category. Matching on the evidence sentence alone bound a provider
+    // top issue to whichever canonical issue happened to quote the same sentence, which is how a
+    // Lexical Precision slot came to carry the Subject-Verb Agreement content in production. The
+    // sentence is only a last-resort tie-break, and only when the category also agrees.
+    const topCategory = normalizeIssueCategory(top?.issueCategory || top?.issueType, top);
+    const candidates = canonicalIssues.filter((issue) => !selected.includes(issue.issueId));
+    const match =
+      candidates.find((issue) => String(top?.issueId || "") === issue.issueId) ||
+      candidates.find((issue) => topCategory && topCategory === issue.issueCategory &&
+        normalizeText(top?.exactEvidence || top?.exactSentence) === normalizeText(issue.exactEvidence)) ||
+      candidates.find((issue) => topCategory && topCategory === issue.issueCategory) ||
+      null;
     if (match) selected.push(match.issueId);
     if (selected.length >= limit) break;
   }

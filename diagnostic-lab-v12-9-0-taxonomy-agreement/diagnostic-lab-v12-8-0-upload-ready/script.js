@@ -1,7 +1,8 @@
-﻿import { getWordCountMetadata } from "./wordCount.js";
+import { getWordCountMetadata } from "./wordCount.js";
 import { projectCanonicalAnalysis } from "./services/canonicalAnalysis.js";
 import { assertStudentReportViewModel } from "./domain/reportViewModels.js";
-import { STUDENT_FORBIDDEN_PATTERNS, unicodeIntegrityIssues } from "./domain/textIntegrity.js";
+import { STUDENT_FORBIDDEN_PATTERNS, assertPrintableTextIntegrity, sanitizePrintableText, unicodeIntegrityIssues } from "./domain/textIntegrity.js";
+import { groupCardsBySharedSentence } from "./domain/reportDensity.js";
 import { runWithSingleTransientPdfRetry } from "./domain/pdfRetry.js";
 
 const views = document.querySelectorAll(".view");
@@ -1483,6 +1484,46 @@ async function prepareAndPrintDiagnosticFrame(reportLanguage) {
     body > *:not(#print-report) { display: none !important; }
     #print-report { display: block !important; }
     [style*="position: fixed"], [style*="position:fixed"] { display: none !important; }
+
+    /* Pagination geometry.
+       composeDeterministicPrintPages() measures with scrollHeight/clientHeight, which resolve
+       against the styles ACTIVE in the document - i.e. screen styles - while the exported PDF is
+       rendered with the @media print block. Any disagreement means the paginator allocates the
+       wrong amount of space: it clips (print taller) or wastes most of a sheet (print shorter,
+       which is what left a Task 2 report at one card per page). These declarations mirror the
+       print metrics for the export document, so measurement and rendering agree to within a few
+       pixels; the residual difference bleeds into the sheet's reserved bottom margin rather than
+       being clipped, and assertPrintPageGeometry() fails the export if it ever exceeds that
+       reserve. Keep them in step with the @media print block in styles.css. */
+    .print-report .print-section p,
+    .print-report .print-card p,
+    .print-report .print-callout p,
+    .print-report .print-issue p,
+    .print-report .print-feedback-card p,
+    .print-report .print-plan-item p { margin: 0.9mm 0; font-size: 9.5pt; line-height: 1.3; }
+    .print-report .print-issue,
+    .print-report .print-feedback-card { margin-bottom: 2.6mm; padding: 3.1mm; }
+    .print-report blockquote { margin: 1.2mm 0; padding: 2.2mm; font-size: 9.5pt; line-height: 1.35; }
+    .print-report .print-revision { margin: 1.2mm 0; padding: 2.2mm; font-size: 9.6pt; line-height: 1.38; }
+    .print-report .print-feedback-revision-group { margin-top: 2mm; padding-top: 2mm; }
+    .print-report .print-feedback-header-row { padding-bottom: 1.2mm; }
+    .print-report .print-section { margin: 3mm 0; }
+    .print-report .print-section-panel { padding: 3.2mm; }
+    .print-report .print-section h2 { font-size: 15pt; margin: -1mm -1mm 2.4mm; padding: 0 1mm 1.8mm; }
+    .print-report .print-section h3 { font-size: 11.5pt; line-height: 1.25; margin: 0; }
+    .print-report .print-info,
+    .print-report .print-card,
+    .print-report .print-callout,
+    .print-report .print-plan-item { padding: 2.5mm 2.9mm; }
+    .print-report .print-plan-item { min-height: 25mm; }
+    .print-report .print-summary-grid,
+    .print-report .print-card-grid { gap: 2.4mm; margin: 2.6mm 0; }
+    .print-report .print-language-pattern-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.4mm; }
+    .print-report .print-language-pattern-row { padding: 2.8mm 3mm; font-size: 9pt; line-height: 1.35; }
+    .print-report .print-language-pattern-row p { margin: 1.2mm 0 0; }
+    .print-report .print-feedback-group { margin-bottom: 2.6mm; }
+    .print-report .print-feedback-shared-evidence { padding: 3mm 4mm; }
+    .print-report .pdf-section-fragment { margin: 0 0 2.4mm; }
   </style>
 </head>
 <body class="print-export-document">
@@ -1500,6 +1541,7 @@ async function prepareAndPrintDiagnosticFrame(reportLanguage) {
     assertStudentPrintBoundary(printDocument);
     composeDeterministicPrintPages(printDocument);
     measureProtectedPrintBlocks(printDocument);
+    assertPrintPageGeometry(printDocument);
     const win = frame.contentWindow;
     if (!win) throw new Error("The isolated print window could not be created.");
     const cleanup = () => window.setTimeout(() => frame.remove(), 500);
@@ -1537,6 +1579,9 @@ function removeForbiddenPrintOverlays(doc) {
 }
 
 function assertStudentPrintBoundary(doc) {
+  // Repair the PDF text layer BEFORE reading it: an injected soft hyphen or zero-width break is a
+  // layout artefact, not a content defect, so it is normalised rather than used to block the export.
+  sanitizePrintDomText(doc.querySelector("#print-report") || doc.body || doc);
   const text = String(doc.querySelector("#print-report")?.textContent || "");
   const forbidden = [
     ...STUDENT_FORBIDDEN_PATTERNS,
@@ -1553,6 +1598,51 @@ function assertStudentPrintBoundary(doc) {
   const match = forbidden.find((pattern) => pattern.test(text));
   const unicodeIssues = unicodeIntegrityIssues(text, { studentFacing: true });
   if (match || unicodeIssues.length) throw new Error("The student PDF was blocked because internal or corrupted content was detected.");
+  // The PDF text layer is checked separately from the canonical data. The canonical report is clean,
+  // but a layout engine can inject a soft hyphen or zero-width break for line breaking that extracts
+  // as a noncharacter (`cost-efficiency` copied out as `cost<U+FFFE>efficiency`). Every printable
+  // node is sanitised before this point; if anything forbidden survives, the export fails rather
+  // than producing a PDF whose copied text is corrupt.
+  assertPrintableTextIntegrity(text);
+}
+
+// Sanitises every text node in the print DOM. Hyphens, en dashes, em dashes and non-breaking
+// hyphens are preserved; only invisible break characters and Unicode noncharacters are removed, and
+// a noncharacter sitting between two letters is restored to the hyphen it displaced.
+function sanitizePrintDomText(root) {
+  if (!root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const cleaned = sanitizePrintableText(node.nodeValue);
+    if (cleaned !== node.nodeValue) node.nodeValue = cleaned;
+  }
+}
+
+// Fail-closed page-geometry gate. Runs after pagination, on the composed sheets, and refuses to
+// export a document in which any sheet's content overflows its printable box or a page number is
+// missing. Overflow here becomes text clipped by `overflow: hidden` in the PDF, which the reader
+// would never know was missing — so the export fails loudly instead.
+function assertPrintPageGeometry(doc) {
+  const sheets = [...doc.querySelectorAll(".pdf-sheet")];
+  if (!sheets.length) return { pageCount: 0, worstOverflowPx: 0 };
+  const failures = [];
+  let worstOverflowPx = 0;
+  sheets.forEach((sheet, index) => {
+    const content = sheet.querySelector(".pdf-sheet-content");
+    if (!content) return;
+    const overflow = content.scrollHeight - content.clientHeight;
+    worstOverflowPx = Math.max(worstOverflowPx, overflow);
+    if (overflow > PRINT_BOTTOM_RESERVE_PX) {
+      failures.push(`page ${index + 1} overflows by ${overflow}px (${describePrintUnit(content.firstElementChild)})`);
+    }
+    if (!sheet.querySelector(".pdf-page-number")?.textContent) failures.push(`page ${index + 1} has no page number`);
+  });
+  if (failures.length) {
+    throw new Error(`The report could not be paginated without clipping: ${failures.join("; ")}.`);
+  }
+  return { pageCount: sheets.length, worstOverflowPx };
 }
 
 function measureProtectedPrintBlocks(doc) {
@@ -1578,6 +1668,13 @@ function measureProtectedPrintBlocks(doc) {
   return { protectedBlockCount: protectedBlocks.length, printableHeightPx };
 }
 
+// Sub-pixel rounding allowance shared by the paginator and the fail-closed geometry gate, so the
+// two can never disagree about what counts as overflow.
+const PRINT_OVERFLOW_TOLERANCE_PX = 2;
+// A 296mm sheet with a 252mm content box and 15mm/18mm padding leaves ~11mm of reserved bottom
+// margin. Content may bleed into that reserve without being lost; beyond it, the export fails.
+const PRINT_BOTTOM_RESERVE_PX = Math.round(11 * (96 / 25.4));
+
 function composeDeterministicPrintPages(doc) {
   const root = doc.querySelector("#print-report");
   if (!root || root.dataset.paginationComplete === "true") return { pageCount: 0 };
@@ -1602,7 +1699,13 @@ function composeDeterministicPrintPages(doc) {
   const createSheet = () => {
     const sheet = doc.createElement("article");
     sheet.className = "pdf-sheet";
-    sheet.style.cssText = "position:relative;box-sizing:border-box;width:210mm;height:296mm;padding:15mm 15mm 18mm;margin:0;overflow:hidden;background:#fff;";
+    // `overflow: visible`, deliberately. The sheet is 296mm with 15mm/18mm padding, so the 252mm
+    // content box is followed by 11mm of unused margin before the paper edge. A few pixels of
+    // measurement difference between screen and print used to be CLIPPED here by `overflow: hidden`
+    // — the reader lost the last line of a card and had no way to know. Letting it bleed into the
+    // reserved bottom margin is lossless, and assertPrintPageGeometry() fails the export outright if
+    // the overflow ever exceeds that reserve.
+    sheet.style.cssText = "position:relative;box-sizing:border-box;width:210mm;height:296mm;padding:15mm 15mm 18mm;margin:0;overflow:visible;background:#fff;";
     const content = doc.createElement("div");
     content.className = "pdf-sheet-content";
     content.style.cssText = "box-sizing:border-box;width:100%;height:252mm;overflow:visible;";
@@ -1615,7 +1718,17 @@ function composeDeterministicPrintPages(doc) {
     return sheet;
   };
 
-  for (const unit of units) {
+  // Placement is a work queue rather than a single pass: anything produced by splitting an oversized
+  // unit goes back through the same fit check. The previous single-pass version appended split
+  // fragments without re-measuring, which let a fragment overflow its fixed-height sheet and be
+  // clipped by `overflow: hidden`.
+  // Small deterministic allowance for sub-pixel rounding only. Because the export document now
+  // measures with the print geometry itself, this does not need to absorb a metrics mismatch, so it
+  // stays tight enough not to inflate the page count.
+  const fits = () => current.scrollHeight <= current.clientHeight + PRINT_OVERFLOW_TOLERANCE_PX;
+  const queue = [...units];
+  while (queue.length) {
+    const unit = queue.shift();
     if (unit.cover) {
       const sheet = createSheet();
       sheet.classList.add("pdf-cover-sheet");
@@ -1624,23 +1737,35 @@ function composeDeterministicPrintPages(doc) {
       continue;
     }
     if (!current) createSheet();
+
+    const sheetWasEmpty = current.childNodes.length === 0;
     current.append(unit.node);
-    if (current.scrollHeight > current.clientHeight + 2) {
-      unit.node.remove();
+    if (fits()) continue;
+
+    // Does not fit here. If this sheet already had content, try the top of a fresh sheet.
+    unit.node.remove();
+    if (!sheetWasEmpty) {
       createSheet();
       current.append(unit.node);
-      if (current.scrollHeight > current.clientHeight + 2) {
-        const splitUnits = splitOversizedFeedbackUnit(unit.node, doc);
-        if (splitUnits.length > 1) {
-          unit.node.remove();
-          splitUnits.forEach((splitNode, index) => {
-            if (index > 0) createSheet();
-            current.append(splitNode);
-          });
-        } else {
-          throw new Error("A protected report block is taller than one printable A4 page.");
-        }
-      }
+      if (fits()) continue;
+      unit.node.remove();
+    }
+
+    // Too tall even alone: break it into smaller units and re-measure each one.
+    const splitUnits = splitOversizedFeedbackUnit(unit.node, doc);
+    if (splitUnits.length > 1) {
+      queue.unshift(...splitUnits.map((node) => ({ node })));
+      continue;
+    }
+    throw new Error(`A protected report block is taller than one printable A4 page. [${describePrintUnit(unit.node)}]`);
+  }
+  // Any sheet left empty by the queue (for example a fresh sheet created immediately before a split)
+  // is removed, so the export never contains a blank page.
+  for (let index = sheets.length - 1; index >= 0; index -= 1) {
+    const content = sheets[index].querySelector(".pdf-sheet-content");
+    if (content && !content.childNodes.length) {
+      sheets[index].remove();
+      sheets.splice(index, 1);
     }
   }
 
@@ -1650,26 +1775,46 @@ function composeDeterministicPrintPages(doc) {
   return { pageCount: sheets.length };
 }
 
+// Identifies an oversized print unit well enough to fix the content that caused it. Reported in the
+// error only; nothing student-facing renders this.
+function describePrintUnit(node) {
+  if (!node) return "unknown unit";
+  const heading = node.querySelector("h2, h3")?.textContent?.trim() || "";
+  const classes = String(node.className || "").trim();
+  const chars = String(node.textContent || "").replace(/\s+/g, " ").trim().length;
+  return `${classes || "unit"}${heading ? ` / ${heading}` : ""} / ${chars} chars`;
+}
+
 function printSectionUnits(section) {
   const heading = section.querySelector(":scope > h2")?.cloneNode(true) || null;
   const grid = section.querySelector(":scope > .print-card-grid");
   if (grid) return groupedPrintUnits(section, heading, [...grid.children], "print-card-grid", 2);
   const issues = section.querySelector(":scope > .print-issue-list");
-  if (issues) return groupedPrintUnits(section, heading, [...issues.children], "print-issue-list", 1);
+  if (issues) return groupedPrintUnits(section, heading, [...issues.children], "print-issue-list", 2);
+  // Detailed Feedback packs TWO evidence groups per fragment. With a groupSize of 1 every card
+  // became its own section fragment, and the panel padding around each fragment was enough to push
+  // the next one onto a fresh sheet — that is what produced one-issue-per-page reports.
   const feedback = section.querySelector(":scope > .print-feedback-list");
-  if (feedback) return groupedPrintUnits(section, heading, [...feedback.children], "print-feedback-list", 1);
+  if (feedback) return groupedPrintUnits(section, heading, [...feedback.children], "print-feedback-list", 2);
+  const patterns = section.querySelector(":scope > .print-language-pattern-list");
+  if (patterns) {
+    // The explanatory note belongs with the heading on the first fragment, never orphaned.
+    const note = section.querySelector(":scope > .print-note");
+    return groupedPrintUnits(section, heading, [...patterns.children], "print-language-pattern-list", 4, note);
+  }
   const plan = section.querySelector(":scope > .print-plan");
   if (plan) return groupedPrintUnits(section, heading, [...plan.children], "print-plan", 2);
   return [{ node: section.cloneNode(true) }];
 }
 
-function groupedPrintUnits(section, heading, children, containerClass, groupSize) {
+function groupedPrintUnits(section, heading, children, containerClass, groupSize, lead = null) {
   if (!children.length) return [{ node: section.cloneNode(true) }];
   const groups = [];
   for (let index = 0; index < children.length; index += groupSize) {
     const wrapper = section.cloneNode(false);
     wrapper.classList.add("pdf-section-fragment");
     if (index === 0 && heading) wrapper.append(heading.cloneNode(true));
+    if (index === 0 && lead) wrapper.append(lead.cloneNode(true));
     const container = section.ownerDocument.createElement("div");
     container.className = containerClass;
     children.slice(index, index + groupSize).forEach((child) => container.append(child.cloneNode(true)));
@@ -1680,6 +1825,53 @@ function groupedPrintUnits(section, heading, children, containerClass, groupSize
 }
 
 function splitOversizedFeedbackUnit(node, doc) {
+  // A fragment holding several list items splits into one fragment per item before any card is
+  // taken apart, so a shared quotation and its issues stay together whenever they can. This is
+  // generic across every grouped section, so an unusually dense report degrades into more pages
+  // rather than failing the export.
+  const container = node.querySelector(".print-feedback-list, .print-language-pattern-list, .print-card-grid, .print-plan, .print-issue-list");
+  const children = [...(container?.children || [])];
+  if (container && children.length > 1) {
+    const containerClass = container.className;
+    return children.map((child, index) => {
+      const wrapper = node.cloneNode(false);
+      wrapper.classList.add("pdf-section-fragment");
+      if (index === 0) {
+        const heading = node.querySelector(":scope > h2");
+        if (heading) wrapper.append(heading.cloneNode(true));
+      }
+      const list = doc.createElement("div");
+      list.className = containerClass;
+      list.append(child.cloneNode(true));
+      wrapper.append(list);
+      return wrapper;
+    });
+  }
+  // A single shared-evidence group that still will not fit becomes one fragment per issue. The
+  // quotation is repeated so each fragment stays readable on its own; every issue keeps its own
+  // card, so no feedback is lost to the split.
+  const group = node.querySelector(".print-feedback-group");
+  const groupCards = [...(group?.querySelectorAll(":scope > .print-feedback-card") || [])];
+  if (group && groupCards.length > 1) {
+    const sharedEvidence = group.querySelector(":scope > .print-feedback-shared-evidence");
+    return groupCards.map((groupCard, index) => {
+      const wrapper = node.cloneNode(false);
+      wrapper.classList.add("pdf-section-fragment");
+      if (index === 0) {
+        const heading = node.querySelector(":scope > h2");
+        if (heading) wrapper.append(heading.cloneNode(true));
+      }
+      const list = doc.createElement("div");
+      list.className = "print-feedback-list";
+      const splitGroup = group.cloneNode(false);
+      if (sharedEvidence) splitGroup.append(sharedEvidence.cloneNode(true));
+      splitGroup.append(groupCard.cloneNode(true));
+      list.append(splitGroup);
+      wrapper.append(list);
+      return wrapper;
+    });
+  }
+
   const card = node.querySelector(".print-feedback-card");
   const primary = card?.querySelector(":scope > .print-feedback-primary-group");
   const revision = card?.querySelector(":scope > .print-feedback-revision-group");
@@ -1713,6 +1905,7 @@ function renderPrintReport(analysis) {
   const criteriaNames = config.criteria;
   const frameworkNames = config.framework;
   const feedbackCards = normalized.feedbackCards || [];
+  const languagePatterns = Array.isArray(normalized.languagePatternSummary) ? normalized.languagePatternSummary : [];
   const topIssues = buildDashboardIssues(normalized.top3Issues, feedbackCards);
   const taskRecords = distinctProgressRecords(progressRecords, taskType);
   const taskSubtype = taskType === "Task 1"
@@ -1796,10 +1989,23 @@ function renderPrintReport(analysis) {
       <section class="print-section print-section-panel print-detailed-section">
         <h2>${escapePrintHtml(copy.detailedFeedback)}</h2>
         <div class="print-feedback-list">
-          ${feedbackCards.length ? feedbackCards.map((card) => renderPrintFeedbackCard(card, copy, language)).join("") : `<p>${escapePrintHtml(copy.noFeedback)}</p>`}
+          ${feedbackCards.length
+            ? groupCardsBySharedSentence(feedbackCards).map((group) => renderPrintFeedbackGroup(group, copy, language)).join("")
+            : `<p>${escapePrintHtml(copy.noFeedback)}</p>`}
         </div>
       </section>
     </article>
+    ${languagePatterns.length ? `<article class="print-page">
+      <section class="print-section print-section-panel print-language-pattern-section">
+        <h2>${escapePrintHtml(language === "th" ? "สรุปรูปแบบภาษาที่ควรตรวจ" : "Language Pattern Summary")}</h2>
+        <p class="print-note">${escapePrintHtml(language === "th"
+          ? "รายการต่อไปนี้ผ่านการตรวจสอบแล้ว แต่มีลำดับความสำคัญรองจาก Detailed Feedback ด้านบน"
+          : "These points were validated but rank below the Detailed Feedback above. Repair the detailed issues first, then scan for these patterns.")}</p>
+        <div class="print-language-pattern-list">
+          ${languagePatterns.map((row) => renderPrintLanguagePatternRow(row, copy, language)).join("")}
+        </div>
+      </section>
+    </article>` : ""}
 
     <article class="print-page">
       <section class="print-section print-section-panel">
@@ -1863,6 +2069,11 @@ function renderPrintTopIssue(issue, card = {}, index, copy = getReportCopy("en")
   const paragraphLocations = Array.isArray(issue.paragraphLocations) && issue.paragraphLocations.length
     ? issue.paragraphLocations
     : evidenceItems.map((item) => item.paragraphLocation).filter(Boolean);
+  // Top Issues is the priority index, not a second copy of Detailed Feedback. It names where each
+  // issue lives and shows a short anchor quote; the full sentence, revision and rationale are
+  // printed once, in Detailed Feedback. Repeating the whole evidence block here was both the main
+  // source of duplicated prose and roughly two wasted pages per report.
+  const anchor = shortenPrintEvidence(evidenceItems[0]?.exactSentence || "");
   return `<div class="print-issue">
     <div class="print-issue-heading">
       <span>${index + 1}</span>
@@ -1871,18 +2082,22 @@ function renderPrintTopIssue(issue, card = {}, index, copy = getReportCopy("en")
         <p><em class="print-badge ${statusClass(issue.severity)}">${escapePrintHtml(displayStatus(issue.severity || "Needs Work", language))}</em> ${criteria ? escapePrintHtml(criteria) : ""}</p>
       </div>
     </div>
-    ${framework ? `<p><strong>${escapePrintHtml(copy.framework)}:</strong> ${escapePrintHtml(framework)}</p>` : ""}
-    <p><strong>${escapePrintHtml(copy.evidenceScope)}:</strong> ${escapePrintHtml(issue.scope || (evidenceItems.length > 1 ? "multi-location" : "single-location"))}</p>
-    <p><strong>${escapePrintHtml(copy.paragraphLocations)}:</strong> ${escapePrintHtml([...new Set(paragraphLocations)].join("; ") || "-")}</p>
-    <div class="print-evidence-trace">
-      ${evidenceItems.map((item) => `<div class="print-evidence-item">
-        <p><strong>${escapePrintHtml(item.paragraphLocation || "Evidence")}</strong>${item.evidenceRole ? ` - ${escapePrintHtml(item.evidenceRole)}` : ""}</p>
-        <blockquote>${escapePrintHtml(item.exactSentence || "-")}</blockquote>
-      </div>`).join("")}
-    </div>
-    <p><strong>${escapePrintHtml(copy.diagnosis)}:</strong> ${escapePrintHtml(issue.diagnosis || issue.summary || card.whyItLimitsBand || "-")}</p>
-    <p><strong>${escapePrintHtml(copy.studentAction)}:</strong> ${escapePrintHtml(issue.studentAction || card.studentAction || "-")}</p>
+    <p><strong>${escapePrintHtml(copy.paragraphLocations)}:</strong> ${escapePrintHtml([...new Set(paragraphLocations)].join("; ") || "-")}${evidenceItems.length > 1 ? ` (${escapePrintHtml(String(evidenceItems.length))} locations)` : ""}</p>
+    ${anchor ? `<blockquote class="print-issue-anchor">${escapePrintHtml(anchor)}</blockquote>` : ""}
+    ${printRow(copy.diagnosis, issue.diagnosis || issue.summary || card.whyItLimitsBand)}
+    ${printRow(copy.studentAction, issue.studentAction || card.studentAction)}
   </div>`;
+}
+
+// Shortens an evidence sentence to an anchor quote. Truncation happens on a word boundary and is
+// marked with an ellipsis, so the reader can see it is an extract and find the full sentence in
+// Detailed Feedback.
+function shortenPrintEvidence(value, limit = 150) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text || text.length <= limit) return text;
+  const clipped = text.slice(0, limit);
+  const boundary = clipped.lastIndexOf(" ");
+  return `${clipped.slice(0, boundary > 60 ? boundary : limit).trim()}...`;
 }
 
 function feedbackCardForIssue(issue = {}, cards = [], fallbackIndex = 0) {
@@ -1930,33 +2145,97 @@ function normalizePrintFeedbackCard(card = {}) {
     targetedRevision: sanitizePrintText(card.targetedRevision)
   };
 }
-function renderPrintFeedbackCard(card, copy = getReportCopy("en"), language = "en") {
+// Renders one evidence group. When several canonical issues quote the SAME sentence the quotation
+// is printed once and each issue keeps its own card underneath it — separate issueId, category,
+// diagnosis, Student Action and revision state. Nothing is merged; only the repeated quotation is
+// removed, which is what previously forced a near-duplicate page per issue.
+function renderPrintFeedbackGroup(group, copy = getReportCopy("en"), language = "en") {
+  const cards = Array.isArray(group?.cards) ? group.cards : [];
+  if (cards.length <= 1) return renderPrintFeedbackCard(cards[0] || {}, copy, language);
+  const first = normalizePrintFeedbackCard(cards[0]);
+  return `<div class="print-feedback-group">
+    <div class="print-feedback-shared-evidence">
+      <p class="print-keep-with-next"><strong>${escapePrintHtml(copy.paragraphLocation)}:</strong> ${escapePrintHtml(first.paragraphLocation || "-")}</p>
+      <div class="print-exact-evidence-group">
+        <p class="print-keep-with-next"><strong>${escapePrintHtml(copy.exactSentence)}</strong></p>
+        <blockquote>${escapePrintHtml(first.exactSentence || "-")}</blockquote>
+      </div>
+      <p class="print-shared-evidence-note">${escapePrintHtml(language === "th"
+        ? `ประโยคนี้มี ${cards.length} ประเด็นแยกกัน`
+        : `${cards.length} separate issues were identified in this sentence.`)}</p>
+    </div>
+    ${cards.map((card) => renderPrintFeedbackCard(card, copy, language, { evidenceRenderedAbove: true })).join("")}
+  </div>`;
+}
+
+function renderPrintFeedbackCard(card, copy = getReportCopy("en"), language = "en", { evidenceRenderedAbove = false } = {}) {
   const normalizedCard = normalizePrintFeedbackCard(card);
   const severity = normalizedCard.severity || "Needs Work";
-  return `<div class="print-feedback-card">
+  return `<div class="print-feedback-card${evidenceRenderedAbove ? " print-feedback-card-shared" : ""}">
     <div class="print-feedback-primary-group">
       <div class="print-feedback-header-row">
         <h3>${escapePrintHtml(normalizedCard.issueCategory || normalizedCard.issueType || "Diagnostic Issue")}</h3>
         <em class="print-badge ${statusClass(severity)}">${escapePrintHtml(displayStatus(severity, language))}</em>
       </div>
-      <p class="print-keep-with-next"><strong>${escapePrintHtml(copy.paragraphLocation)}:</strong> ${escapePrintHtml(normalizedCard.paragraphLocation || "-")}</p>
+      ${evidenceRenderedAbove ? "" : `<p class="print-keep-with-next"><strong>${escapePrintHtml(copy.paragraphLocation)}:</strong> ${escapePrintHtml(normalizedCard.paragraphLocation || "-")}</p>
       <div class="print-exact-evidence-group">
         <p class="print-keep-with-next"><strong>${escapePrintHtml(copy.exactSentence)}</strong></p>
         <blockquote>${escapePrintHtml(normalizedCard.exactSentence || "-")}</blockquote>
-      </div>
-      <p><strong>${escapePrintHtml(copy.sentenceFunction)}:</strong> ${escapePrintHtml(normalizedCard.sentenceFunction || "-")}</p>
-      <p><strong>${escapePrintHtml(copy.whyLimits)}:</strong> ${escapePrintHtml(normalizedCard.whyItLimitsBand || "-")}</p>
-      <p><strong>${escapePrintHtml(copy.kruPomDiagnosis)}:</strong> ${escapePrintHtml(normalizedCard.kruPomDiagnosis || "-")}</p>
+      </div>`}
+      ${printRow(language === "th" ? "จุดที่ต้องแก้" : "Target", normalizedCard.targetSpan)}
+      ${printRow(copy.sentenceFunction, normalizedCard.sentenceFunction)}
+      ${printRow(copy.whyLimits, normalizedCard.whyItLimitsBand)}
+      ${printRow(copy.kruPomDiagnosis, distinctDiagnosis(normalizedCard.kruPomDiagnosis, normalizedCard.whyItLimitsBand))}
     </div>
     <div class="print-feedback-revision-group">
       ${normalizedCard.revisionType ? `<p class="print-keep-with-next"><strong>${escapePrintHtml(copy.revisionType)}:</strong> ${escapePrintHtml(normalizedCard.revisionType)}</p>` : ""}
-      <div class="print-target-revision-group">
+      ${hasPrintValue(normalizedCard.targetedRevision) ? `<div class="print-target-revision-group">
         <p class="print-keep-with-next"><strong>${escapePrintHtml(copy.targetedRevision)}</strong></p>
-        <div class="print-revision">${escapePrintHtml(normalizedCard.targetedRevision || "-")}</div>
-      </div>
-      <p><strong>${escapePrintHtml(copy.whyStronger)}:</strong> ${escapePrintHtml(normalizedCard.whyRevisionIsStronger || "-")}</p>
-      <p><strong>${escapePrintHtml(copy.studentAction)}:</strong> ${escapePrintHtml(normalizedCard.studentAction || "-")}</p>
+        <div class="print-revision">${escapePrintHtml(normalizedCard.targetedRevision)}</div>
+      </div>` : ""}
+      ${printRow(copy.whyStronger, normalizedCard.whyRevisionIsStronger)}
+      ${printRow(copy.studentAction, normalizedCard.studentAction)}
     </div>
+  </div>`;
+}
+
+// A field with nothing to say is omitted rather than printed as a placeholder hyphen. "-" and "n/a"
+// are treated as absent because upstream builders use them as empty markers.
+function hasPrintValue(value) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return Boolean(text) && !/^(?:-+|n\/a|not applicable|none)$/i.test(text);
+}
+
+function printRow(label, value) {
+  if (!hasPrintValue(value)) return "";
+  return `<p><strong>${escapePrintHtml(label)}:</strong> ${escapePrintHtml(value)}</p>`;
+}
+
+// The engine often produces the same sentence for "Why This Limits the Band" and the Kru Pom
+// framework diagnosis. Printing both is duplicated prose that costs a third of a card's height and
+// tells the student nothing new, so the framework line is kept only when it genuinely differs.
+function distinctDiagnosis(diagnosis, whyItLimitsBand) {
+  const normalise = (value) => String(value ?? "").replace(/\s+/g, " ").trim().toLowerCase().replace(/[.]+$/, "");
+  const candidate = normalise(diagnosis);
+  if (!candidate) return "";
+  const reference = normalise(whyItLimitsBand);
+  if (!reference) return diagnosis;
+  if (candidate === reference || reference.includes(candidate) || candidate.includes(reference)) return "";
+  return diagnosis;
+}
+
+// One compact Language Pattern Summary row: category, where it occurs, the short target span, a
+// short diagnosis, a short action and the recurrence note when the pattern repeats.
+function renderPrintLanguagePatternRow(row = {}, copy = getReportCopy("en"), language = "en") {
+  return `<div class="print-language-pattern-row">
+    <div class="print-language-pattern-head">
+      <strong>${escapePrintHtml(row.category || "Language pattern")}</strong>
+      <span>${escapePrintHtml(row.paragraphLocation || "-")}</span>
+      ${row.recurrence ? `<em class="print-badge print-badge-recurrence">${escapePrintHtml(row.recurrence)}</em>` : ""}
+    </div>
+    ${row.targetSpan ? `<p class="print-language-pattern-span">${escapePrintHtml(language === "th" ? "จุดที่ต้องแก้" : "Target")}: ${escapePrintHtml(row.targetSpan)}</p>` : ""}
+    ${row.diagnosis ? `<p>${escapePrintHtml(row.diagnosis)}</p>` : ""}
+    ${row.action ? `<p><strong>${escapePrintHtml(copy.studentAction)}:</strong> ${escapePrintHtml(row.action)}</p>` : ""}
   </div>`;
 }
 
@@ -2612,6 +2891,11 @@ function normalizeClientAnalysis(analysis) {
     top3Issues: projected.top3Issues || fallback.top3Issues,
     feedbackCards,
     paragraphCoverage: projected.paragraphCoverage || fallback.paragraphCoverage || [],
+    // V12.9.5: the compact rows for validated evidence that did not earn a full Detailed Feedback
+    // card. Present on the Student View projection and on a raw report alike.
+    languagePatternSummary: projected.languagePatternSummary
+      || projected.feedbackIntegrity?.languagePatternSummary
+      || [],
     paragraphFeedback: normalizeParagraphItems(projected.paragraphFeedback || fallback.paragraphFeedback, feedbackCards),
     practicePlan: projected.practicePlan || fallback.practicePlan,
     warnings: projected.warnings || []
@@ -2649,6 +2933,7 @@ function projectStudentReportViewModel(viewModel = {}) {
     kruPomScores: viewModel.frameworkBreakdown || {},
     top3Issues: viewModel.topIssues || [],
     feedbackCards: viewModel.detailedFeedback || [],
+    languagePatternSummary: viewModel.languagePatternSummary || [],
     paragraphCoverage: viewModel.paragraphCoverage || [],
     practicePlan: viewModel.repairPlan || [],
     disclaimer: viewModel.disclaimer || ""

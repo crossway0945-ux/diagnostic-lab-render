@@ -2535,7 +2535,7 @@ blockquote {
   }
 
   .pdf-section-fragment {
-    margin: 0 0 3.5mm;
+    margin: 0 0 2.4mm;
   }
 
   .pdf-section-fragment > h2 {
@@ -2553,7 +2553,7 @@ blockquote {
     font-variant-ligatures: none;
     font-feature-settings: "liga" 0, "clig" 0, "ccmp" 0;
     font-size: 10.5pt;
-    line-height: 1.4;
+    line-height: 1.32;
   }
 
   .print-page {
@@ -2593,8 +2593,8 @@ blockquote {
   .print-card-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 3mm;
-    margin: 4mm 0;
+    gap: 2.4mm;
+    margin: 2.6mm 0;
   }
 
   .print-info,
@@ -2603,7 +2603,7 @@ blockquote {
   .print-plan-item {
     break-inside: avoid;
     page-break-inside: avoid;
-    padding: 3.2mm 3.6mm;
+    padding: 2.5mm 2.9mm;
     border: 1px solid #DED2BF;
     border-color: #DED2BF;
     border-radius: 6px;
@@ -2629,11 +2629,11 @@ blockquote {
   }
 
   .print-section {
-    margin: 5mm 0;
+    margin: 3mm 0;
   }
 
   .print-section-panel {
-    padding: 4.2mm;
+    padding: 3.2mm;
     border: 1px solid #DED2BF;
     border-radius: 7px;
     background: linear-gradient(180deg, #FFFEFB 0%, #FFFDF8 100%);
@@ -2644,8 +2644,8 @@ blockquote {
   .print-section-panel > h2 {
     break-after: avoid;
     page-break-after: avoid;
-    margin: -1mm -1mm 3.5mm;
-    padding: 0 1mm 2.5mm;
+    margin: -1mm -1mm 2.4mm;
+    padding: 0 1mm 1.8mm;
   }
 
   .print-executive-panel {
@@ -2670,9 +2670,26 @@ blockquote {
   .print-issue p,
   .print-feedback-card p,
   .print-plan-item p {
-    margin: 1.4mm 0;
+    margin: 0.9mm 0;
     font-size: 9.5pt;
-    line-height: 1.36;
+    line-height: 1.3;
+  }
+
+  /* Tightens the space between a feedback card's label/value blocks so two compact cards share a
+     sheet. Font size is unchanged — legibility is a hard requirement, vertical whitespace is not. */
+  .print-feedback-card blockquote,
+  .print-feedback-card .print-revision {
+    margin: 1.2mm 0;
+    padding: 2.2mm;
+  }
+
+  .print-feedback-revision-group {
+    margin-top: 2mm;
+    padding-top: 2mm;
+  }
+
+  .print-feedback-header-row {
+    padding-bottom: 1.2mm;
   }
 
   .print-callout + .print-callout {
@@ -2687,8 +2704,8 @@ blockquote {
   .print-issue,
   .print-feedback-card {
     position: relative;
-    margin-bottom: 3.5mm;
-    padding: 4mm;
+    margin-bottom: 2.6mm;
+    padding: 3.1mm;
     border: 1px solid #D8CCB9;
     border-radius: 7px;
     background: #FFFFFF;
@@ -2758,6 +2775,91 @@ blockquote {
     border-bottom: 1px solid #E6DCCB;
     break-after: avoid;
     page-break-after: avoid;
+  }
+
+  /* V12.9.5 report density. A shared-evidence group prints the quotation once and then one compact
+     card per canonical issue. The group itself may split across sheets; the quotation block and
+     each individual card may not. */
+  .print-feedback-group {
+    margin-bottom: 3.5mm;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .print-feedback-shared-evidence {
+    padding: 3mm 4mm;
+    border: 1px solid #D8CCB9;
+    border-bottom: none;
+    border-radius: 7px 7px 0 0;
+    background: #FBF7EF;
+    box-shadow: inset 0 3px 0 #123C35;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .print-shared-evidence-note {
+    margin: 1.5mm 0 0;
+    font-size: 8.6pt;
+    font-style: italic;
+    color: #4A4034;
+  }
+
+  .print-feedback-group .print-feedback-card {
+    margin-bottom: 0;
+    border-radius: 0;
+    box-shadow: none;
+    border-top: none;
+  }
+
+  .print-feedback-group .print-feedback-card:last-child {
+    border-radius: 0 0 7px 7px;
+  }
+
+  .print-language-pattern-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2.6mm;
+  }
+
+  .print-language-pattern-row {
+    padding: 2.8mm 3mm;
+    border: 1px solid #E6DCCB;
+    border-radius: 6px;
+    background: #FFFFFF;
+    font-size: 9pt;
+    line-height: 1.35;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-language-pattern-row p {
+    margin: 1.2mm 0 0;
+  }
+
+  .print-language-pattern-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2mm;
+    padding-bottom: 1.5mm;
+    border-bottom: 1px solid #EFE7DA;
+  }
+
+  .print-language-pattern-head > span {
+    font-size: 8.6pt;
+    color: #4A4034;
+  }
+
+  .print-language-pattern-span {
+    font-family: "Courier New", monospace;
+    font-size: 8.6pt;
+  }
+
+  .print-badge-recurrence {
+    background: #F3E7D2;
+    color: #6B4E16;
   }
 
   .print-report blockquote {

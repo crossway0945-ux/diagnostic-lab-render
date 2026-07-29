@@ -13,6 +13,7 @@ export const STUDENT_REPORT_ALLOWLIST = Object.freeze([
   "topIssues",
   "paragraphCoverage",
   "detailedFeedback",
+  "languagePatternSummary",
   "repairPlan",
   "progressSummary",
   "disclaimer",
@@ -38,6 +39,7 @@ const STUDENT_SECTION_FIELDS = Object.freeze({
     "studentAction", "evidenceScope", "evidenceCount", "evidenceLocations"
   ],
   evidenceLocation: ["paragraphLocation", "exactEvidence"],
+  languagePatternSummary: ["category", "paragraphLocation", "targetSpan", "diagnosis", "action", "recurrence"],
   repairPlan: ["day", "title", "task"],
   progressSummary: ["previousSubmissionCount", "previousEstimatedRange", "latestEstimatedRange", "currentMainRepair", "repeatedIssue", "validatedReportVersionCount"]
 });
@@ -85,7 +87,10 @@ export function buildStudentReportViewModel(analysis = {}, progressSummary = {})
     frameworkBreakdown: publicFramework(analysis.kruPomScores),
     topIssues: (Array.isArray(analysis.top3Issues) ? analysis.top3Issues : []).map(publicIssue),
     paragraphCoverage: (Array.isArray(analysis.paragraphCoverage) ? analysis.paragraphCoverage : []).map(publicParagraphCoverage),
-    detailedFeedback: (Array.isArray(analysis.feedbackCards) ? analysis.feedbackCards : []).map(publicFeedback),
+    detailedFeedback: selectDetailedFeedback(analysis).map(publicFeedback),
+    languagePatternSummary: (Array.isArray(analysis.feedbackIntegrity?.languagePatternSummary)
+      ? analysis.feedbackIntegrity.languagePatternSummary
+      : []).map(publicLanguagePattern),
     repairPlan: (Array.isArray(analysis.practicePlan) ? analysis.practicePlan : []).map((item, index) => ({
       day: Number(item?.day || index + 1),
       title: String(item?.title || "Repair focus"),
@@ -154,6 +159,9 @@ export function assertStudentReportViewModel(viewModel) {
       assertKeys(location, STUDENT_SECTION_FIELDS.evidenceLocation, `detailedFeedback[${index}].evidenceLocations[${locationIndex}]`);
     }
   }
+  for (const [index, row] of (viewModel.languagePatternSummary || []).entries()) {
+    assertKeys(row, STUDENT_SECTION_FIELDS.languagePatternSummary, `languagePatternSummary[${index}]`);
+  }
   for (const [index, item] of (viewModel.repairPlan || []).entries()) assertKeys(item, STUDENT_SECTION_FIELDS.repairPlan, `repairPlan[${index}]`);
   assertKeys(viewModel.progressSummary, STUDENT_SECTION_FIELDS.progressSummary, "progressSummary");
   const serialized = JSON.stringify(viewModel);
@@ -214,6 +222,32 @@ function publicFeedback(card = {}) {
       paragraphLocation: String(item?.paragraphLocation || ""),
       exactEvidence: String(item?.exactEvidence || "")
     })) : []
+  };
+}
+
+// Applies the V12.9.5 density plan. The plan is a projection decision made by domain/reportDensity
+// from the frozen canonical order, so the Student View and the printable/PDF projection show the
+// same cards. Without a plan (older reports, and unit tests that build an analysis by hand) every
+// card is rendered exactly as before.
+function selectDetailedFeedback(analysis = {}) {
+  const cards = Array.isArray(analysis.feedbackCards) ? analysis.feedbackCards : [];
+  const detailedIds = analysis.feedbackIntegrity?.reportDensityPlan?.detailedIssueIds;
+  if (!Array.isArray(detailedIds) || !detailedIds.length) return cards;
+  const allowed = new Set(detailedIds.map((id) => String(id)));
+  const selected = cards.filter((card) => allowed.has(String(card?.issueId || "")));
+  // Fail safe: if the plan cannot be matched to these cards, show everything rather than silently
+  // dropping feedback the student paid for.
+  return selected.length ? selected : cards;
+}
+
+function publicLanguagePattern(row = {}) {
+  return {
+    category: String(row.category || "Language pattern"),
+    paragraphLocation: String(row.paragraphLocation || ""),
+    targetSpan: String(row.targetSpan || ""),
+    diagnosis: String(row.diagnosis || ""),
+    action: String(row.action || ""),
+    recurrence: String(row.recurrence || "")
   };
 }
 

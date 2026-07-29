@@ -1,4 +1,4 @@
-﻿import { buildPrompt } from "./promptBuilder.js";
+import { buildPrompt } from "./promptBuilder.js";
 import { countWords, getWordCountMetadata } from "../wordCount.js";
 import { buildDiagnosticResponseFormat } from "./diagnosticResponseSchema.js";
 import {
@@ -22,7 +22,9 @@ import { buildSentenceCoverageAudit } from "../domain/paragraphEvidence.js";
 import { buildStudentReportViewModel } from "../domain/reportViewModels.js";
 import { auditFeedbackIntegrity, buildFeedbackIntegrityModel, projectRouteAlignmentDisplay, validateFeedbackIntegrity } from "../domain/feedbackIntegrity.js";
 import { buildCanonicalConsistencyAudit, buildEvidenceBasedRepairPlan, buildExecutiveSummaryFromIssues, normalizeConsistencyAuditRecord, paragraphDimensionStatus, summaryAlreadyAddresses } from "../domain/reportConsistency.js";
-import { applyCanonicalIntegrity, buildTopIssuesFromCanonical, issuePriorityScore } from "../domain/canonicalIntegrity.js";
+import { applyCanonicalIntegrity, buildTopIssuesFromCanonical, issuePriorityScore, orderIssuesByPriority, projectCanonicalIssueForDisplay } from "../domain/canonicalIntegrity.js";
+import { buildProjectionConsistencyAudit, finaliseCanonicalIssueGraph, projectionAuditFailures } from "../domain/canonicalIssueGraph.js";
+import { planReportDensity } from "../domain/reportDensity.js";
 
 // G: recompute each paragraph's dimension statuses from the COMPLETE corrected issue set. A paragraph
 // may never read "Language Controlled" while a validated language issue for it survives correction.
@@ -40,16 +42,53 @@ function rebuildParagraphCoverageFromIssues(paragraphFeedback = [], issues = [],
     });
     if (!paragraphIssues.length) return paragraph;
     const status = paragraphDimensionStatus(paragraphIssues, paragraph.paragraphLabel || paragraph.label, paragraph.conclusionFunction || conclusionFunction);
-    // The dimensions object is the machine-readable half of the same judgement: rebuilding the status
-    // string without rebuilding the dimensions would leave a paragraph reading "Language Repair
-    // Needed" while its language dimension still said "controlled".
+    const dimensions = paragraphDimensionsFromStatus(status, paragraph.dimensions);
+    // Status, dimensions, diagnosis and Student Action are ALL regenerated from the same final issue
+    // set. Rebuilding only the status left production reading "Development Repair Needed" beside
+    // "No priority structural repair was identified" and an empty action.
+    const narrative = buildParagraphNarrative(paragraphIssues, dimensions, paragraph.paragraphLabel || paragraph.label);
     return {
       ...paragraph,
       status,
-      dimensions: paragraphDimensionsFromStatus(status, paragraph.dimensions),
+      dimensions,
+      diagnosis: narrative.diagnosis,
+      action: narrative.action,
+      studentAction: narrative.action,
+      priorityRepair: narrative.priorityRepair,
       issueIds: paragraphIssues.map((issue) => issue.issueId).filter(Boolean)
     };
   });
+}
+
+// Builds the paragraph's diagnosis, Student Action and priority repair from its OWN highest-priority
+// issue. "No priority repair" is only permitted when no dimension is flagged, so the card can never
+// contradict its own status line.
+function buildParagraphNarrative(issues = [], dimensions = {}, label = "") {
+  const flagged = Object.entries(dimensions || {}).filter(([, value]) => value === "repair-needed").map(([key]) => key);
+  const ranked = orderIssuesByPriority(issues);
+  const lead = ranked[0];
+  if (!flagged.length || !lead) {
+    return {
+      diagnosis: `${label || "This paragraph"} was checked against the final issue set and no priority repair was identified.`,
+      action: "No priority repair — keep this paragraph as it is.",
+      priorityRepair: ""
+    };
+  }
+  const dimensionNames = { route: "route", development: "task development", example: "example/SAR", language: "language" };
+  const named = flagged.map((key) => dimensionNames[key] || key).join(" and ");
+  const supporting = ranked.slice(1, 3).map((issue) => issue.issueCategory || issue.primaryCategory).filter(Boolean);
+  const leadCategory = lead.issueCategory || lead.primaryCategory || "";
+  const leadDiagnosis = String(lead.kruPomDiagnosis || lead.diagnosis || lead.whyItLimitsBand || "").trim();
+  return {
+    diagnosis: [
+      `Repair needed in ${named}.`,
+      leadDiagnosis ? `${leadCategory}: ${leadDiagnosis}` : `${leadCategory} is the priority defect here.`,
+      supporting.length ? `Also validated in this paragraph: ${[...new Set(supporting)].join(", ")}.` : ""
+    ].filter(Boolean).join(" "),
+    // The paragraph's action IS the lead issue's action, so the two can never diverge.
+    action: String(lead.studentAction || "").trim() || `Repair the ${leadCategory} defect identified in this paragraph.`,
+    priorityRepair: `${leadCategory} (${lead.issueId})`
+  };
 }
 
 // Derives the four canonical dimensions from the rebuilt status string, so status and dimensions can
@@ -3868,30 +3907,36 @@ function normalizeAnalysis(analysis, payload) {
   // G + H: Paragraph Coverage, Top Issues and the Repair Plan are rebuilt from the CORRECTED canonical
   // issue set (after promotion, dedupe and prioritisation) rather than the pre-correction set, so
   // promoted evidence reaches every section and no single local repair can fill the whole report.
-  const correctedCards = canonicalIntegrity.issues;
-  // Top Issues: keep every selection the engine already made (re-linked to its corrected card), then
-  // ADD promoted canonical evidence until the slot budget is used. Promoted findings therefore reach
-  // the summary without displacing issues the engine deliberately surfaced.
+  // ---- Single source of truth ----------------------------------------------------------------
+  // The canonical issue layer is finalised HERE and frozen. Every visible section below projects
+  // from this graph by stable issueId, in one shared priority order. Nothing may mutate an issue
+  // after this point — that is what allowed Top Issues to disagree with the Executive Summary, and
+  // allowed two issues on one sentence to swap Student Actions.
+  const issueGraph = finaliseCanonicalIssueGraph(canonicalIntegrity.issues);
+  // Detailed Feedback follows the SAME canonical order as Top Issues and the Repair Plan. It used to
+  // keep document order, which is why a reader met three Moderate language repairs before the two
+  // Major task-level defects the Executive Summary had already named. Task 1 keeps its visual-specific
+  // card chain untouched (protected system). The cards are unfrozen shallow clones so downstream
+  // builders can still annotate them; the frozen graph remains the reference for the integrity audit.
+  const correctedCards = payload.taskType === "Task 1"
+    ? canonicalIntegrity.issues
+    : issueGraph.orderedIds.map((issueId) => ({ ...issueGraph.get(issueId) }));
+
+  // Top Issues: taken straight off the top of the canonical order. Engine selections are preserved
+  // because they are already IN the graph — but they no longer get to keep a slot ahead of a Major
+  // task-level defect, and they are re-projected from their own canonical issue, never carried
+  // forward as an object that might hold another issue's action.
   let correctedTopIssues = studentTopIssues;
   if (payload.taskType !== "Task 1") {
-    const relinked = canonicalIntegrity.topIssues || [];
-    const budget = Math.min(5, Math.max(3, relinked.length));
-    const merged = [...relinked];
-    for (const candidate of buildTopIssuesFromCanonical(correctedCards, canonicalIntegrity.prioritised || [], 5)) {
-      if (merged.length >= budget) break;
-      if (merged.some((item) => item.feedbackCardId === candidate.feedbackCardId)) continue;
-      merged.push(candidate);
-    }
-    // Merging preserves every engine selection, but the visible order must still follow the shared
-    // canonical priority — otherwise a Moderate local repair the engine happened to surface first
-    // would outrank a Major task-level defect in Top Issues.
-    if (merged.length) {
-      correctedTopIssues = merged.slice().sort((a, b) => {
-        const cardA = correctedCards[Number(String(a.feedbackCardId).slice(5)) - 1];
-        const cardB = correctedCards[Number(String(b.feedbackCardId).slice(5)) - 1];
-        return issuePriorityScore(cardA) - issuePriorityScore(cardB);
-      });
-    }
+    const budget = Math.min(5, Math.max(3, (canonicalIntegrity.topIssues || []).length || 3));
+    correctedTopIssues = issueGraph.leadIds(budget)
+      .map((issueId) => {
+        const issue = issueGraph.get(issueId);
+        const index = correctedCards.findIndex((card) => card.issueId === issueId);
+        return index < 0 ? null : { ...projectCanonicalIssueForDisplay(issue), feedbackCardId: `card-${index + 1}` };
+      })
+      .filter(Boolean);
+    if (!correctedTopIssues.length) correctedTopIssues = studentTopIssues;
   }
   const canonicalConclusionFunction = feedbackIntegrity.conclusionFunction || null;
   const correctedParagraphFeedback = payload.taskType === "Task 1"
@@ -3979,6 +4024,58 @@ function normalizeAnalysis(analysis, payload) {
         ...gate.audit
       ];
     }
+  }
+
+  // ---- Projection integrity, fail-closed ------------------------------------------------------
+  // Every section that renders an issue is checked against the frozen canonical graph. A section
+  // that disagrees on category, severity, target span, diagnosis, Student Action or revision state
+  // is REPAIRED by re-projecting it from canonical; if a conflict survives the repair the report is
+  // refused rather than shipped with two contradictory answers for one issueId.
+  if (payload.taskType !== "Task 1") {
+    const sectionsFor = () => ({
+      topIssues: correctedTopIssues,
+      detailedFeedback: correctedCards,
+      studentView: correctedCards
+    });
+    let projectionAudit = buildProjectionConsistencyAudit(issueGraph, sectionsFor());
+    const failures = projectionAuditFailures(projectionAudit);
+    if (failures.length) {
+      for (const failure of failures) {
+        const canonical = issueGraph.get(failure.issueId);
+        if (!canonical) continue;
+        const index = correctedTopIssues.findIndex((item) => item.issueId === failure.issueId);
+        if (index >= 0) {
+          correctedTopIssues[index] = { ...projectCanonicalIssueForDisplay(canonical), feedbackCardId: correctedTopIssues[index].feedbackCardId };
+          failure.repairPerformed = "re-projected-from-canonical-issue";
+        }
+      }
+      projectionAudit = buildProjectionConsistencyAudit(issueGraph, sectionsFor())
+        .map((record) => ({ ...record, repairPerformed: failures.find((item) => item.issueId === record.issueId)?.repairPerformed || "" }));
+      const surviving = projectionAuditFailures(projectionAudit);
+      if (surviving.length) {
+        throw providerError("REPORT_PROJECTION_INCONSISTENT", {
+          statusCode: 502,
+          debugHint: `One issue rendered contradictory content across sections: ${surviving.map((item) => `${item.issueId}(${(item.conflicts || []).map((c) => c.field).join(",")})`).join("; ")}`,
+          payload
+        });
+      }
+    }
+    if (normalized.feedbackIntegrity) normalized.feedbackIntegrity.projectionConsistencyAudit = projectionAudit;
+  }
+
+  // ---- Report density (V12.9.5) ---------------------------------------------------------------
+  // Decides how much of the canonical set is rendered as full Detailed Feedback and how much is
+  // rendered as compact Language Pattern Summary rows. This runs AFTER the canonical graph is
+  // frozen and audited, and it never edits an issue — `correctedCards` is passed in canonical
+  // priority order and comes back untouched. Consuming `canonicalIntegrity.refinements` here is
+  // what stops the lower-value language evidence from being computed and then thrown away.
+  if (payload.taskType !== "Task 1" && normalized.feedbackIntegrity) {
+    const densityPlan = planReportDensity({
+      issues: correctedCards,
+      refinements: canonicalIntegrity.refinements || []
+    });
+    normalized.feedbackIntegrity.reportDensityPlan = densityPlan;
+    normalized.feedbackIntegrity.languagePatternSummary = densityPlan.summaryRows;
   }
 
   const canonicalAnalysis = buildCanonicalAnalysis({

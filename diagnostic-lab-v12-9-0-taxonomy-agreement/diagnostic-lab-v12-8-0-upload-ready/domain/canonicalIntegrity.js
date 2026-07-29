@@ -9,6 +9,9 @@
 // deduplication, priority ordering, sentence-function projection, revision-type fidelity
 // (false "new affected group"), Student Action validation, and summary frequency claims.
 
+import { canonicalPriorityKey, orderCanonicalIssues } from "./canonicalIssueGraph.js";
+import { deriveDeterministicCorrection, isAutoCorrectableCategory } from "./deterministicCorrections.js";
+
 export const CANONICAL_INTEGRITY_VERSION = "canonical-integrity-v12.8.3";
 
 // Task 2 route categories only. "Prompt Coverage" is deliberately excluded: it is a genuine coverage
@@ -96,6 +99,72 @@ export function correctIssueTaxonomy(issue = {}, { routePresent = true } = {}) {
 // withhold it. A withheld revision keeps its Student Action so the student still knows what to do.
 // ---------------------------------------------------------------------------
 export const WITHHELD_REVISION_NOTE = "Revision unavailable: a safe rewrite could not be verified for this issue. Follow the Student Action above instead.";
+
+// ---------------------------------------------------------------------------
+// Revision-withholding contract (V12.9.3).
+//
+// A withheld card has NO revision, so it must not render a rationale that describes one. Production
+// shipped cards reading "Revision Type: Revision Unavailable" beside "The revision removes the
+// diagnosed language-control problem…" — a statement about a revision that does not exist. It must
+// also not fall back to placeholder hyphens for fields it cannot fill.
+//
+// `whyRevisionIsStronger` is cleared and replaced by `whyRevisionIsNotShown`, which states the real
+// validator reason in language a learner can act on.
+// ---------------------------------------------------------------------------
+
+const WITHHOLDING_REASONS = Object.freeze({
+  meaning: "A rewrite is not shown because the intended meaning cannot be recovered confidently from the sentence alone — only you know which idea you meant, so choosing for you could change your argument.",
+  structural: "A rewrite is not shown because this repair is a writing decision rather than a wording fix: it needs new content that only you can choose.",
+  ambiguous: "A rewrite is not shown because several different repairs would each be defensible here, and picking one would hide that choice from you.",
+  evidence: "A rewrite is not shown because the quoted span is not sufficient on its own to guarantee a safe correction.",
+  validator: "A rewrite is not shown because the proposed correction did not pass safety validation: it risked changing your meaning or introducing a new error."
+});
+
+export function withholdingReasonFor(issue = {}) {
+  const category = String(issue.primaryCategory || issue.issueCategory || "");
+  if (/Comparative Judgement|Thesis-to-Body Promise|Causal Mechanism|Solution Mechanism|Explanation Depth|Example Development|SAR Example Quality/i.test(category)) {
+    return { code: "requires-learner-content", text: WITHHOLDING_REASONS.structural };
+  }
+  if (/Reference|Pronoun/i.test(category)) return { code: "multiple-plausible-repairs", text: WITHHOLDING_REASONS.ambiguous };
+  if (issue.affectsMeaning === true || /Meaning Control|Word Form|Lexical Precision|Collocation/i.test(category)) {
+    return { code: "meaning-not-recoverable", text: WITHHOLDING_REASONS.meaning };
+  }
+  if (!String(issue.targetSpan || "").trim()) return { code: "insufficient-evidence-span", text: WITHHOLDING_REASONS.evidence };
+  return { code: "validator-refused", text: WITHHOLDING_REASONS.validator };
+}
+
+// Applied to every canonical issue before projection, so a withheld card can never reach any section
+// carrying successful-revision prose or an empty placeholder.
+export function applyRevisionWithholdingContract(issue = {}) {
+  const withheld = issue.revisionWithheld === true ||
+    String(issue.revisionType || "") === "Revision Unavailable" ||
+    String(issue.revisionTypeValidationStatus || "").toLowerCase() === "withheld";
+  if (!withheld) {
+    // A card that DOES carry a revision must not advertise a withholding reason.
+    if (!issue.whyRevisionIsNotShown) return { issue, changed: false };
+    const { whyRevisionIsNotShown, ...rest } = issue;
+    return { issue: rest, changed: true };
+  }
+  const reason = withholdingReasonFor(issue);
+  const next = {
+    ...issue,
+    revisionType: "Revision Unavailable",
+    revisionWithheld: true,
+    targetedRevision: String(issue.targetedRevision || "").trim() || WITHHELD_REVISION_NOTE,
+    // No revision exists, so no claim may be made about one.
+    whyRevisionIsStronger: "",
+    whyRevisionIsNotShown: reason.text,
+    revisionWithholdingReasonCode: reason.code
+  };
+  // Placeholder hyphens are worse than an absent field: they read as a rendering failure.
+  for (const field of ["sentenceFunction", "whyItLimitsBand", "kruPomDiagnosis", "studentAction"]) {
+    if (/^\s*[-–—]\s*$/.test(String(next[field] || ""))) next[field] = "";
+  }
+  const changed = next.whyRevisionIsStronger !== issue.whyRevisionIsStronger ||
+    next.whyRevisionIsNotShown !== issue.whyRevisionIsNotShown ||
+    next.targetedRevision !== issue.targetedRevision;
+  return { issue: next, changed };
+}
 
 const FUNCTION_WORD_TARGET = /^(?:is|are|was|were|has|have|had|does|do|did|be|been|being|a|an|the|of|to|in|on|for|and|or|but)$/i;
 
@@ -222,7 +291,24 @@ export function canonicalCategoryForLanguage(category = "", explanation = "") {
   if (/fragment|incomplete sentence|main clause/.test(text)) return "Sentence Completion";
   if (/word form/.test(text)) return "Word Form";
   if (/vague|imprecise|noun choice|word choice|meaning|lexical/.test(text)) return "Lexical Precision";
+  // A semantic or noun-phrase relation defect is NOT a grammar defect. "The resulting economic
+  // decline of small center shops" is syntactically well formed; what is wrong is the relation the
+  // noun phrase asserts (the decline belongs to the area, not to the shops). Falling through to the
+  // generic grammar bucket produced a category, diagnosis and repair operation that disagreed.
+  if (/\bof\b.*(?:belong|possess|relation)|relationship|does not describe|not what .* means|unnatural (?:combination|pairing)|noun phrase|modifier attaches/.test(text)) {
+    return "Lexical Precision";
+  }
   return "Grammar and Sentence Control";
+}
+
+// Structural test for the same defect class when only the sentence and target span are available:
+// the span is a noun phrase built with "of", the grammar is valid, and no finite-verb defect exists.
+export function isSemanticNounPhraseDefect(targetSpan = "", explanation = "") {
+  const span = String(targetSpan || "").trim();
+  const text = String(explanation || "").toLowerCase();
+  if (!/^(?:the\s+|a\s+|an\s+)?[a-z][a-z\s-]{3,60}\s+of\s+[a-z][a-z\s-]{3,60}$/i.test(span)) return false;
+  // Explicit syntax complaints stay with grammar.
+  return !/\bverb\b|\bagreement\b|\btense\b|\bfragment\b|\bclause\b|\bpunctuation\b|\barticle\b/.test(text);
 }
 
 function normalizedSentenceKey(value = "") {
@@ -279,12 +365,65 @@ function studentActionForCandidate(category, candidate, location, thai = false) 
 
 // Builds one canonical issue from a validated language candidate.
 function buildPromotedIssue(candidate, index, thai = false) {
-  const category = canonicalCategoryForLanguage(candidate.category, candidate.explanation);
+  let category = canonicalCategoryForLanguage(candidate.category, candidate.explanation);
   const sentence = String(candidate.exactSentence || "").trim();
   const location = String(candidate.paragraphLocation || "").trim();
   const severity = severityForCandidate(candidate);
   const span = String(candidate.exactProblemSpan || "").trim();
   const withheldNote = thai ? THAI_WITHHELD_NOTE : WITHHELD_REVISION_NOTE;
+  // Taxonomy (defect 7): a well-formed noun phrase asserting the wrong relation is a lexical defect,
+  // not a grammar one, whatever the provider called it.
+  if (category === "Grammar and Sentence Control" && isSemanticNounPhraseDefect(span, candidate.explanation)) {
+    category = "Lexical Precision";
+  }
+  // Deterministic correction (defect 6): a promoted issue now goes through the SAME safe correction
+  // path as a native one. A one-token repair the engine can prove is shown as a Minimal Correction
+  // instead of "Revision Unavailable" plus an instruction to rebuild the sentence.
+  const correction = isAutoCorrectableCategory(category)
+    ? deriveDeterministicCorrection({ sentence, targetSpan: span, category })
+    : null;
+  if (correction) {
+    return {
+      ...buildPromotedIssueBase(candidate, index, thai, category, sentence, location, severity, span, withheldNote),
+      revisionType: "Minimal Correction",
+      targetedRevision: correction.revised,
+      revisionWithheld: false,
+      revisionAlignmentStatus: "aligned",
+      revisionTypeValidationStatus: "pass",
+      whyRevisionIsStronger: `${correction.proof} The rest of the sentence, including its claim and route, is unchanged.`,
+      deterministicCorrection: { operation: correction.operation, version: correction.version },
+      studentAction: studentActionForCorrection(category, correction, span, location, thai),
+      revisionIntegrity: {
+        exactOriginalFound: true,
+        originalClaim: sentence,
+        pass: true,
+        routePreserved: true,
+        stancePreserved: true,
+        sentenceComplete: true,
+        revisionTypeValid: true
+      },
+      revisionQualityProblems: [],
+      integrityRepairs: [{ code: "DETERMINISTIC_CORRECTION_APPLIED", message: `Safe ${correction.operation} repair generated for promoted evidence.` }]
+    };
+  }
+  return buildPromotedIssueBase(candidate, index, thai, category, sentence, location, severity, span, withheldNote);
+}
+
+// A one-token repair deserves a one-token instruction, not "rebuild this sentence".
+function studentActionForCorrection(category, correction, span, location, thai) {
+  const where = location ? `In ${location}, ` : "";
+  if (thai) return `${location ? `ใน${location}: ` : ""}แก้ตามฉบับแก้ไขที่แสดงไว้ ซึ่งเป็นการแก้จุดเดียวโดยไม่เปลี่ยนความหมายเดิม`;
+  const operation = {
+    "fixed-expression": "correct the fixed expression exactly as shown",
+    "subject-verb-agreement": "make the finite verb agree with its subject head, exactly as shown",
+    "article-before-uncountable": "delete the article before this uncountable noun, exactly as shown",
+    "sentence-spacing": "add the missing space after the full stop",
+    "internal-spacing": "remove the repeated space"
+  }[correction.operation] || "apply the single-word correction shown";
+  return `${where}${operation}${span && span.length <= 60 ? ` (${span})` : ""}. Nothing else in the sentence changes.`;
+}
+
+function buildPromotedIssueBase(candidate, index, thai, category, sentence, location, severity, span, withheldNote) {
   return {
     issueId: `promoted-${index}-${normalizedSentenceKey(sentence).slice(0, 24).replace(/\s+/g, "-")}`,
     taskType: "Task 2",
@@ -335,7 +474,7 @@ function buildPromotedIssue(candidate, index, thai = false) {
     revisionQualityProblems: [{ code: "REVISION_WITHHELD", message: "No verified rewrite is available for this promoted evidence; the Student Action states the repair." }],
     integrityRepairs: [{ code: "REVISION_WITHHELD", message: "Promoted validated evidence shipped without a model rewrite." }],
     evidenceValidationStatus: "validated",
-    evidenceScope: "single",
+    evidenceScope: "single-location",
     evidenceCount: 1,
     evidenceLocations: location && sentence ? [{ paragraphLocation: location, exactEvidence: sentence }] : []
   };
@@ -408,7 +547,7 @@ function buildDevelopmentIssue(finding, index, thai = false) {
     revisionQualityProblems: [{ code: "REVISION_WITHHELD", message: "A development gap is repaired by writing new content, so no single-sentence rewrite is offered; the Student Action states the repair." }],
     integrityRepairs: [{ code: "REVISION_WITHHELD", message: "Promoted canonical development evidence shipped without a model rewrite." }],
     evidenceValidationStatus: "validated",
-    evidenceScope: "single",
+    evidenceScope: "single-location",
     evidenceCount: 1,
     evidenceSource: String(finding.evidenceSource || ""),
     evidenceLocations: location && sentence ? [{ paragraphLocation: location, exactEvidence: sentence }] : []
@@ -433,6 +572,44 @@ export function promoteDevelopmentEvidence(issues = [], developmentEvidence = nu
   return { issues: [...issues, ...promoted], promoted };
 }
 
+// ---------------------------------------------------------------------------
+// Minimum-value threshold for visible feedback (V12.9.4).
+//
+// The report used to fill its slots with whatever validated evidence existed, so "same area" — an
+// understandable phrase referring to the retail park just named — shipped as a Moderate Lexical
+// Precision card while a genuinely imprecise phrase sat lower or was cut. A visible card has to earn
+// its place: it must impair meaning, recur, break a rule, or carry a repair the learner can act on.
+// ---------------------------------------------------------------------------
+
+export function candidateValueScore(candidate = {}) {
+  let score = 0;
+  // Meaning impairment is the strongest single signal.
+  if (candidate.affectsMeaning === true) score += 3;
+  // A clear error breaks a rule; an "awkward but understandable" item does not.
+  if (String(candidate.classification || "") === "clear-error") score += 2;
+  if (String(candidate.severity || "").toLowerCase() === "major") score += 2;
+  // A repeated pattern is worth teaching even when each instance is small.
+  if (Number(candidate.occurrenceCount || 0) >= 2 || candidate.recurringPattern === true) score += 2;
+  // A defect the learner can locate and repair exactly.
+  if (String(candidate.exactProblemSpan || "").trim()) score += 1;
+  // Understandable-but-loose wording with no rule broken is a refinement — UNLESS it repeats. A
+  // pattern the learner produces more than once is worth teaching even when each instance is minor,
+  // so recurrence cancels the refinement penalty rather than merely offsetting it.
+  const repeats = Number(candidate.occurrenceCount || 0) >= 2 || candidate.recurringPattern === true;
+  if (!repeats && String(candidate.classification || "") === "awkward-but-understandable" && candidate.affectsMeaning !== true) score -= 2;
+  if (String(candidate.classification || "") === "high-band-refinement") score -= 3;
+  return score;
+}
+
+// At or above this, a candidate may become a visible card. Below it, the evidence is retained in the
+// language profile and summarised, but it does not occupy a slot a stronger issue could use.
+export const MINIMUM_VISIBLE_VALUE = 3;
+
+export function classifyCandidateValue(candidate = {}) {
+  const score = candidateValueScore(candidate);
+  return { score, visible: score >= MINIMUM_VISIBLE_VALUE, tier: score >= MINIMUM_VISIBLE_VALUE ? "visible" : "refinement" };
+}
+
 // Selects which validated candidates deserve promotion. Meaning-affecting evidence is always
 // considered; purely mechanical patterns are represented once rather than card-per-occurrence.
 export function promoteLanguageCandidates(issues = [], languageProfile = {}, { maxPromotions = 6, reportLanguage = "en" } = {}) {
@@ -442,7 +619,7 @@ export function promoteLanguageCandidates(issues = [], languageProfile = {}, { m
     ...(Array.isArray(languageProfile.meaningImpairingErrors) ? languageProfile.meaningImpairingErrors : []),
     ...(Array.isArray(languageProfile.clearErrors) ? languageProfile.clearErrors : [])
   ];
-  if (!sources.length) return { issues, promoted: [] };
+  if (!sources.length) return { issues, promoted: [], refinements: [] };
 
   // A sentence already carrying a LANGUAGE issue is not promoted again. A development finding on the
   // same sentence is a different defect class (what the essay does, not how it is worded), so it must
@@ -475,13 +652,32 @@ export function promoteLanguageCandidates(issues = [], languageProfile = {}, { m
     if (!added) break;
   }
 
+  const refinements = [];
   for (const candidate of ordered) {
     if (promoted.length >= maxPromotions) break;
     const sentence = String(candidate?.exactSentence || "").trim();
     if (!sentence) continue;
     const key = normalizedSentenceKey(sentence);
     const category = canonicalCategoryForLanguage(candidate.category, candidate.explanation);
-    // Already represented by an existing canonical issue on the same sentence.
+    // Minimum-value threshold: understandable wording that breaks no rule is recorded as a
+    // refinement rather than taking a visible slot from a meaning-impairing or recurring defect.
+    const value = classifyCandidateValue(candidate);
+    if (!value.visible) {
+      refinements.push({
+        category,
+        exactSentence: sentence,
+        exactProblemSpan: candidate.exactProblemSpan || "",
+        score: value.score,
+        // Carried so the Language Pattern Summary can state where the pattern occurs and whether it
+        // recurs, without re-deriving either from the essay text.
+        paragraphLocation: candidate.paragraphLocation || "",
+        explanation: candidate.explanation || "",
+        recurrenceKey: candidate.recurringPatternKey || ""
+      });
+      continue;
+    }
+    // Already represented by an existing canonical issue on the same sentence — but only when that
+    // issue targets the SAME span. Two distinct defects in one sentence are two distinct issues.
     if (coveredSentences.has(key)) continue;
     // A recurring mechanical pattern is represented once, not per occurrence.
     const recurrence = String(candidate.recurringPatternKey || "");
@@ -491,7 +687,9 @@ export function promoteLanguageCandidates(issues = [], languageProfile = {}, { m
     coveredSentences.add(key);
     promoted.push(buildPromotedIssue(candidate, promoted.length + 1, thai));
   }
-  return { issues: [...issues, ...promoted], promoted };
+  // Refinements are returned, not discarded: they feed the compact Language Pattern Summary so the
+  // evidence is still visible to the learner without taking a Detailed Feedback slot.
+  return { issues: [...issues, ...promoted], promoted, refinements };
 }
 
 // ---------------------------------------------------------------------------
@@ -540,37 +738,18 @@ export function dedupeCanonicalIssues(issues = []) {
 // ---------------------------------------------------------------------------
 // D. Priority ordering (single algorithm shared by every section).
 // ---------------------------------------------------------------------------
-const SEVERITY_WEIGHT = { critical: 0, major: 1, moderate: 2, "minor repair": 3, minor: 3, "pass / strong": 9 };
-// Canonical repair priority (V12.9.1). The order is pedagogical, not alphabetical:
-//   1 task misunderstanding / missing required function
-//   2 missing or insufficient comparative judgement
-//   3 declared but undeveloped thesis promise
-//   4 meaning-impaired language
-//   5 incomplete causal mechanism or affected group
-//   6 reference or sentence-structure problem
-//   7 recurring grammar or collocation pattern
-//   8 local mechanical error
-const CATEGORY_TIER = [
-  { tier: 0, test: (c) => /Task Understanding|Visual Understanding|Task Achievement/i.test(c) },
-  { tier: 1, test: (c) => /Overview|Position Clarity|Route Clarity|Route Alignment|Prompt Coverage/i.test(c) },
-  { tier: 2, test: (c) => /Comparative Judgement|Comparative Weighing/i.test(c) },
-  { tier: 3, test: (c) => /Thesis-to-Body Promise|Undeveloped Promise|Broken Promise/i.test(c) },
-  { tier: 4, test: (c) => /Incomplete|Underlength|Completion Status/i.test(c) },
-  { tier: 5, test: (c) => /Sentence Completion/i.test(c) },
-  { tier: 6, test: (c) => /Meaning Control/i.test(c) },
-  { tier: 7, test: (c) => /Causal Mechanism|Solution Mechanism|Explanation Depth|Affected-Group|SAR Example Quality|Example Development/i.test(c) },
-  { tier: 8, test: (c) => /Reference|Pronoun|Sentence Structure|Modifier/i.test(c) },
-  { tier: 9, test: (c) => /Lexical Precision|Word Choice|Word Form|Collocation/i.test(c) },
-  { tier: 10, test: (c) => /Grammar|Agreement|Tense|Preposition|Modal|Article/i.test(c) },
-  { tier: 11, test: (c) => /Countability|Punctuation|Concision|Academic Tone/i.test(c) }
-];
+// The severity weights and category tiers now live in domain/canonicalIssueGraph.js, which owns the
+// single comparator every section sorts by. Duplicating them here is what allowed the Executive
+// Summary and Top Issues to disagree in production.
 
+// Retained as a numeric convenience for callers that need a single sortable value. It is derived
+// from the SHARED comparator in domain/canonicalIssueGraph.js so it can never disagree with the
+// order the report actually renders.
 export function issuePriorityScore(issue = {}) {
-  const category = String(issue.primaryCategory || issue.issueCategory || "");
-  const severity = SEVERITY_WEIGHT[String(issue.severity || "moderate").toLowerCase()] ?? 2;
-  const tier = (CATEGORY_TIER.find((entry) => entry.test(category)) || { tier: 10 }).tier;
-  // Severity dominates (a Major defect never sits below a Moderate one); the category tier breaks ties.
-  return severity * 100 + tier;
+  // Base 16 with a 15 clamp: the category tier reaches 12, so a base-8 fold would collapse every
+  // tier above 7 to the same value and silently lose the ordering the comparator computed.
+  const key = canonicalPriorityKey(issue);
+  return key.reduce((total, part) => total * 16 + Math.min(15, Math.max(0, part)), 0);
 }
 
 // Top issues reference their detailed card by a 1-based positional id ("card-N"). Correcting and
@@ -605,12 +784,14 @@ export function relinkTopIssues(topIssues = [], originalCards = [], finalCards =
     if (seenCards.has(index)) continue;
     seenCards.add(index);
     const card = finalCards[index];
-    // Keep the top issue's own shape; only the link and the fields the validator compares are synced.
+    // Project the CONTENT wholly from the canonical card, keyed by its identity. Carrying the old
+    // top-issue object forward was the cause of the production cross-contamination: when two issues
+    // share one sentence, re-linking kept the previous issue's Student Action while adopting the new
+    // issue's category, so a Lexical Precision card rendered the Subject-Verb Agreement action.
+    // Only presentation-level fields the engine chose (ordering hints) may survive.
     linked.push({
-      ...top,
-      feedbackCardId: `card-${index + 1}`,
-      issueCategory: card.issueCategory || top.issueCategory,
-      severity: card.severity || top.severity
+      ...projectCanonicalIssueForDisplay(card),
+      feedbackCardId: `card-${index + 1}`
     });
   }
   return linked.sort((a, b) => {
@@ -623,6 +804,65 @@ export function relinkTopIssues(topIssues = [], originalCards = [], finalCards =
 // Builds the visible Top Issues straight from the corrected canonical set, so promoted evidence can
 // reach the summary and a single local repair cannot occupy every slot. Each entry is stamped with
 // the positional card link the report validator requires.
+// Every visible projection of a canonical issue is built HERE, from the issue itself. A section that
+// needs a card must call this rather than assembling one from whatever object it happens to hold, so
+// the category, target span, diagnosis, Student Action and revision state can never drift apart.
+export function projectCanonicalIssueForDisplay(issue = {}) {
+  const category = issue.issueCategory || issue.primaryCategory || "";
+  const evidenceLocations = Array.isArray(issue.evidenceLocations) ? issue.evidenceLocations : [];
+  const fallbackLocation = issue.paragraphLocation || issue.paragraphLabel || "";
+  const fallbackEvidence = issue.exactEvidence || issue.exactSentence || "";
+  // The traceability fields the report contract requires. Derived from the canonical issue's own
+  // evidence so they can never point at another issue's sentence.
+  const paragraphLocations = evidenceLocations.length
+    ? [...new Set(evidenceLocations.map((item) => item.paragraphLocation).filter(Boolean))]
+    : (fallbackLocation ? [fallbackLocation] : []);
+  const evidenceItems = evidenceLocations.length
+    ? evidenceLocations.map((item, index) => ({
+        paragraphLocation: item.paragraphLocation,
+        exactSentence: item.exactEvidence,
+        evidenceRole: index === 0 ? "Primary evidence" : "Additional occurrence"
+      }))
+    : (fallbackEvidence ? [{ paragraphLocation: fallbackLocation, exactSentence: fallbackEvidence, evidenceRole: "Primary evidence" }] : []);
+  return {
+    scope: issue.evidenceScope || issue.scope || "single-location",
+    paragraphLocations,
+    evidenceItems,
+    evidenceLocations,
+    evidenceScope: issue.evidenceScope || issue.scope || "single-location",
+    affectedCriteria: issue.criteriaAffected || issue.affectedCriteria || issue.criteria || [],
+    criteriaAffected: issue.criteriaAffected || issue.affectedCriteria || issue.criteria || [],
+    issueId: issue.issueId,
+    issueCategory: category,
+    primaryCategory: issue.primaryCategory || category,
+    secondaryCategories: issue.secondaryCategories || [],
+    issueType: issue.issueType || category,
+    title: issue.title || category,
+    severity: issue.severity,
+    criteria: issue.criteria || [],
+    framework: issue.framework || [],
+    summary: issue.summary || issue.whyItLimitsBand || issue.diagnosis || "",
+    exactSentence: issue.exactSentence || issue.exactEvidence || "",
+    exactEvidence: issue.exactEvidence || issue.exactSentence || "",
+    targetSpan: issue.targetSpan || "",
+    paragraphLocation: issue.paragraphLocation || issue.paragraphLabel || "",
+    paragraphLabel: issue.paragraphLabel || issue.paragraphLocation || "",
+    sentenceFunction: issue.sentenceFunction || "",
+    diagnosis: issue.diagnosis || "",
+    kruPomDiagnosis: issue.kruPomDiagnosis || issue.diagnosis || "",
+    whyItLimitsBand: issue.whyItLimitsBand || issue.diagnosis || "",
+    // The four fields that were cross-contaminating in production.
+    studentAction: issue.studentAction || "",
+    revisionType: issue.revisionType || "",
+    targetedRevision: issue.targetedRevision || "",
+    revisionWithheld: issue.revisionWithheld === true,
+    revisionAlignmentStatus: issue.revisionAlignmentStatus || "",
+    revisionTypeValidationStatus: issue.revisionTypeValidationStatus || "",
+    whyRevisionIsStronger: issue.whyRevisionIsStronger || "",
+    whyRevisionIsNotShown: issue.whyRevisionIsNotShown || ""
+  };
+}
+
 export function buildTopIssuesFromCanonical(finalCards = [], prioritised = [], limit = 3) {
   const out = [];
   for (const issue of prioritised) {
@@ -630,33 +870,16 @@ export function buildTopIssuesFromCanonical(finalCards = [], prioritised = [], l
     const index = finalCards.indexOf(issue);
     if (index < 0) continue;
     out.push({
-      feedbackCardId: `card-${index + 1}`,
-      issueId: issue.issueId,
-      issueCategory: issue.issueCategory || issue.primaryCategory,
-      secondaryCategories: issue.secondaryCategories || [],
-      issueType: issue.issueType || issue.issueCategory || issue.primaryCategory,
-      title: issue.title || issue.issueCategory || issue.primaryCategory,
-      severity: issue.severity,
-      criteria: issue.criteria || [],
-      framework: issue.framework || [],
-      summary: issue.summary || issue.whyItLimitsBand || issue.diagnosis || "",
-      exactSentence: issue.exactSentence || issue.exactEvidence || "",
-      paragraphLocation: issue.paragraphLocation || issue.paragraphLabel || "",
-      whyItLimitsBand: issue.whyItLimitsBand || issue.diagnosis || ""
+      ...projectCanonicalIssueForDisplay(issue),
+      feedbackCardId: `card-${index + 1}`
     });
   }
   return out;
 }
 
+// One order for every section. Delegates to the shared comparator rather than re-implementing it.
 export function orderIssuesByPriority(issues = []) {
-  return issues
-    .map((issue, index) => ({ issue, index }))
-    .sort((a, b) => {
-      const pa = issuePriorityScore(a.issue);
-      const pb = issuePriorityScore(b.issue);
-      return pa === pb ? a.index - b.index : pa - pb;
-    })
-    .map((entry) => entry.issue);
+  return orderCanonicalIssues(issues);
 }
 
 // ---------------------------------------------------------------------------
@@ -824,9 +1047,14 @@ export function applyCanonicalIntegrity({ issues = [], topIssues = [], executive
   // 4b. Candidate promotion (defect F) — before deduplication and priority selection, so promoted
   // evidence competes fairly and downstream sections (coverage, repair plan) see the full set.
   let promotedIssues = [];
+  // Lower-value language evidence that did not earn a visible card. Returned to the caller so the
+  // printable projection can render it as a compact Language Pattern Summary instead of discarding
+  // it — see domain/reportDensity.js.
+  let refinements = [];
   if (languageProfile) {
     const promotion = promoteLanguageCandidates(issues, languageProfile, { maxPromotions, reportLanguage });
     promotedIssues = promotion.promoted;
+    refinements = promotion.refinements || [];
     if (promotedIssues.length) {
       issues = promotion.issues;
       corrections.push({ code: "LANGUAGE_CANDIDATES_PROMOTED", count: promotedIssues.length });
@@ -885,6 +1113,12 @@ export function applyCanonicalIntegrity({ issues = [], topIssues = [], executive
     }
     return next;
   });
+  // 8c. Revision-withholding contract: a card with no revision must not carry prose describing one.
+  working = working.map((issue) => {
+    const { issue: contracted, changed } = applyRevisionWithholdingContract(issue);
+    if (changed) corrections.push({ issueId: issue.issueId, code: "WITHHOLDING_CONTRACT_APPLIED" });
+    return contracted;
+  });
   // 9. Canonical deduplication
   const beforeDedupe = working.length;
   working = dedupeCanonicalIssues(working);
@@ -903,7 +1137,7 @@ export function applyCanonicalIntegrity({ issues = [], topIssues = [], executive
   // Re-link Top Issues to the positions their cards actually occupy after correction/dedupe, keep them
   // consistent with those cards, and order them by the shared priority algorithm.
   const relinkedTopIssues = relinkTopIssues(topIssues, originalCards, working);
-  return { issues: working, prioritised, topIssues: relinkedTopIssues, executiveSummary: summary, corrections, version: CANONICAL_INTEGRITY_VERSION };
+  return { issues: working, prioritised, topIssues: relinkedTopIssues, executiveSummary: summary, corrections, refinements, version: CANONICAL_INTEGRITY_VERSION };
 }
 
 function dedupeStrings(values = []) {

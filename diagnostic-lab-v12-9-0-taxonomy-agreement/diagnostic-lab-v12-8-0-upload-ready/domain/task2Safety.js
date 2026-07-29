@@ -22,7 +22,19 @@ const OUTWEIGH_POSITIVE_SIDE_PATTERNS = [
   /\bproductivity\b/i,
   /\bnational advantages?\b/i,
   /\blong-term prosperity\b/i,
-  /\bcreative energy\b/i
+  /\bcreative energy\b/i,
+  // General benefit nouns. A candidate may name the favoured side with ordinary evaluative
+  // vocabulary instead of repeating the prompt's "advantages", and that must not read as an
+  // unclear position.
+  /\bprivileges?\b/i,
+  /\bconveniences?\b/i,
+  /\bperks?\b/i,
+  /\bupsides?\b/i,
+  /\bmerits?\b/i,
+  /\brewards?\b/i,
+  /\bstrengths?\b/i,
+  /\bsavings?\b/i,
+  /\bopportunit(?:y|ies)\b/i
 ];
 const OUTWEIGH_NEGATIVE_SIDE_PATTERNS = [
   /\bdisadvantages?\b/i,
@@ -34,8 +46,26 @@ const OUTWEIGH_NEGATIVE_SIDE_PATTERNS = [
   /\bpressures?\b/i,
   /\bnegative (?:effects?|outcomes?|impacts?)\b/i,
   /\bemployment (?:pressure|challenges?|instability)\b/i,
-  /\bjob[- ]market pressure\b/i
+  /\bjob[- ]market pressure\b/i,
+  // General harm nouns, matching the benefit list above.
+  /\bdownsides?\b/i,
+  /\bharms?\b/i,
+  /\bdetriments?\b/i,
+  /\bdamages?\b/i,
+  /\blosses\b/i,
+  /\bthreats?\b/i,
+  /\bpenalt(?:y|ies)\b/i
 ];
+// A neutral head noun takes the polarity of the evaluative adjective attached to it
+// ("negative ramifications", "beneficial outcomes"). This is ordinary English semantics, so it
+// generalises to any response instead of encoding one essay's wording.
+const OUTWEIGH_NEUTRAL_HEAD_PATTERN = /\b(?:ramifications?|consequences?|effects?|impacts?|implications?|outcomes?|results?|repercussions?|side[- ]effects?|changes?|developments?)\b/i;
+const OUTWEIGH_NEGATIVE_MODIFIER_PATTERN = /\b(?:negative|adverse|harmful|detrimental|damaging|undesirable|unfavou?rable|destructive|socio-economic decline|decline)\b/i;
+const OUTWEIGH_POSITIVE_MODIFIER_PATTERN = /\b(?:positive|beneficial|favou?rable|desirable|helpful|constructive|advantageous)\b/i;
+// A short determiner-led noun phrase standing in for a side the response has already named
+// ("these privileges", "its initial conveniences", "those minor drawbacks"). Used ONLY to resolve
+// the side opposite an already-resolved one, so it can never invent a judgement by itself.
+const OUTWEIGH_REFERENTIAL_SIDE_PATTERN = /^[\s,]*(?:the|its|it's|their|his|her|our|this|that|these|those|such)\b[^.!?;:]{0,60}$/i;
 const UNFINISHED_TAIL_PATTERN = /\b(?:because|although|while|whereas|if|when|which|that|so that|due to the fact that|in order to)\s+(?:i|we|they|he|she|it|people|governments?)?$|\b(?:and|but|or|to|of|for|with|i|we|they|he|she|it)$/i;
 const BODY_1_START_PATTERN = /^(?:first(?:ly| of all)?|to begin with|one (?:main|major|important) (?:reason|advantage|benefit|point))\b/i;
 const BODY_2_START_PATTERN = /^(?:on the other hand|however|nevertheless|conversely|second(?:ly)?|another (?:reason|view|point|issue|disadvantage|advantage))\b/i;
@@ -1681,6 +1711,14 @@ function detectSemanticOutweighPosition(value) {
       const latestLeftNegative = lastSemanticSignalIndex(left, OUTWEIGH_NEGATIVE_SIDE_PATTERNS);
       if ((leftPositive > leftNegative || latestLeftPositive > latestLeftNegative) && rightNegative >= 1) return "advantages outweigh the disadvantages";
       if ((leftNegative > leftPositive || latestLeftNegative > latestLeftPositive) && rightPositive >= 1) return "disadvantages outweigh the advantages";
+      // Semantic-referent fallback. Reached only when the rules above did not fire, so every
+      // position they already detect is unchanged. A response may name one side with a referring
+      // phrase rather than repeating the prompt's noun ("...disadvantages significantly outweigh
+      // these privileges", "The negative ramifications ... outweigh its initial conveniences").
+      // Resolving that is required for a clear position; refusing to resolve it produced a false
+      // "route absent" judgement and an unearned Task Response penalty.
+      const referent = resolveOutweighByReferent(left, right);
+      if (referent) return referent;
     }
 
     if (/\b(?:advantages?|benefits?|gains?|positive effects?)\b[^.!?]{0,100}\b(?:are|remain|seem)\s+(?:far\s+|clearly\s+|considerably\s+)?(?:greater|stronger|more significant|more substantial|more important)\b/i.test(sentence)) {
@@ -1696,6 +1734,54 @@ function detectSemanticOutweighPosition(value) {
       return "disadvantages outweigh the advantages";
     }
   }
+  return "";
+}
+
+// Resolves one side of an "X outweighs Y" comparison to "positive" / "negative" / "" using the
+// side lexicons plus adjective-driven polarity for neutral head nouns.
+function outweighSidePolarity(value) {
+  const text = String(value || "");
+  const positive = countSemanticSignals(text, OUTWEIGH_POSITIVE_SIDE_PATTERNS);
+  const negative = countSemanticSignals(text, OUTWEIGH_NEGATIVE_SIDE_PATTERNS);
+  if (positive > negative) return "positive";
+  if (negative > positive) return "negative";
+  if (positive && negative) {
+    // Both sides named in one span: the later noun is the one the comparator governs.
+    const latestPositive = lastSemanticSignalIndex(text, OUTWEIGH_POSITIVE_SIDE_PATTERNS);
+    const latestNegative = lastSemanticSignalIndex(text, OUTWEIGH_NEGATIVE_SIDE_PATTERNS);
+    if (latestNegative > latestPositive) return "negative";
+    if (latestPositive > latestNegative) return "positive";
+    return "";
+  }
+  if (OUTWEIGH_NEUTRAL_HEAD_PATTERN.test(text)) {
+    const negativeModifier = OUTWEIGH_NEGATIVE_MODIFIER_PATTERN.test(text);
+    const positiveModifier = OUTWEIGH_POSITIVE_MODIFIER_PATTERN.test(text);
+    if (negativeModifier && !positiveModifier) return "negative";
+    if (positiveModifier && !negativeModifier) return "positive";
+  }
+  return "";
+}
+
+// True when a side is a short referring noun phrase rather than a clause naming its own polarity.
+function isReferentialOutweighSide(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  return OUTWEIGH_REFERENTIAL_SIDE_PATTERN.test(text.replace(/[.!?]\s*$/, ""));
+}
+
+// When exactly one side of the comparison carries a resolvable polarity and the other is a
+// referring phrase, the referring phrase denotes the complementary side. This is what lets a
+// response state a clear judgement without literally repeating "advantages" / "disadvantages".
+function resolveOutweighByReferent(left, right) {
+  let leftPolarity = outweighSidePolarity(left);
+  let rightPolarity = outweighSidePolarity(right);
+  if (leftPolarity && !rightPolarity && isReferentialOutweighSide(right)) {
+    rightPolarity = leftPolarity === "positive" ? "negative" : "positive";
+  } else if (rightPolarity && !leftPolarity && isReferentialOutweighSide(left)) {
+    leftPolarity = rightPolarity === "positive" ? "negative" : "positive";
+  }
+  if (leftPolarity === "positive" && rightPolarity === "negative") return "advantages outweigh the disadvantages";
+  if (leftPolarity === "negative" && rightPolarity === "positive") return "disadvantages outweigh the advantages";
   return "";
 }
 

@@ -10,7 +10,7 @@
 // producing 25+ page reports whose last third was low-value mechanical repetition, while the
 // `refinements` the canonical layer already computed were discarded entirely.
 
-export const REPORT_DENSITY_VERSION = "report-density-v12.9.5";
+export const REPORT_DENSITY_VERSION = "report-density-v12.9.7";
 
 // A normal Task 2 report carries 5-8 full cards. The floor keeps a real report from being thinned
 // into uselessness; the ceiling is what keeps the page budget in range. Neither is a quota to fill
@@ -130,6 +130,61 @@ function summaryRowFromRefinement(refinement = {}) {
   };
 }
 
+function dedupeText(value) {
+  return lower(value)
+    .replace(/[â€˜â€™]/g, "'")
+    .replace(/[â€œâ€]/g, '"')
+    .replace(/[^\p{L}\p{N}' ]+/gu, " ");
+}
+
+// Final visible-value threshold. It is intentionally applied here, after provider promotion,
+// candidate merging, canonical thresholding and refinement construction. A weak cosmetic point
+// cannot re-enter the report through the late Language Pattern Summary projection.
+export function refinementVisibleValue(refinement = {}) {
+  const category = lower(refinement.category);
+  const explanation = lower(refinement.explanation);
+  const span = norm(refinement.exactProblemSpan);
+  const recurrence = lower(refinement.recurringPatternKey || refinement.recurrenceKey);
+  let score = 0;
+  if (refinement.affectsMeaning === true) score += 5;
+  if (recurrence) score += 3;
+  if (span) score += 1;
+  if (/subject.?verb|agreement|countab|article|sentence completion|fragment|word form/.test(category)) score += 4;
+  if (/collocation|lexical precision|word choice/.test(category)) score += 2;
+  if (/unnatural|changes? meaning|does not identify|not a natural collocation|word form/.test(explanation)) score += 2;
+  if (/vague noun choice|too vague|understandable but|slightly imprecise|optional polish|cosmetic/.test(`${category} ${explanation}`) && refinement.affectsMeaning !== true && !recurrence) score -= 4;
+  if (/punctuation|spacing/.test(category) && refinement.affectsMeaning !== true && !recurrence) score -= 3;
+  return {
+    score,
+    pass: score >= 3,
+    reason: score >= 3 ? "visible-value-threshold-met" : "below-final-visible-value-threshold"
+  };
+}
+
+// Dedupe after every merge and threshold stage. Stable issueId wins when present; rows without an
+// id are matched on the full category-location-target-diagnosis-action contract. Different targets
+// or diagnoses in one sentence therefore remain separate.
+export function deduplicateLanguagePatternSummary(rows = []) {
+  const output = [];
+  const seen = new Set();
+  for (const row of Array.isArray(rows) ? rows.filter(Boolean) : []) {
+    const id = norm(row.issueId);
+    const key = id
+      ? `id:${id}`
+      : [
+          dedupeText(row.category),
+          dedupeText(row.paragraphLocation),
+          dedupeText(row.targetSpan),
+          dedupeText(row.diagnosis),
+          dedupeText(row.action)
+        ].join("|");
+    if (!key.replace(/[|]/g, "") || seen.has(key)) continue;
+    seen.add(key);
+    output.push(row);
+  }
+  return output;
+}
+
 // Decides the Detailed Feedback / Language Pattern Summary split for one report.
 //
 // `issues` must already be in canonical priority order (issueGraph.orderedIds). The split is a
@@ -159,10 +214,12 @@ export function planReportDensity({ issues = [], refinements = [], maxDetailed =
 
   const detailedIssueIds = ordered.map((issue) => norm(issue.issueId)).filter((id) => detailed.has(id));
   const demoted = ordered.filter((issue) => !detailed.has(norm(issue.issueId)));
-  const summaryRows = [
+  const visibleRefinements = (Array.isArray(refinements) ? refinements : [])
+    .filter((refinement) => refinementVisibleValue(refinement).pass);
+  const summaryRows = deduplicateLanguagePatternSummary([
     ...demoted.map((issue) => summaryRowFromIssue(issue, { recurrence })),
-    ...(Array.isArray(refinements) ? refinements : []).map(summaryRowFromRefinement)
-  ];
+    ...visibleRefinements.map(summaryRowFromRefinement)
+  ]);
 
   return {
     version: REPORT_DENSITY_VERSION,

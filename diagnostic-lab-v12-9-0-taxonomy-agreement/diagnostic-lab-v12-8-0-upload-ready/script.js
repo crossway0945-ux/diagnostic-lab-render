@@ -1301,10 +1301,23 @@ function buildDashboardIssues(issues = [], feedbackCards = []) {
   return source.map((issue, index) => {
     const issueObject = issue && typeof issue === "object" ? issue : {};
     const issueEvidence = firstText(issueObject.exactEvidence, issueObject.exactSentence);
+    const issueCategory = normalizeComparableText(firstText(
+      issueObject.issueCategory,
+      issueObject.primaryCategory,
+      issueObject.issueType,
+      issueObject.title
+    ));
     const matchedCardIndex = feedbackCards.findIndex((candidate) => (
       issueObject.issueId && candidate?.issueId === issueObject.issueId
     ) || (
-      issueEvidence && normalizeComparableText(candidate?.exactSentence) === normalizeComparableText(issueEvidence)
+      issueEvidence &&
+      normalizeComparableText(candidate?.exactSentence) === normalizeComparableText(issueEvidence) &&
+      (!issueCategory || issueCategory === normalizeComparableText(firstText(
+        candidate?.issueCategory,
+        candidate?.primaryCategory,
+        candidate?.issueType,
+        candidate?.title
+      )))
     ));
     const cardIndex = matchedCardIndex >= 0 ? matchedCardIndex : index;
     const card = feedbackCards[cardIndex] || fallbackCards[index] || {};
@@ -1451,7 +1464,7 @@ async function exportDiagnosticPdf(analysis) {
   }
 }
 
-async function prepareAndPrintDiagnosticFrame(reportLanguage) {
+async function prepareAndPrintDiagnosticFrame(reportLanguage, { suppressPrint = false } = {}) {
 
   const previousFrame = document.querySelector("#diagnostic-print-frame");
   previousFrame?.remove();
@@ -1544,6 +1557,13 @@ async function prepareAndPrintDiagnosticFrame(reportLanguage) {
     assertPrintPageGeometry(printDocument);
     const win = frame.contentWindow;
     if (!win) throw new Error("The isolated print window could not be created.");
+    if (suppressPrint) {
+      return {
+        value: frame,
+        frame,
+        dispose: () => frame.remove()
+      };
+    }
     const cleanup = () => window.setTimeout(() => frame.remove(), 500);
     win.addEventListener("afterprint", cleanup, { once: true });
     win.focus();
@@ -1555,6 +1575,18 @@ async function prepareAndPrintDiagnosticFrame(reportLanguage) {
     frame.remove();
     throw error;
   }
+}
+
+// Browser-QA entrypoint. It uses the identical Student View renderer, sanitisation, deterministic
+// paginator and overflow gate as the user-facing Export PDF action, but stops before opening the
+// operating-system print dialog so automated release validation can inspect and print the isolated
+// document. This is not linked from the UI and does not bypass any export assertion.
+export async function prepareDiagnosticPrintFrameForQa(analysis) {
+  renderPrintReport(analysis);
+  if (!printReport) throw new Error("The printable report root is unavailable.");
+  const reportLanguage = normalizeReportLanguage((analysis || currentAnalysis)?.reportLanguage);
+  const prepared = await prepareAndPrintDiagnosticFrame(reportLanguage, { suppressPrint: true });
+  return prepared.frame;
 }
 
 function waitForFrameLoad(frame) {
@@ -2105,8 +2137,25 @@ function feedbackCardForIssue(issue = {}, cards = [], fallbackIndex = 0) {
   const referencedIndex = match ? Number(match[1]) - 1 : -1;
   if (referencedIndex >= 0 && cards[referencedIndex]) return cards[referencedIndex];
   const evidence = normalizeComparableText(issue.exactSentence);
+  const category = normalizeComparableText(firstText(
+    issue.issueCategory,
+    issue.primaryCategory,
+    issue.issueType,
+    issue.title
+  ));
   if (evidence) {
-    const evidenceMatch = cards.find((card) => normalizeComparableText(card.exactSentence) === evidence);
+    // More than one issue can legitimately share one source sentence. Match the canonical category
+    // as well as the sentence so Thesis-to-Body Promise can never inherit Comparative Judgement's
+    // Student Action merely because both were diagnosed in the same thesis sentence.
+    const evidenceMatch = cards.find((card) => (
+      normalizeComparableText(card.exactSentence) === evidence &&
+      (!category || category === normalizeComparableText(firstText(
+        card.issueCategory,
+        card.primaryCategory,
+        card.issueType,
+        card.title
+      )))
+    ));
     if (evidenceMatch) return evidenceMatch;
   }
   return cards[fallbackIndex] || {};

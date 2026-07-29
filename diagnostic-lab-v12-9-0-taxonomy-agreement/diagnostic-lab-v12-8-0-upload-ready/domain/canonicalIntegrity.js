@@ -12,7 +12,7 @@
 import { canonicalPriorityKey, orderCanonicalIssues } from "./canonicalIssueGraph.js";
 import { deriveDeterministicCorrection, isAutoCorrectableCategory } from "./deterministicCorrections.js";
 
-export const CANONICAL_INTEGRITY_VERSION = "canonical-integrity-v12.8.3";
+export const CANONICAL_INTEGRITY_VERSION = "canonical-integrity-v12.9.7";
 
 // Task 2 route categories only. "Prompt Coverage" is deliberately excluded: it is a genuine coverage
 // dimension (and Task 1 introduction cards use it), so reclassifying it would disturb Task 1 visual
@@ -243,7 +243,8 @@ export function correctLexicalTargetSpan(issue = {}) {
   // The lexical claim is anchored to a function word: re-anchor it to the phrase it is really about.
   const quoted = extractQuotedTarget(issue.diagnosis || "");
   const subject = subjectPhraseBefore(issue.exactEvidence || issue.exactSentence, target);
-  const replacement = quoted && !FUNCTION_WORD_TARGET.test(quoted) ? quoted : subject;
+  const quotedIsSpecificPhrase = quoted && !FUNCTION_WORD_TARGET.test(quoted) && quoted.trim().split(/\s+/).length > 1;
+  const replacement = quotedIsSpecificPhrase ? quoted : subject || quoted;
   if (!replacement) return { issue, changed: false };
   // Its revision only performed the co-located grammatical edit, so it does not repair this lexical
   // diagnosis: withhold it and state the lexical operation instead.
@@ -258,7 +259,75 @@ export function correctLexicalTargetSpan(issue = {}) {
       : [{ type: "lexical_item", target: replacement, requirement: "Replace with wording whose ordinary meaning matches the intended idea." }],
     lexicalTargetCorrection: { from: target, to: replacement, reason: "lexical-issue-anchored-to-function-word", version: CANONICAL_INTEGRITY_VERSION }
   };
-  if (revisionOnlyFixesVerb) {
+  const mixedCategoryDiagnosis = /\b(?:subject|finite verb|agreement|singular|plural)\b/i.test(String(issue.diagnosis || "")) ||
+    /\b(?:weigh|comparative|recommendation)\b/i.test(String(issue.diagnosis || ""));
+  if (mixedCategoryDiagnosis) {
+    const lexicalTarget = replacement.replace(/^(?:the|a|an)\s+/i, "").trim();
+    const promotionFrame = lexicalTarget.match(/^promotion of (.+)$/i);
+    const diagnosis = promotionFrame
+      ? `The phrase "${lexicalTarget}" can mean advertising ${promotionFrame[1]}, while this paragraph appears to mean supporting or preserving them; the intended relationship is not precise.`
+      : `The phrase "${lexicalTarget}" does not state the intended meaning precisely. Agreement and comparative development are assessed as separate issues.`;
+    const exactEvidence = String(issue.exactEvidence || issue.exactSentence || "");
+    const localOffset = exactEvidence.toLowerCase().indexOf(lexicalTarget.toLowerCase());
+    const absoluteStart = localOffset >= 0 && Number.isFinite(Number(issue.evidenceStartOffset))
+      ? Number(issue.evidenceStartOffset) + localOffset
+      : undefined;
+    next.targetSpan = lexicalTarget;
+    next.targetStartOffset = absoluteStart;
+    next.targetEndOffset = Number.isFinite(absoluteStart) ? absoluteStart + lexicalTarget.length : undefined;
+    next.issueType = "Lexical Precision";
+    next.title = "Lexical Precision";
+    next.primaryCategory = "Lexical Precision";
+    next.issueCategory = "Lexical Precision";
+    next.secondaryCategories = [];
+    next.secondaryIssueCategories = [];
+    next.criteria = ["Lexical Resource"];
+    next.criteriaAffected = ["Lexical Resource"];
+    next.framework = ["Vocabulary Precision", "LFC-CPC Precise"];
+    next.frameworkComponents = ["Vocabulary Precision", "LFC-CPC Precise"];
+    next.detectedDefect = diagnosis;
+    next.diagnosis = diagnosis;
+    next.coreDiagnosis = diagnosis;
+    next.kruPomDiagnosis = diagnosis;
+    next.whyItLimitsBand = diagnosis;
+    next.summary = diagnosis;
+    next.studentAction = promotionFrame
+      ? `Clarify whether you mean supporting, preserving or advertising ${promotionFrame[1]}, then rewrite only "${lexicalTarget}" to express that meaning.`
+      : `Clarify the meaning you intend, then rewrite only "${lexicalTarget}" with a precise noun or verb phrase.`;
+    next.repairTargets = [{
+      type: "lexical_item",
+      target: lexicalTarget,
+      requirement: "Clarify the intended semantic relationship without repairing a separate grammar or comparison issue."
+    }];
+    next.evidenceAssertionType = "lexical_meaning";
+    next.evidenceAssertion = {
+      ...(issue.evidenceAssertion || {}),
+      assertionType: "lexical_meaning",
+      targetSpan: lexicalTarget,
+      targetOffsetStart: absoluteStart,
+      targetOffsetEnd: Number.isFinite(absoluteStart) ? absoluteStart + lexicalTarget.length : undefined,
+      expectedCorrection: "",
+      correctedSpan: "",
+      proof: "The source phrase is present, but its intended semantic relationship is meaning-dependent.",
+      demonstrated: true
+    };
+    next.detectedDefect = diagnosis;
+    next.expectedCorrection = "";
+    next.revisionType = "Revision Unavailable";
+    next.targetedRevision = WITHHELD_REVISION_NOTE;
+    next.revisionWithheld = true;
+    next.revisionAlignmentStatus = "withheld";
+    next.revisionTypeValidationStatus = "withheld";
+    next.revisionIntegrity = {
+      ...(issue.revisionIntegrity || {}),
+      exactOriginalFound: true,
+      pass: false,
+      revisionTypeValid: true
+    };
+    next.studentActionValidation = { pass: true, mode: "meaning-dependent-repair", problems: [] };
+    next.revisionLimitationNote = "The lexical meaning is not recoverable with enough confidence to display a model rewrite.";
+  }
+  if (revisionOnlyFixesVerb && !mixedCategoryDiagnosis) {
     next.revisionType = "Revision Unavailable";
     next.targetedRevision = WITHHELD_REVISION_NOTE;
     next.revisionWithheld = true;
@@ -672,7 +741,9 @@ export function promoteLanguageCandidates(issues = [], languageProfile = {}, { m
         // recurs, without re-deriving either from the essay text.
         paragraphLocation: candidate.paragraphLocation || "",
         explanation: candidate.explanation || "",
-        recurrenceKey: candidate.recurringPatternKey || ""
+        recurrenceKey: Number(candidate.occurrenceCount || 0) >= 2 || candidate.recurringPattern === true
+          ? candidate.recurringPatternKey || ""
+          : ""
       });
       continue;
     }

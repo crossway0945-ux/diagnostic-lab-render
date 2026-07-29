@@ -47,14 +47,14 @@ assert.deepEqual(
   Object.fromEntries(Object.entries(report.kruPomScores).map(([key, value]) => [key, value.status])),
   {
     "Essay Type Recognition": "Strong",
-    "Prompt Coverage": "Strong",
+    "Prompt Coverage": "Aligned",
     "Position Clarity": "Strong",
     "Thesis Route Clarity": "Strong",
     "Body Paragraph Route Alignment": "Aligned",
-    "Explanation Depth": "Moderate",
-    "SAR Example Quality": "Moderate",
-    "Link Back Control": "Moderate",
-    "Conclusion Closure": "Strong",
+    "Explanation Depth": "Needs Work",
+    "SAR Example Quality": "Mixed",
+    "Link Back Control": "Strong",
+    "Conclusion Closure": "Functionally Strong - Language Repair Needed",
     "LFC CPC Control": "Moderate"
   }
 );
@@ -149,20 +149,20 @@ assert.equal(progress.changeIndicator, "new");
 assert.equal(progress.repeatedIssue, "");
 
 assert.deepEqual(ANALYSIS_VERSIONS, {
-  appVersion: "12.9.0",
-  engineVersion: "ielts-diagnostic-engine-v12.8.0",
+  appVersion: "12.9.7",
+  engineVersion: "ielts-diagnostic-engine-v12.9.7",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.8.0",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.8.0",
-  feedbackSchemaVersion: "feedback-integrity-v12.8.0",
-  issueTaxonomyVersion: "issue-taxonomy-v12.8.0",
-  evidenceValidatorVersion: "evidence-assertion-v12.8.0",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.9.7",
+  feedbackSchemaVersion: "feedback-integrity-v12.9.7",
+  issueTaxonomyVersion: "issue-taxonomy-v12.9.7",
+  evidenceValidatorVersion: "framework-evidence-contract-v12.9.7",
   revisionValidatorVersion: "revision-alignment-v12.8.0",
-  pdfTextIntegrityVersion: "pdf-text-integrity-v12.8.0",
+  pdfTextIntegrityVersion: "pdf-text-integrity-v12.9.7",
   routeClassifierVersion: "task-aware-route-model-v12.8.0",
   grammarValidatorVersion: "syntactic-head-agreement-v12.9.0",
   scoringOrchestrationVersion: "score-freeze-v12.8.0",
-  studentViewContractVersion: "student-report-allowlist-v12.8.0"
+  studentViewContractVersion: "student-report-allowlist-v12.9.7"
 });
 
 const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");

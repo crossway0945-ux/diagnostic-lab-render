@@ -197,7 +197,33 @@ export function buildEvidenceAssertion({
     }
   }
   const revision = String(card.targetedRevision || "").trim();
-  const diff = minimalTextDiff(exactEvidence, revision);
+  let diff = minimalTextDiff(exactEvidence, revision);
+  // Provider evidence may name the exact faulty span. When that span is truly present and the
+  // revision preserves the text before and after it, prefer the explicit semantic boundary over a
+  // character diff. This is essential for insertions such as
+  // "lower prices than small vendors" -> "lower prices than those charged by small vendors":
+  // a raw common-prefix diff otherwise produces the meaningless target "small".
+  const explicitTarget = String(card.exactProblemSpan || card.targetSpan || "").trim();
+  const explicitStart = explicitTarget ? exactEvidence.indexOf(explicitTarget) : -1;
+  if (explicitStart >= 0) {
+    const before = exactEvidence.slice(0, explicitStart);
+    const after = exactEvidence.slice(explicitStart + explicitTarget.length);
+    if (revision.startsWith(before) && revision.endsWith(after) && revision.length >= before.length + after.length) {
+      const revisedEnd = revision.length - after.length;
+      const explicitCorrection = revision.slice(before.length, revisedEnd).trim();
+      if (explicitCorrection && explicitCorrection !== explicitTarget) {
+        diff = {
+          changed: true,
+          originalStart: explicitStart,
+          originalEnd: explicitStart + explicitTarget.length,
+          revisedStart: before.length,
+          revisedEnd,
+          originalSpan: explicitTarget,
+          revisedSpan: explicitCorrection
+        };
+      }
+    }
+  }
   const base = {
     assertionType,
     sourceOffsetStart: sourceLocation.start,
@@ -559,6 +585,19 @@ export function minimalTextDiff(original = "", revision = "") {
   let originalEnd = leftSuffix;
   let revisedStart = prefix;
   let revisedEnd = rightSuffix;
+  // Character-level common prefixes/suffixes can stop inside a word ("privileges" ->
+  // "personal advantages" used to become the nonsensical span "rivilege" -> "ersonal advantage").
+  // Student actions and PDF target spans must always expose complete tokens, so widen each side to
+  // its own word boundaries before extracting the visible diff.
+  const tokenChar = /[\p{L}\p{N}'’-]/u;
+  if (originalStart > 0 && tokenChar.test(left[originalStart - 1] || "") && tokenChar.test(left[originalStart] || "")) {
+    while (originalStart > 0 && tokenChar.test(left[originalStart - 1])) originalStart -= 1;
+  }
+  if (revisedStart > 0 && tokenChar.test(right[revisedStart - 1] || "") && tokenChar.test(right[revisedStart] || "")) {
+    while (revisedStart > 0 && tokenChar.test(right[revisedStart - 1])) revisedStart -= 1;
+  }
+  while (originalEnd < left.length && tokenChar.test(left[originalEnd] || "")) originalEnd += 1;
+  while (revisedEnd < right.length && tokenChar.test(right[revisedEnd] || "")) revisedEnd += 1;
   let originalSpan = left.slice(originalStart, originalEnd).trim();
   let revisedSpan = right.slice(revisedStart, revisedEnd).trim();
   if (!originalSpan || !revisedSpan) {

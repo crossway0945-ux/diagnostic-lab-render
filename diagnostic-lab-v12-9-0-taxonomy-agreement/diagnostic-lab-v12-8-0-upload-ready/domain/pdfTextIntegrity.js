@@ -5,7 +5,7 @@ const MISSING_SPACE_AFTER_TERMINAL = /[\p{Ll}\p{N}][.!?][\p{Lu}]/u;
 const EXTRACTED_TEXT_FORBIDDEN_CODE_POINT = /[\u00AD\u2011\uFFFD-\uFFFF\uE000-\uF8FF\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/u;
 const MALFORMED_TASK_TYPE = /\btask[\s_-]*[\u00AD\u2011\uFFFD-\uFFFF\uE000-\uF8FF]+[\s_-]*type\b|\btask\s*type\s*[\uFFFD-\uFFFF]/iu;
 const BROKEN_NUMERIC_SPACING = /\b(?:Band|score|range)\s+[0-9]\s*[.,]\s+[0-9]\b/i;
-const INTERNAL_REPORT_LANGUAGE = /\b(?:source|target|evidence)\s+offsets?\b|\bexact source span\b|\bvalidated (?:span|occurrence|issue)\b|\b(?:body_topic_sentence|thesis_route|cause_route|solution_route|view_route|paragraph_closing_sentence)\b/i;
+const INTERNAL_REPORT_LANGUAGE = /\b(?:source|target|evidence)\s+offsets?\b|\bexact source span\b|\bvalidated (?:span|occurrence|issue)\b|\b(?:body_topic_sentence|thesis_route|cause_route|solution_route|view_route|paragraph_closing_sentence)\b|\b(?:issue|development)-[a-z0-9][a-z0-9-]*\b|\b(?:submissionId|submissionGroupId|reportVersionId|parentReportId|scoringSnapshot|canonicalRank)\b/i;
 const SEMANTIC_HEADINGS = Object.freeze([
   "Estimated Band Range",
   "Executive Summary",
@@ -97,5 +97,6 @@ function tokenCounts(tokens) {
 }
 
 function containsCorruptedHyphenation(value) {
+  if (/\u041b\u0438[_-]?/u.test(String(value || ""))) return true;
   return /(?:\u00ad|\uFFFD|\uFFFE|\uFFFF|ï¿¾|ï¿½|â€‘|â€“|â€”)/u.test(String(value || ""));
 }

@@ -13,7 +13,7 @@ import { resolveDataDir } from "./storage.js";
 //   persisted for that report version are marked { available:false, reason:"NOT_PERSISTED..." }.
 // Never writes or exports secrets, other students' data, prompts, or filesystem paths.
 
-export const QA_EXPORT_VERSION = "canonical-qa-export-v12.8.1";
+export const QA_EXPORT_VERSION = "canonical-qa-export-v12.9.7";
 const NOT_PERSISTED = Object.freeze({ available: false, reason: "NOT_PERSISTED_IN_THIS_REPORT_VERSION" });
 
 // Keys that must never appear in a snapshot or an export, at any depth.

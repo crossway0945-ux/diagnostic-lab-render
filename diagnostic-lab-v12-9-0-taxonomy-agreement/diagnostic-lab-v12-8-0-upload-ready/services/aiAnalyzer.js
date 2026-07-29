@@ -23,8 +23,18 @@ import { buildStudentReportViewModel } from "../domain/reportViewModels.js";
 import { auditFeedbackIntegrity, buildFeedbackIntegrityModel, projectRouteAlignmentDisplay, validateFeedbackIntegrity } from "../domain/feedbackIntegrity.js";
 import { buildCanonicalConsistencyAudit, buildEvidenceBasedRepairPlan, buildExecutiveSummaryFromIssues, normalizeConsistencyAuditRecord, paragraphDimensionStatus, summaryAlreadyAddresses } from "../domain/reportConsistency.js";
 import { applyCanonicalIntegrity, buildTopIssuesFromCanonical, issuePriorityScore, orderIssuesByPriority, projectCanonicalIssueForDisplay } from "../domain/canonicalIntegrity.js";
-import { buildProjectionConsistencyAudit, finaliseCanonicalIssueGraph, projectionAuditFailures } from "../domain/canonicalIssueGraph.js";
+import {
+  buildIssueReferenceParityAudit,
+  buildProjectionConsistencyAudit,
+  finaliseCanonicalIssueGraph,
+  projectionAuditFailures
+} from "../domain/canonicalIssueGraph.js";
 import { planReportDensity } from "../domain/reportDensity.js";
+import {
+  FRAMEWORK_CANONICAL_KEYS,
+  assertFrameworkEvidenceContract,
+  buildFrameworkEvidenceContract
+} from "../domain/frameworkEvidence.js";
 
 // G: recompute each paragraph's dimension statuses from the COMPLETE corrected issue set. A paragraph
 // may never read "Language Controlled" while a validated language issue for it survives correction.
@@ -55,6 +65,7 @@ function rebuildParagraphCoverageFromIssues(paragraphFeedback = [], issues = [],
       action: narrative.action,
       studentAction: narrative.action,
       priorityRepair: narrative.priorityRepair,
+      priorityIssueId: narrative.priorityIssueId,
       issueIds: paragraphIssues.map((issue) => issue.issueId).filter(Boolean)
     };
   });
@@ -71,7 +82,8 @@ function buildParagraphNarrative(issues = [], dimensions = {}, label = "") {
     return {
       diagnosis: `${label || "This paragraph"} was checked against the final issue set and no priority repair was identified.`,
       action: "No priority repair — keep this paragraph as it is.",
-      priorityRepair: ""
+      priorityRepair: "",
+      priorityIssueId: ""
     };
   }
   const dimensionNames = { route: "route", development: "task development", example: "example/SAR", language: "language" };
@@ -79,6 +91,7 @@ function buildParagraphNarrative(issues = [], dimensions = {}, label = "") {
   const supporting = ranked.slice(1, 3).map((issue) => issue.issueCategory || issue.primaryCategory).filter(Boolean);
   const leadCategory = lead.issueCategory || lead.primaryCategory || "";
   const leadDiagnosis = String(lead.kruPomDiagnosis || lead.diagnosis || lead.whyItLimitsBand || "").trim();
+  const action = String(lead.studentAction || "").trim() || `Repair the ${leadCategory} defect identified in this paragraph.`;
   return {
     diagnosis: [
       `Repair needed in ${named}.`,
@@ -86,8 +99,11 @@ function buildParagraphNarrative(issues = [], dimensions = {}, label = "") {
       supporting.length ? `Also validated in this paragraph: ${[...new Set(supporting)].join(", ")}.` : ""
     ].filter(Boolean).join(" "),
     // The paragraph's action IS the lead issue's action, so the two can never diverge.
-    action: String(lead.studentAction || "").trim() || `Repair the ${leadCategory} defect identified in this paragraph.`,
-    priorityRepair: `${leadCategory} (${lead.issueId})`
+    action,
+    // Keep the stable identifier for internal projection parity, but never render it as the
+    // paragraph's Student Action.
+    priorityRepair: action,
+    priorityIssueId: String(lead.issueId || "")
   };
 }
 
@@ -830,7 +846,7 @@ function buildLocalTask2Analysis(payload) {
     });
   }
 
-  if (!cards.length) {
+  if (!cards.length && !(safety.canonicalDevelopmentEvidence?.findings || []).length) {
     const evidence = records.find((record) => record.paragraphIndex > 0)?.sentence || records[0]?.sentence || "";
     addCard(cards, used, {
       issueType: "High-Band Route and Precision Review",
@@ -4024,6 +4040,38 @@ function normalizeAnalysis(analysis, payload) {
         ...gate.audit
       ];
     }
+
+    // Final framework-evidence gate. This runs after issue promotion, deduplication, paragraph
+    // reconciliation and the cross-section consistency gate, so it evaluates the same frozen
+    // evidence that the student will see. A missing complaint is never converted into praise.
+    const frameworkEvidence = buildFrameworkEvidenceContract({
+      taskType: payload.taskType,
+      reportLanguage: normalized.reportLanguage || payload.reportLanguage || "en",
+      frameworkScores: normalized.kruPomScores || integrityFramework,
+      routeAssessment: normalized.routeAssessment || {},
+      thesisDimensions: normalized.feedbackIntegrity?.thesisDimensions || normalized.thesisDimensions || {},
+      paragraphCoverage: normalized.feedbackIntegrity?.paragraphCoverage || normalized.paragraphCoverage || [],
+      canonicalIssues: correctedCards,
+      conclusionFunction: canonicalConclusionFunction,
+      languageProfile: normalized.languageProfile || {},
+      criteriaScores: normalized.criteriaScores || {}
+    });
+    normalized.kruPomScores = frameworkEvidence.frameworkScores;
+    for (const [displayName, card] of Object.entries(frameworkEvidence.frameworkScores || {})) {
+      const canonicalKey = FRAMEWORK_CANONICAL_KEYS[displayName];
+      if (canonicalKey && Object.prototype.hasOwnProperty.call(canonicalFramework, canonicalKey)) {
+        canonicalFramework[canonicalKey] = {
+          ...canonicalFramework[canonicalKey],
+          status: card.status,
+          diagnosis: card.diagnosis
+        };
+      }
+      if (Object.prototype.hasOwnProperty.call(integrityFramework, displayName)) {
+        integrityFramework[displayName] = { ...integrityFramework[displayName], ...card };
+      }
+    }
+    if (normalized.feedbackIntegrity) normalized.feedbackIntegrity.frameworkEvidence = frameworkEvidence;
+    assertFrameworkEvidenceContract(frameworkEvidence);
   }
 
   // ---- Projection integrity, fail-closed ------------------------------------------------------
@@ -4037,7 +4085,13 @@ function normalizeAnalysis(analysis, payload) {
       detailedFeedback: correctedCards,
       studentView: correctedCards
     });
-    let projectionAudit = buildProjectionConsistencyAudit(issueGraph, sectionsFor());
+    let projectionAudit = [
+      ...buildProjectionConsistencyAudit(issueGraph, sectionsFor()),
+      ...buildIssueReferenceParityAudit(issueGraph, {
+        paragraphCoverage: normalized.feedbackIntegrity?.paragraphCoverage || normalized.paragraphCoverage || [],
+        repairPlan: correctedRepairPlan
+      })
+    ];
     const failures = projectionAuditFailures(projectionAudit);
     if (failures.length) {
       for (const failure of failures) {
@@ -4049,8 +4103,13 @@ function normalizeAnalysis(analysis, payload) {
           failure.repairPerformed = "re-projected-from-canonical-issue";
         }
       }
-      projectionAudit = buildProjectionConsistencyAudit(issueGraph, sectionsFor())
-        .map((record) => ({ ...record, repairPerformed: failures.find((item) => item.issueId === record.issueId)?.repairPerformed || "" }));
+      projectionAudit = [
+        ...buildProjectionConsistencyAudit(issueGraph, sectionsFor()),
+        ...buildIssueReferenceParityAudit(issueGraph, {
+          paragraphCoverage: normalized.feedbackIntegrity?.paragraphCoverage || normalized.paragraphCoverage || [],
+          repairPlan: correctedRepairPlan
+        })
+      ].map((record) => ({ ...record, repairPerformed: failures.find((item) => item.issueId === record.issueId)?.repairPerformed || "" }));
       const surviving = projectionAuditFailures(projectionAudit);
       if (surviving.length) {
         throw providerError("REPORT_PROJECTION_INCONSISTENT", {

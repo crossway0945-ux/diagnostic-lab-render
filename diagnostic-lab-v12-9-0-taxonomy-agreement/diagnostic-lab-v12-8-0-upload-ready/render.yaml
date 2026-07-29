@@ -4,8 +4,10 @@ services:
     runtime: node
     plan: starter
     region: singapore
-    # The release ZIP is flat-root: package.json is at the repository root.
-    # In the Render dashboard leave Root Directory blank. Blueprint users resolve "." here.
+    # This Blueprint is stored inside the preserved upload wrapper, beside package.json.
+    # If the wrapper CONTENTS are used as the repository root, "." is correct here.
+    # If the preserved wrapper itself is committed at the repository root, the manual Render
+    # Root Directory must be: diagnostic-lab-v12-8-0-upload-ready
     rootDir: .
     buildCommand: npm install
     startCommand: npm start

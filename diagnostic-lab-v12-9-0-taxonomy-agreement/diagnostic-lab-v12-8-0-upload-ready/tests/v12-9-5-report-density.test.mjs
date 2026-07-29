@@ -52,9 +52,23 @@ const few = Array.from({ length: 3 }, (_, index) => issue({ issueId: `s${index}`
 assert.equal(planReportDensity({ issues: few }).detailedIssueIds.length, 3, "a 3-issue report renders 3 cards, not a quota");
 
 // Refinements are summary rows only — they can never be promoted into a full card.
-const withRefinements = planReportDensity({
+const withLowValueRefinement = planReportDensity({
   issues: few,
   refinements: [{ category: "Article Control", exactSentence: "A refinement sentence.", exactProblemSpan: "a", score: 1, paragraphLocation: "Introduction", explanation: "Optional polish." }]
+});
+assert.equal(withLowValueRefinement.detailedIssueIds.length, 3, "a refinement never takes a Detailed Feedback slot");
+assert.equal(withLowValueRefinement.summaryRows.length, 0, "late optional polish does not bypass the final threshold");
+
+const withRefinements = planReportDensity({
+  issues: few,
+  refinements: [{
+    category: "Article Control",
+    exactSentence: "The government introduced policy.",
+    exactProblemSpan: "introduced policy",
+    score: 4,
+    paragraphLocation: "Introduction",
+    explanation: "The singular countable noun needs an article here."
+  }]
 });
 assert.equal(withRefinements.detailedIssueIds.length, 3, "a refinement never takes a Detailed Feedback slot");
 assert.equal(withRefinements.summaryRows.length, 1, "the refinement is consumed as a summary row");

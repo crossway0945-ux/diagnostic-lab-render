@@ -22,7 +22,7 @@ import {
 import { ANALYSIS_VERSIONS } from "../services/analysisVersions.js";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-assert.equal(ANALYSIS_VERSIONS.appVersion, "12.9.0");
+assert.equal(ANALYSIS_VERSIONS.appVersion, "12.9.7");
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_ENV = { ...process.env };
@@ -270,7 +270,7 @@ try {
   const health = await (await fetch(`${base}/api/health`)).json();
   assert.equal(health.providerConnectivityStatus, "unknown", "connectivity is unknown until a real check runs");
   assert.equal(health.diagnosticEngineConnected, false, "health must not equate configuration with connectivity");
-  assert.equal(health.appVersion, "12.9.0");
+  assert.equal(health.appVersion, "12.9.7");
   assert.ok(Number(health.retryMaxOutputTokens) > 0);
   assert.equal(typeof health.productionContractCheckStatus, "string");
 

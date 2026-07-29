@@ -243,6 +243,9 @@ export function buildFeedbackIntegrityModel({
   // Populated by the analyzer once every section has been projected from the frozen canonical issue
   // graph. Declared here so it is part of the validated model shape rather than a late addition.
   model.projectionConsistencyAudit = [];
+  // Populated after the canonical issue graph is frozen. Positive framework ratings are allowed
+  // only when this contract contains traceable positive evidence.
+  model.frameworkEvidence = null;
   // V12.9.5 report density. `reportDensityPlan` records which issues keep a full Detailed Feedback
   // card; `languagePatternSummary` carries the compact rows for the rest plus the canonical
   // `refinements`. Both are declared here so they are part of the validated model shape — adding a

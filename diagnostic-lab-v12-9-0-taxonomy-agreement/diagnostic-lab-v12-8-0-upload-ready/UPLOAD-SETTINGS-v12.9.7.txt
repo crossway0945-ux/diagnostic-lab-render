@@ -1,0 +1,31 @@
+KRU POM IELTS WRITING 7+ DIAGNOSTIC LAB — V12.9.7
+
+WHICH ZIP TO USE
+
+1. Existing GitHub repository already based on the supplied V12.9.0 source:
+   Use diagnostic-lab-v12.9.7-GITHUB-CHANGED-FILES.zip.
+   It contains exactly 51 files, so it is below GitHub's 100-file web-upload limit.
+   Extract it and upload/replace the files inside the existing
+   diagnostic-lab-v12-8-0-upload-ready directory.
+
+2. Clean full source replacement:
+   Use diagnostic-lab-v12.9.7-production-ready.zip.
+   It contains the complete 126-file source tree. Preserve its wrapper. For GitHub, use Git/GitHub
+   Desktop for this full tree; do not drag all 126 extracted files into the web uploader at once.
+
+For the full ZIP in a repository that preserves the wrapper:
+
+Root Directory: diagnostic-lab-v12-8-0-upload-ready
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /api/health
+Node Version: 22.16.0
+
+The file that Render must find at the Root Directory is:
+diagnostic-lab-v12-8-0-upload-ready/package.json
+
+Do not enter a versioned release name such as diagnostic-lab-v12.9.7-production-ready as the
+Root Directory. The preserved wrapper name above is intentional.
+
+If, and only if, the CONTENTS of diagnostic-lab-v12-8-0-upload-ready are committed directly at
+the repository root so that package.json is at the repository root, leave Root Directory blank.

@@ -15,7 +15,7 @@
 // position. Because the graph is frozen, a later stage cannot mutate an issue another section has
 // already rendered — the failure mode is now a thrown error rather than a silently wrong report.
 
-export const CANONICAL_ISSUE_GRAPH_VERSION = "canonical-issue-graph-v12.9.3";
+export const CANONICAL_ISSUE_GRAPH_VERSION = "canonical-issue-graph-v12.9.7";
 
 // ---------------------------------------------------------------------------
 // Priority comparator.
@@ -277,4 +277,57 @@ export function buildProjectionConsistencyAudit(graph, sections = {}) {
 
 export function projectionAuditFailures(records = []) {
   return (Array.isArray(records) ? records : []).filter((record) => record.pass === false);
+}
+
+// Paragraph Coverage and the Repair Plan intentionally expose less of an issue than a Detailed
+// Feedback card, but their stable reference must still resolve to the same canonical issue. This
+// audit catches the production failure where a Thesis-to-Body Promise row displayed the exact
+// Student Action belonging to Comparative Judgement.
+export function buildIssueReferenceParityAudit(graph, { paragraphCoverage = [], repairPlan = [] } = {}) {
+  const records = [];
+  const normalise = (value) => String(value || "").replace(/\s+/g, " ").trim();
+  const actionOwners = new Map(
+    graph.ordered
+      .map((issue) => [normalise(issue.studentAction), issue.issueId])
+      .filter(([action]) => action)
+  );
+  for (const paragraph of Array.isArray(paragraphCoverage) ? paragraphCoverage : []) {
+    const issueId = normalise(paragraph?.priorityIssueId);
+    if (!issueId) continue;
+    const canonical = graph.get(issueId);
+    const actualAction = normalise(paragraph.priorityRepair || paragraph.studentAction || paragraph.action);
+    const expectedAction = normalise(canonical?.studentAction);
+    records.push({
+      issueId,
+      surface: "paragraphCoverage",
+      paragraphLabel: normalise(paragraph.paragraphLabel),
+      pass: Boolean(canonical) && Boolean(actualAction) && actualAction === expectedAction,
+      expectedAction,
+      actualAction,
+      result: Boolean(canonical) && Boolean(actualAction) && actualAction === expectedAction ? "PASS" : "FAIL"
+    });
+  }
+  for (const item of Array.isArray(repairPlan) ? repairPlan : []) {
+    const issueId = normalise(item?.issueId);
+    if (!issueId) continue;
+    const canonical = graph.get(issueId);
+    const title = normalise(item.title);
+    const task = normalise(item.task || item.action);
+    const category = normalise(canonical?.issueCategory || canonical?.primaryCategory);
+    const copiedFrom = actionOwners.get(task);
+    const categoryMatches = !category || title.toLowerCase().includes(category.toLowerCase());
+    const copiedFromAnotherIssue = Boolean(copiedFrom && copiedFrom !== issueId);
+    const pass = Boolean(canonical) && Boolean(task) && categoryMatches && !copiedFromAnotherIssue;
+    records.push({
+      issueId,
+      surface: "repairPlan",
+      day: Number(item.day || 0),
+      pass,
+      categoryMatches,
+      copiedFromAnotherIssue,
+      copiedFromIssueId: copiedFromAnotherIssue ? copiedFrom : "",
+      result: pass ? "PASS" : "FAIL"
+    });
+  }
+  return records;
 }

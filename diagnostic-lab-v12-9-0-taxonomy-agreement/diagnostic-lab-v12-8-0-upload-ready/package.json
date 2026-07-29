@@ -1,7 +1,7 @@
 {
   "name": "ielts-writing-7-diagnostic-lab",
-  "version": "12.9.0",
-  "description": "V12.8 output-integrity release with sentence completeness, canonical issue alignment, semantic report consistency, and extracted-PDF text gates.",
+  "version": "12.9.7",
+  "description": "V12.9.7 evidence-integrity release with evidence-backed framework ratings, canonical issue/action parity, final-view thresholding, and PDF text-layer gates.",
   "type": "module",
   "scripts": {
     "dev": "node server.js",

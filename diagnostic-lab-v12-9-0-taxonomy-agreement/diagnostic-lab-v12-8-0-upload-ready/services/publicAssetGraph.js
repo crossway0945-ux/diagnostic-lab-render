@@ -18,7 +18,11 @@ import path from "node:path";
 export const BROWSER_ENTRYPOINTS = Object.freeze(["script.js", "admin.js"]);
 
 // Direct, non-module public assets that no import graph would discover.
-export const DIRECT_PUBLIC_ASSETS = Object.freeze(["index.html", "admin.html", "styles.css"]);
+export const DIRECT_PUBLIC_ASSETS = Object.freeze([
+  "index.html",
+  "admin.html",
+  "styles.css"
+]);
 
 // Canonical domain files the Netlify static preview mirrors for parity checks. These are NOT part of
 // the browser module graph and are NOT added to the Render server's public allowlist — they exist so

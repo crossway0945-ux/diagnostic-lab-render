@@ -115,6 +115,20 @@ assert.ok(
   eva.canonicalDevelopmentEvidence.findings.some((item) => item.category === "Reference Control"),
   "Eva keeps her own local reference defect"
 );
+assert.ok(
+  promiseSpans(evin).some((span) => /environmental disadvantages/i.test(span)),
+  "Evin: environmental disadvantages are the undeveloped promise"
+);
+assert.ok(
+  !promiseSpans(evin).some((span) => /logistical benefits/i.test(span)),
+  "Evin: logistical benefits are developed through travel-time, access and single-trip evidence"
+);
+assert.ok(
+  evin.canonicalDevelopmentEvidence.findings.some((item) =>
+    item.category === "Conclusion Closure" && /car dependency/i.test(item.exactProblemSpan || "")
+  ),
+  "Evin: increased car dependency is detected as new conclusion material"
+);
 
 // ---------------------------------------------------------------------------
 // 16-18. Grammar precision must not regress in either direction.
@@ -143,6 +157,103 @@ assert.ok(
 );
 assert.equal(evinReport.detectedPosition, "disadvantages outweigh the advantages");
 assert.deepEqual(evinReport.routeAssessment.missingRequirements, []);
+assert.equal(
+  evinReport.kruPomScores["Body Paragraph Route Alignment"].status,
+  "Aligned",
+  "Evin: optional high-band polish cannot turn positively evidenced body-route alignment into Mixed"
+);
+assert.equal(
+  evinReport.kruPomScores["Conclusion Closure"].status,
+  "Needs Work",
+  "Evin: new conclusion material prevents a false positive closure rating"
+);
+assert.match(
+  evinReport.kruPomScores["Conclusion Closure"].diagnosis,
+  /functional limiter|new or undeveloped conclusion material/i,
+  "Evin: the Conclusion Closure diagnosis explains the limiter instead of praising closure beside Needs Work"
+);
+const evinConclusionCoverage = evinReport.paragraphCoverage.find((item) => item.paragraphLabel === "Conclusion");
+assert.match(
+  evinConclusionCoverage.status,
+  /Development Repair Needed/i,
+  "Evin: Paragraph Coverage does not erase a new-material issue merely because a conclusion is present"
+);
+assert.match(
+  evinConclusionCoverage.diagnosis,
+  /car dependency/i,
+  "Evin: the conclusion coverage diagnosis names its own canonical issue"
+);
+assert.match(
+  evinConclusionCoverage.priorityRepair,
+  /Remove "increased car dependency"|develop that mechanism/i,
+  "Evin: conclusion coverage carries the Conclusion Closure action, not another issue's action"
+);
+
+// Historical-provider replay: valid Evin language evidence must survive the current consistency
+// gates, while the old false SVA classification for "the consequence ... inflicts" must not return.
+const replayCard = {
+  issueType: "Grammar and Sentence Control",
+  issueCategory: "Grammar and Sentence Control",
+  primaryCategory: "Grammar and Sentence Control",
+  evidenceAssertionType: "grammar",
+  severity: "Moderate",
+  criteria: ["Grammatical Range & Accuracy", "Coherence & Cohesion"],
+  framework: ["Grammar and Sentence Control", "LFC CPC Control"],
+  paragraphLocation: "Body Paragraph 2, Sentence 4",
+  exactSentence: "Moreover, traditional town squares have functioned as vital social arenas, their decline isolates vulnerable populations such as the elderly and those without private vehicles.",
+  sentenceFunction: "Explains the social consequence of local retail decline.",
+  whyItLimitsBand: "Two independent clauses are joined with only a comma.",
+  kruPomDiagnosis: "The comma splice needs a valid clause boundary.",
+  targetedRevision: "Moreover, traditional town squares have functioned as vital social arenas; their decline isolates vulnerable populations such as the elderly and those without private vehicles.",
+  revisionType: "Minimal Correction",
+  whyRevisionIsStronger: "The semicolon creates a valid clause boundary without changing the claim.",
+  studentAction: "Replace the comma splice with a valid clause boundary."
+};
+const previousFetch = globalThis.fetch;
+process.env.OPENAI_API_KEY = "evin-provider-replay";
+process.env.OPENAI_MODEL = "evin-provider-replay";
+globalThis.fetch = async () => ({
+  ok: true,
+  status: 200,
+  json: async () => ({ output_text: JSON.stringify({
+    ...evinReport,
+    feedbackCards: [replayCard],
+    top3Issues: [replayCard],
+    languageAudit: [{
+      exactSentence: replayCard.exactSentence,
+      exactProblemSpan: ", their decline",
+      criterion: "Grammatical Range & Accuracy",
+      category: "run-on sentences",
+      classification: "clear-error",
+      severity: "moderate",
+      explanation: "Two independent clauses are joined with only a comma.",
+      affectsMeaning: false,
+      recurringPatternKey: ""
+    }]
+  }) })
+});
+let evinReplay;
+try {
+  evinReplay = await analyzeWriting(payload(EVIN_WRITING, "paired-evin-provider-replay"));
+} finally {
+  globalThis.fetch = previousFetch;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_MODEL;
+}
+assert.ok(
+  evinReplay.feedbackCards.some((card) =>
+    /traditional town squares/i.test(card.exactSentence || "") &&
+    /Grammar and Sentence Control|Sentence Boundary|Comma Splice/i.test(card.issueCategory || card.issueType || "")
+  ),
+  "Evin: valid provider-backed comma-splice evidence is retained"
+);
+assert.ok(
+  !evinReplay.feedbackCards.some((card) =>
+    /Subject-Verb Agreement/i.test(card.issueCategory || card.issueType || "") &&
+    /the consequence of this behavior shift inflicts/i.test(card.exactSentence || "")
+  ),
+  "Evin: provider replay still cannot reintroduce the false consequence/inflicts SVA claim"
+);
 
 // ---------------------------------------------------------------------------
 // 20. Student-facing prose cleanup (V12.9.6): no duplicate rows, no placeholders.
@@ -156,5 +267,10 @@ assert.doesNotMatch(script, /copy\.sentenceFunction\)\}:<\/strong> \$\{escapePri
 assert.doesNotMatch(script, /copy\.whyStronger\)\}:<\/strong> \$\{escapePrintHtml\(normalizedCard\.whyRevisionIsStronger \|\| "-"\)/, "REGRESSION GUARD: 'Why This Revision Is Stronger: -' is never printed");
 assert.match(script, /function assertPrintPageGeometry\(/, "the export is gated on page geometry");
 assert.match(script, /overflow:visible/, "a sheet bleeds into its reserved bottom margin instead of clipping text");
+assert.match(
+  script,
+  /issueCategory === normalizeComparableText/,
+  "Top Issues matches a Detailed Feedback card by category as well as sentence when several issues share one sentence"
+);
 
 console.log("V12.9.6 paired route + prose: Eva and Evin are both read as a clear 'disadvantages outweigh the advantages' position with Body 1 advantage, Body 2 disadvantage, a conclusion that preserves the judgement, no missing route requirement and no absent-route or absent-conclusion penalty; semantic referents resolve through general polarity and complement rules proven on vocabulary from neither essay; each essay keeps its own development gap; Eva's false 'have -> has' stays suppressed while the real 'promotion ... are' defect is still caught; Evin's agreeing 'consequence ... inflicts' is never filed as Subject-Verb Agreement; and the printable report omits duplicate diagnoses, placeholder hyphens and un-gated page geometry.");

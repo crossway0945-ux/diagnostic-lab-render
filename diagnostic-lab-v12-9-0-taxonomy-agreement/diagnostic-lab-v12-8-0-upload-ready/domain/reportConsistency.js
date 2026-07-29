@@ -798,7 +798,7 @@ export function paragraphDimensionStatus(issues = [], paragraphRole = "", conclu
     ? "Route Repair Needed"
     : "Route Aligned";
   const development = [...categories].some((category) =>
-    ["Causal Mechanism", "Solution Mechanism", "Explanation Depth", "Comparative Judgement", "Thesis-to-Body Promise"].includes(category))
+    ["Causal Mechanism", "Solution Mechanism", "Explanation Depth", "Comparative Judgement", "Thesis-to-Body Promise", "Conclusion Closure"].includes(category))
     ? "Development Repair Needed"
     : "Development Controlled";
   const example = [...categories].some((category) => ["Example Development", "SAR Example Quality"].includes(category)) ||
@@ -808,7 +808,12 @@ export function paragraphDimensionStatus(issues = [], paragraphRole = "", conclu
   const language = [...categories].some((category) => /Lexical|Word|Collocation|Meaning|Grammar|Sentence|Agreement|Article|Countability|Reference|Pronoun|Tense|Preposition|Punctuation|Modal/.test(category))
     ? "Language Repair Needed"
     : "Language Controlled";
-  if (/Conclusion/.test(paragraphRole) && conclusionFunction?.complete) {
+  // A route-closing sentence can still fail conclusion fidelity by adding a new undeveloped reason.
+  // "complete" only proves that a conclusion exists and closes grammatically; it must not erase a
+  // canonical Conclusion Closure issue from Paragraph Coverage.
+  const functionalConclusionGap = categories.has("Conclusion Closure") ||
+    issues.some((issue) => /conclusion_new_idea/i.test(String(issue.sentenceRole || issue.sentenceFunction || "")));
+  if (/Conclusion/.test(paragraphRole) && conclusionFunction?.complete && !functionalConclusionGap) {
     return language === "Language Repair Needed"
       ? "Functionally Strong — Language Repair Needed"
       : "Functionally Strong";

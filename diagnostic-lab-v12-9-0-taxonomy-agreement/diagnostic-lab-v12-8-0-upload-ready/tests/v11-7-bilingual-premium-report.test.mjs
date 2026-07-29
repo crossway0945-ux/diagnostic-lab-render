@@ -59,7 +59,7 @@ assert.deepEqual(thaiReport.practicePlan.map((item) => item.issueId), englishRep
 assert.ok(englishReport.practicePlan.every((item) => item.task.length > 30));
 
 assert.ok(englishReport.feedbackCards.every((card) => card.revisionWithheld || card.revisionIntegrity.pass));
-assert.equal(englishReport.kruPomScores["Conclusion Closure"].status, "Strong");
+assert.equal(englishReport.kruPomScores["Conclusion Closure"].status, "Functionally Strong - Language Repair Needed");
 
 const englishPrompt = buildPrompt({ ...commonPayload, reportLanguage: "en" });
 const thaiPrompt = buildPrompt({ ...commonPayload, reportLanguage: "th" });

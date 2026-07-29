@@ -11,7 +11,7 @@
 // it. The output feeds three consumers — criterion scoring, canonical issue promotion and the
 // cross-section consistency gate.
 
-export const DEVELOPMENT_EVIDENCE_VERSION = "canonical-development-evidence-v12.9.1";
+export const DEVELOPMENT_EVIDENCE_VERSION = "canonical-development-evidence-v12.9.7";
 
 // A judgement is ASSERTED by these operators.
 const JUDGEMENT_ASSERTION = /\b(?:outweighs?|outweighed|far\s+(?:more|greater|outweigh)|more\s+(?:important|significant|beneficial|harmful|serious)\b|greater\s+than|exceeds?\b|prevail\w*|dominates?)\b/i;
@@ -51,6 +51,27 @@ const STOP_WORDS = new Set([
   "very", "much", "many", "some", "any", "such", "than", "then", "also", "not", "no", "which",
   "while", "when", "where", "who", "whom", "will", "would", "can", "could", "should", "may", "might"
 ]);
+
+// Route promises are semantic propositions, not exact-word quotas. These concept families let a
+// thesis phrase such as "logistical benefits" be satisfied by body evidence about travel time,
+// access or a single trip, while "environmental disadvantages" still fails when the body never
+// develops pollution, emissions, waste or another environmental mechanism. The vocabulary is
+// deliberately topic-general and is exercised by synthetic non-Eva fixtures.
+const PROMISE_CONCEPT_PATTERNS = Object.freeze({
+  economic: /\b(?:econom\w*|financial\w*|prices?|pricing|costs?|revenue|income|jobs?|employment|bankrupt\w*|profit\w*|saving|money|tax)\b/i,
+  logistical: /\b(?:logistic\w*|travel\w*|journey|journeys|trips?|visits?|distance|time|access|convenien\w*|deliver\w*|transport\w*|commut\w*)\b/i,
+  environmental: /\b(?:environment\w*|ecolog\w*|pollution|emissions?|carbon|climate|waste|biodiversity|habitat|deforestation|contamination)\b/i,
+  community: /\b(?:communit\w*|social\w*|neighbou?rhood\w*|residents?|local\w*|towns?|villages?|cohesion|isolation|networks?)\b/i
+});
+
+function promiseConceptFor(word = "") {
+  const token = String(word).toLowerCase();
+  if (/^econom/.test(token)) return "economic";
+  if (/^logist/.test(token)) return "logistical";
+  if (/^environ/.test(token)) return "environmental";
+  if (/^communit/.test(token)) return "community";
+  return "";
+}
 
 function words(text = "") {
   return String(text).toLowerCase().match(/[a-z]+(?:['’-][a-z]+)*/g) || [];
@@ -190,12 +211,26 @@ function assessComparativeJudgement({ paragraphs, taskRequirements, prompt, body
 // ---------------------------------------------------------------------------
 function extractThesisPromises(thesisSentence = "", promptText = "") {
   const promptStems = contentStems(promptText, 5);
+  const coordinated = [];
+  const coordinatedPattern = /\b([a-z]+(?:-[a-z]+)?)\s+and\s+([a-z]+(?:-[a-z]+)?)\s+(benefits?|advantages?|disadvantages?|drawbacks?|effects?|impacts?)\b/gi;
+  let coordinatedMatch;
+  while ((coordinatedMatch = coordinatedPattern.exec(String(thesisSentence)))) {
+    for (const modifier of [coordinatedMatch[1], coordinatedMatch[2]]) {
+      const concept = promiseConceptFor(modifier);
+      if (!concept) continue;
+      coordinated.push({
+        phrase: `${modifier} ${coordinatedMatch[3]}`,
+        distinctiveStems: [stem(modifier)],
+        concept
+      });
+    }
+  }
   const segments = String(thesisSentence)
     .split(/[,;:]/)
     .flatMap((part) => part.split(/\s+and\s+/i))
     .map((part) => part.trim())
     .filter(Boolean);
-  const promises = [];
+  const promises = [...coordinated];
   for (const segment of segments) {
     const tokens = words(segment);
     // A route promise is a noun phrase of at least two words. A single word — especially a discourse
@@ -209,9 +244,19 @@ function extractThesisPromises(thesisSentence = "", promptText = "") {
       token.length >= 6 && !STOP_WORDS.has(token) && !GENERIC_PROMISE_WORDS.has(token) && !promptStems.has(stem(token))
     );
     if (!distinctive.length) continue;
-    promises.push({ phrase: segment, distinctiveStems: [...new Set(distinctive.map(stem))] });
+    promises.push({
+      phrase: segment,
+      distinctiveStems: [...new Set(distinctive.map(stem))],
+      concept: promiseConceptFor(distinctive[0])
+    });
   }
-  return promises;
+  const seenPrimaryStem = new Set();
+  return promises.filter((promise) => {
+    const primary = promise.distinctiveStems[0] || "";
+    if (!primary || seenPrimaryStem.has(primary)) return false;
+    seenPrimaryStem.add(primary);
+    return true;
+  });
 }
 
 function assessThesisPromiseCoverage({ paragraphs, prompt }) {
@@ -220,16 +265,47 @@ function assessThesisPromiseCoverage({ paragraphs, prompt }) {
   if (!introduction || !bodies.length) return { promises: [], undeveloped: [] };
   const thesis = introduction.sentences.at(-1);
   if (!thesis) return { promises: [], undeveloped: [] };
+  const bodyText = bodies.map((paragraph) => paragraph.exactText).join(" ");
   const bodyStems = new Set(bodies.flatMap((paragraph) => [...contentStems(paragraph.exactText)]));
   const promises = extractThesisPromises(thesis.exactText, prompt).map((promise) => ({
     ...promise,
-    developed: promise.distinctiveStems.some((token) => bodyStems.has(token))
+    developed: promise.concept
+      ? PROMISE_CONCEPT_PATTERNS[promise.concept].test(bodyText)
+      : promise.distinctiveStems.some((token) => bodyStems.has(token))
   }));
   return {
     promises,
     undeveloped: promises.filter((promise) => !promise.developed),
     thesisRecord: sentenceRecord(introduction, thesis)
   };
+}
+
+// A conclusion may summarise established routes, but it must not add a new causal premise. A
+// dependency/dependence phrase is especially testable because its head carries a distinct mechanism:
+// mentioning vehicles elsewhere does not by itself develop "increased car dependency".
+function assessConclusionNewMaterial({ paragraphs }) {
+  const conclusion = paragraphOf(paragraphs, /^Conclusion$/i);
+  const bodies = bodyParagraphsOf(paragraphs);
+  if (!conclusion || !bodies.length) return [];
+  const bodyText = bodies.map((paragraph) => paragraph.exactText).join(" ");
+  const bodyStems = contentStems(bodyText);
+  const findings = [];
+  const dependencyPhrase = /\b(?:(?:increased?|growing|greater|heightened|rising)\s+)?(?:[a-z]+(?:-[a-z]+)?\s+){0,2}(?:dependency|dependence)\b/gi;
+  for (const sentence of conclusion.sentences || []) {
+    let match;
+    while ((match = dependencyPhrase.exec(sentence.exactText))) {
+      const phrase = match[0].trim();
+      const phraseStems = [...contentStems(phrase)];
+      const exactHeadDeveloped = /\b(?:dependency|dependence)\b/i.test(bodyText);
+      const stemSupport = phraseStems.filter((token) => bodyStems.has(token)).length;
+      if (exactHeadDeveloped && stemSupport >= Math.min(2, phraseStems.length)) continue;
+      findings.push({
+        ...sentenceRecord(conclusion, sentence),
+        exactProblemSpan: phrase
+      });
+    }
+  }
+  return findings;
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +433,7 @@ export function assessCanonicalDevelopmentEvidence({
     thesisPromises: { promises: [], undeveloped: [] },
     affectedGroupGaps: [],
     referenceGaps: [],
+    conclusionNewMaterial: [],
     findings: [],
     taskResponseLimiters: [],
     coherenceLimiters: []
@@ -367,6 +444,7 @@ export function assessCanonicalDevelopmentEvidence({
   const thesisPromises = assessThesisPromiseCoverage({ paragraphs, prompt });
   const affectedGroupGaps = assessAffectedGroupMechanism({ paragraphs });
   const referenceGaps = assessReferenceControl({ paragraphs });
+  const conclusionNewMaterial = assessConclusionNewMaterial({ paragraphs });
 
   const findings = [];
   if (comparativeJudgement.required && comparativeJudgement.asserted && !comparativeJudgement.demonstrated) {
@@ -397,6 +475,19 @@ export function assessCanonicalDevelopmentEvidence({
       diagnosis: `The thesis promises "${promise.phrase}" as a route the essay will take, but no body paragraph develops it.`,
       studentAction: `Either develop "${promise.phrase}" in a body paragraph with its own mechanism and consequence, or remove it from the thesis so the promise matches the essay.`,
       evidenceSource: "introduction.thesisSentence vs bodyParagraphs.contentStems"
+    });
+  }
+  for (const gap of conclusionNewMaterial) {
+    findings.push({
+      findingId: `development-conclusion-new-material-${gap.paragraphId}-${gap.sentenceIndex}`,
+      category: "Conclusion Closure",
+      criterion: "Task Response",
+      severity: "Major",
+      priorityTier: 4,
+      ...gap,
+      diagnosis: `The conclusion introduces "${gap.exactProblemSpan}" as a reason, but no body paragraph develops that mechanism.`,
+      studentAction: `Remove "${gap.exactProblemSpan}" from the conclusion, or develop that mechanism in a body paragraph before using it to justify the final judgement.`,
+      evidenceSource: "conclusion.newDependencyPremise vs bodyParagraphs.developedMechanisms"
     });
   }
   for (const gap of affectedGroupGaps) {
@@ -430,7 +521,8 @@ export function assessCanonicalDevelopmentEvidence({
     ...(comparativeJudgement.required && comparativeJudgement.asserted && !comparativeJudgement.demonstrated
       ? [{ code: "COMPARISON_ASSERTED_NOT_DEMONSTRATED", evidence: comparativeJudgement.assertionEvidence }]
       : []),
-    ...thesisPromises.undeveloped.map((promise) => ({ code: "THESIS_PROMISE_UNDEVELOPED", evidence: promise.phrase }))
+    ...thesisPromises.undeveloped.map((promise) => ({ code: "THESIS_PROMISE_UNDEVELOPED", evidence: promise.phrase })),
+    ...conclusionNewMaterial.map((gap) => ({ code: "CONCLUSION_NEW_MATERIAL", evidence: gap.exactProblemSpan }))
   ];
   const coherenceLimiters = [
     ...referenceGaps.map((gap) => ({ code: "LOCAL_REFERENCE_UNCLEAR", evidence: gap.exactSentence })),
@@ -444,6 +536,7 @@ export function assessCanonicalDevelopmentEvidence({
     thesisPromises,
     affectedGroupGaps,
     referenceGaps,
+    conclusionNewMaterial,
     findings,
     taskResponseLimiters,
     coherenceLimiters

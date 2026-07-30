@@ -3140,13 +3140,19 @@ async function checkBackendHealth() {
     const response = await fetch("/api/health");
     if (!response.ok) throw new Error("Health check failed");
     const health = await readJsonResponse(response, "Backend health could not be checked.");
-    const serviceReady = Boolean(health.diagnosticEngineConnected || health.aiConnected);
-    const serviceUnavailable = Boolean(health.fullEngineRequired && !serviceReady);
+    const providerStatus = String(health.providerConnectivityStatus || "").toLowerCase();
+    const engineConfigured = Boolean(health.diagnosticEngineConfigured || health.providerConfigured) && health.modelConfigured !== false;
+    const serviceReady = providerStatus === "connected" || Boolean(health.aiConnected);
+    const serviceUnavailable = Boolean(
+      health.fullEngineRequired && (providerStatus === "failed" || !engineConfigured)
+    );
     serviceStatus.textContent = serviceReady
       ? "Diagnostic service ready"
       : serviceUnavailable
         ? "Diagnostic service unavailable"
-        : "Diagnostic service ready";
+        : engineConfigured
+          ? "Diagnostic service configured"
+          : "Diagnostic service ready";
     updateAnalyzeAvailability();
   } catch {
     serviceStatus.textContent = "API not connected";

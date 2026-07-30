@@ -38,7 +38,7 @@ const check = (name, fn) => {
 };
 
 check("release and validator versions", () => {
-  assert.equal(ANALYSIS_VERSIONS.appVersion, "12.9.7");
+  assert.equal(ANALYSIS_VERSIONS.appVersion, "12.9.8");
   assert.equal(ANALYSIS_VERSIONS.routeClassifierVersion, TASK2_ROUTE_CLASSIFIER_VERSION);
   assert.equal(SENTENCE_COMPLETENESS_VALIDATOR_VERSION, "independent-clause-validator-v12.8.0");
   assert.equal(ISSUE_ALIGNMENT_VALIDATOR_VERSION, "canonical-issue-alignment-v12.8.0");
@@ -54,6 +54,11 @@ check("fragment detection and safe independent-clause repair", () => {
   assert.equal(lawRevision, "A law can restrict phone use while driving.");
   assert.equal(validateSentenceCompleteness(lawRevision).complete, true);
   assert.equal(validateSentenceCompleteness("A law that restricts phone use can reduce preventable crashes.").complete, true);
+  assert.equal(
+    validateSentenceCompleteness("For instance, preparing for exams and meeting homework deadlines train students to manage pressure and organise their time.").complete,
+    true,
+    "a coordinated gerund subject with a plural base-form predicate is a complete independent clause"
+  );
 });
 
 check("fragment-priority", () => {

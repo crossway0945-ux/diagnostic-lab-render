@@ -449,7 +449,7 @@ assert.ok(corruptPdfAudit.issues.includes("PDF_INTERNAL_REPORT_LANGUAGE"));
 assert.ok(corruptPdfAudit.issues.includes("PDF_WEB_SEMANTIC_PARITY_FAILED"));
 
 console.log(
-  "V12.9.7 framework-evidence contract: Eva Strong/weak paragraph aggregation, absence-is-not-Strong, " +
+  "V12.9.8 framework-evidence contract: Eva Strong/weak paragraph aggregation, absence-is-not-Strong, " +
   "complete-explanation-without-example, positive-evidence audit, Task 1 SAR isolation, issue/action parity, " +
   "mixed taxonomy separation, final summary threshold/dedupe, all-plane Unicode integrity, exact Eva route/score, " +
   "student-boundary ids, provider-bypass reconciliation and extracted-PDF text validation passed."

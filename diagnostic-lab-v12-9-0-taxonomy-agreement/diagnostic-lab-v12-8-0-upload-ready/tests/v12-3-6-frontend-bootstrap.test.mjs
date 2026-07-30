@@ -122,7 +122,7 @@ try {
   assert.equal(readiness.status, 200);
   const readinessBody = await readiness.json();
   assert.equal(readinessBody.frontendPreflightPassed, true);
-  assert.equal(readinessBody.appVersion, "12.9.7");
+  assert.equal(readinessBody.appVersion, "12.9.8");
   assert.ok(readinessBody.publicModuleCount >= requiredModules.length);
 
   // API routes still return JSON, never HTML.

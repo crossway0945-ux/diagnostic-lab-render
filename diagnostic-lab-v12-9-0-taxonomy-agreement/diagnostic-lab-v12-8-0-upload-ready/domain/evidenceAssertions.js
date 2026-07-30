@@ -93,9 +93,6 @@ const ARTICLE_MODIFIERS = Object.freeze([
 ]);
 
 export function inferEvidenceAssertionType(card = {}, issueCategory = "") {
-  if (EVIDENCE_ASSERTION_TYPES.includes(String(card.evidenceAssertionType || ""))) {
-    return String(card.evidenceAssertionType);
-  }
   const explicit = String(issueCategory || "").trim();
   const explicitType = {
     Punctuation: "punctuation_spacing",
@@ -128,6 +125,15 @@ export function inferEvidenceAssertionType(card = {}, issueCategory = "") {
     "Process Endpoint": "process_sequence",
     "Map Change Accuracy": "map_change"
   }[explicit];
+  const providedType = String(card.evidenceAssertionType || "");
+  // The canonical category has already been normalised from the diagnosis. A stale or malformed
+  // provider assertion must not override it: doing so can re-promote a language-only diagnosis to
+  // a development card, or attach a Task 1 visual assertion to a Task 2 issue. The final output
+  // gate remains strict; this resolves the contradiction before the issue graph is frozen.
+  if (explicitType && EVIDENCE_ASSERTION_TYPES.includes(providedType) && providedType !== explicitType) {
+    return explicitType;
+  }
+  if (EVIDENCE_ASSERTION_TYPES.includes(providedType)) return providedType;
   if (explicitType) return explicitType;
   const text = normalizeForComparison([
     issueCategory,

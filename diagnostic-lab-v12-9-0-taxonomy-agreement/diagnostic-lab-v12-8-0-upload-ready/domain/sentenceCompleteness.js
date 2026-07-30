@@ -12,6 +12,7 @@ const LEXICAL_FINITE = /\b[\p{L}][\p{L}'-]*(?:s|ed)\b/giu;
 const BASE_FINITE_VERBS = "(?:agree|disagree|believe|think|argue|claim|support|oppose|prefer|need|want|consider|live|work|learn|study|travel|use|make|take|provide|show|cause|lead|help|allow|reduce|increase|improve|affect|create|move|spend|face|receive|become|remain|lack|offer|develop|pay|drive|write|read|report|compare|describe|grow|rise|fall)";
 const PRONOUN_BASE_FINITE = new RegExp(`\\b(?:i|we|you|they)\\s+(?:(?:[\\p{L}'-]+ly)\\s+){0,3}${BASE_FINITE_VERBS}\\b`, "giu");
 const PLURAL_SUBJECT_BASE_FINITE = new RegExp(`\\b(?:people|families|parents|students|residents|workers|commuters|shoppers|drivers|households|communities|citizens|children|companies|governments|schools|businesses|countries|cities|towns|figures|rates|calls|maps|stages)\\s+(?:(?:[\\p{L}'-]+ly)\\s+){0,2}${BASE_FINITE_VERBS}\\b`, "giu");
+const COMPOUND_GERUND_PREDICATE = /^[^,.!?]{0,140}\b[\p{L}'-]+ing\b[^,.!?]{0,100}\band\s+[\p{L}'-]+ing\b[^,.!?]{0,100}\b(?:train|teach|help|allow|enable|encourage|give|make|provide|show|cause|lead|reduce|increase|improve|affect|create|develop|strengthen|weaken|support|require)\b/iu;
 
 export const SENTENCE_COMPLETENESS_VALIDATOR_VERSION = "independent-clause-validator-v12.8.0";
 
@@ -99,6 +100,10 @@ function hasFiniteMainClauseAfterOpeningPhrase(value) {
 function hasGerundSubjectPredicate(value) {
   const text = String(value || "").trim();
   if (!/^[\p{L}'-]+ing\b/iu.test(text)) return false;
+  // A coordinated gerund phrase is a plural nominal subject:
+  // “Preparing for exams and meeting deadlines train students ...”. The base-form predicate is
+  // finite here even though it carries no -s/-ed suffix.
+  if (COMPOUND_GERUND_PREDICATE.test(text)) return true;
   if ((text.match(AUXILIARY_FINITE) || []).length || (text.match(IRREGULAR_FINITE) || []).length) return true;
   return /\b(?:benefits|benefited|improves|improved|reduces|reduced|increases|increased|decreases|decreased|causes|caused|creates|created|helps|helped|makes|made|allows|allowed|provides|provided|shows|showed|affects|affected|requires|required|supports|supported|limits|limited|weakens|weakened|strengthens|strengthened|intensifies|intensified|remains|remained|rises|rose|falls|fell)\b/i.test(text);
 }

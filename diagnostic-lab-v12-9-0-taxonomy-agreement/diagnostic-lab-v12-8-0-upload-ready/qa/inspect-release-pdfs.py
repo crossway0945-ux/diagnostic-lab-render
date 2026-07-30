@@ -187,9 +187,16 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     output_dir = Path(args.output).resolve()
+    candidates = [
+        ("Eva", output_dir / "Eva-final-report.pdf"),
+        ("Evin", output_dir / "Evin-final-report.pdf"),
+    ]
+    available = [(label, pdf_path) for label, pdf_path in candidates if pdf_path.exists()]
+    if not available:
+        raise FileNotFoundError("No acceptance PDF was found in the output directory.")
     results = [
-        inspect_pdf(output_dir / "Eva-final-report.pdf", output_dir, "Eva"),
-        inspect_pdf(output_dir / "Evin-final-report.pdf", output_dir, "Evin"),
+        inspect_pdf(pdf_path, output_dir, label)
+        for label, pdf_path in available
     ]
     payload = {
         "inspectionMethod": "pypdf + pdfplumber text extraction; pypdfium2 page rasterisation",

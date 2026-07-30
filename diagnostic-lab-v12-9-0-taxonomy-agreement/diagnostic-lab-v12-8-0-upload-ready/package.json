@@ -1,7 +1,7 @@
 {
   "name": "ielts-writing-7-diagnostic-lab",
-  "version": "12.9.7",
-  "description": "V12.9.7 evidence-integrity release with evidence-backed framework ratings, canonical issue/action parity, final-view thresholding, and PDF text-layer gates.",
+  "version": "12.9.8",
+  "description": "V12.9.8 source-integrity release with an authoritative paragraph map, final-state scoring, issue/action parity, and independently verified packaging.",
   "type": "module",
   "scripts": {
     "dev": "node server.js",

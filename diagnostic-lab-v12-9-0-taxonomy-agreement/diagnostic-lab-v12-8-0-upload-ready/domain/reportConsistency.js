@@ -822,11 +822,14 @@ export function paragraphDimensionStatus(issues = [], paragraphRole = "", conclu
 }
 
 export function buildEvidenceBasedRepairPlan(issues = [], reportLanguage = "en", requiredDays = 7, context = {}) {
-  const ranked = rankIssues(issues).filter((issue) => issue.severity !== "Pass / Strong");
+  const ranked = rankIssues(issues)
+    .filter((issue) => issue.severity !== "Pass / Strong")
+    .sort((left, right) => repairPlanPriority(left) - repairPlanPriority(right) || severityRank(right.severity) - severityRank(left.severity));
   const unique = [];
   const seen = new Set();
   for (const issue of ranked) {
-    const key = `${issue.issueCategory}|${issue.paragraphId}`;
+    const family = repairActivityFamily(String(issue.issueCategory || ""));
+    const key = family === "lexical" ? "lexical-highest-value" : `${issue.issueCategory}|${issue.paragraphId}`;
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(issue);
@@ -854,6 +857,23 @@ export function buildEvidenceBasedRepairPlan(issues = [], reportLanguage = "en",
       source: "canonical-issue-graph"
     };
   });
+}
+
+function repairPlanPriority(issue = {}) {
+  if (String(issue.severity || "") === "Critical") return -100;
+  const category = String(issue.issueCategory || issue.primaryCategory || "");
+  if (category === "Comparative Judgement") return 0;
+  if (category === "Thesis-to-Body Promise") return 1;
+  if (["Causal Mechanism", "Solution Mechanism", "Explanation Depth"].includes(category)) return 2;
+  // Repair the reasoning chain before polishing the example that illustrates it. Treating both
+  // families as the same priority let a severe example card displace the causal limiter.
+  if (["Example Development", "SAR Example Quality"].includes(category)) return 2.5;
+  if (["Meaning Control", "Word Form"].includes(category)) return 3;
+  if (["Lexical Precision", "Word Choice"].includes(category)) return 3.1;
+  if (["Collocation", "Countability", "Article Control"].includes(category)) return 3.2;
+  if (/Grammar|Sentence|Agreement|Tense|Preposition|Punctuation|Modal/.test(category)) return 5;
+  if (["Reference Control", "Pronoun Control"].includes(category)) return 6;
+  return 6;
 }
 
 function repairActivityForIssue(issue = {}, phaseIndex = 0, context = {}) {
@@ -902,7 +922,7 @@ function repairActivityForIssue(issue = {}, phaseIndex = 0, context = {}) {
       ["Final learner checklist", "For every sentence, identify the independent subject and finite main verb before ticking it as complete."]
     ],
     development: [
-      ["Map the missing link", `Read the evidence from ${location}. Write the incomplete chain and mark the missing mechanism or result.`],
+      ["Map the missing link", `Read the evidence from ${location}. Write the incomplete chain and mark the missing causal mechanism, implementation step, or result.`],
       ["Practise the chain", developmentPractice(category)],
       ["Repair the development", action],
       ["Check the mechanism", "Underline the implementation or causal step, the behavioural response and the outcome in the repaired version."],

@@ -1,4 +1,4 @@
-import { segmentStudentResponse } from "./paragraphEvidence.js";
+import { buildAuthoritativeParagraphMap, segmentStudentResponse } from "./paragraphEvidence.js";
 import { checkRevisionTypeFidelity, validateRevisionQuality } from "./revisionQuality.js";
 import { CANONICAL_SENTENCE_ROLES, classifySentenceRole } from "./sentenceRoles.js";
 import {
@@ -158,7 +158,14 @@ export function buildFeedbackIntegrityModel({
   criteriaScores = {},
   frameworkScores = {}
 } = {}) {
-  const paragraphs = segmentStudentResponse(writing, taskType);
+  const paragraphMap = buildAuthoritativeParagraphMap(writing, taskType);
+  const paragraphs = paragraphMap.paragraphs;
+  if (!paragraphMap.audit?.pass) {
+    const error = new Error(`The authoritative paragraph map failed consistency validation: ${(paragraphMap.audit?.errors || []).join(", ")}`);
+    error.errorCode = "PARAGRAPH_MAP_CONSISTENCY_FAILED";
+    error.validationDetails = paragraphMap.audit?.errors || [];
+    throw error;
+  }
   const records = paragraphs.flatMap((paragraph) => paragraph.sentences.map((sentence, sentenceIndex) => ({
     ...sentence,
     paragraphRole: paragraph.role,
@@ -218,6 +225,8 @@ export function buildFeedbackIntegrityModel({
     reportLanguage
   });
   const model = {
+    paragraphMap,
+    paragraphMapAudit: paragraphMap.audit,
     issues: canonicalIssues,
     topIssues: canonicalTopIssues,
     paragraphCoverage,
@@ -246,6 +255,11 @@ export function buildFeedbackIntegrityModel({
   // Populated after the canonical issue graph is frozen. Positive framework ratings are allowed
   // only when this contract contains traceable positive evidence.
   model.frameworkEvidence = null;
+  // Scoring is recomputed after the canonical issue graph is final. The trace keeps the earlier
+  // estimate explicitly namespaced, so QA can distinguish pre-validation evidence from the only
+  // state Student View and PDF are allowed to consume.
+  model.scoreCalculationTrace = null;
+  model.finalValidatedState = null;
   // V12.9.5 report density. `reportDensityPlan` records which issues keep a full Detailed Feedback
   // card; `languagePatternSummary` carries the compact rows for the rest plus the canonical
   // `refinements`. Both are declared here so they are part of the validated model shape — adding a

@@ -5,10 +5,10 @@ import {
   buildTaskAwareRouteModel
 } from "./task2RouteModel.js";
 import { validateSentenceCompleteness } from "./sentenceCompleteness.js";
-import { segmentStudentResponse } from "./paragraphEvidence.js";
+import { buildAuthoritativeParagraphMap, segmentStudentResponse } from "./paragraphEvidence.js";
 import { assessCanonicalDevelopmentEvidence } from "./canonicalDevelopmentEvidence.js";
 
-const POSITION_PATTERN = /\b(?:i\s+(?:(strongly|firmly|completely|fully|heavily|generally|partly|partially|consequently|therefore|ultimately)\s+)?(agree|disagree)|in my (?:view|opinion)[^.!?]{0,80}\b(agree|disagree)|i believe[^.!?]{0,80}\b(?:should|must|ought|outweigh|more (?:important|significant|beneficial)))\b/i;
+const POSITION_PATTERN = /\b(?:i\s+(?:(strongly|firmly|completely|fully|heavily|generally|partly|partially|consequently|therefore|ultimately)\s+)?(agree|disagree)|in my (?:view|opinion)[^.!?]{0,80}\b(agree|disagree)|i believe[^.!?]{0,80}\b(?:should|must|ought|outweigh|more (?:important|significant|beneficial|effective)))\b/i;
 const SUPPORT_PATTERN = /\b(?:agree|support|benefit|advantage|basic right|human right|should (?:receive|be provided)|free of charge|without (?:a )?charge|protect|improve|enable|allow|essential)\b/i;
 const OPPOSITION_PATTERN = /\b(?:disagree|oppose|drawback|disadvantage|too (?:costly|expensive)|cost the government|budget.*not enough|tax(?:es)? must|should not|cannot afford|financial burden|on the other hand)\b/i;
 const OUTWEIGH_POSITIVE_SIDE_PATTERNS = [
@@ -67,8 +67,6 @@ const OUTWEIGH_POSITIVE_MODIFIER_PATTERN = /\b(?:positive|beneficial|favou?rable
 // the side opposite an already-resolved one, so it can never invent a judgement by itself.
 const OUTWEIGH_REFERENTIAL_SIDE_PATTERN = /^[\s,]*(?:the|its|it's|their|his|her|our|this|that|these|those|such)\b[^.!?;:]{0,60}$/i;
 const UNFINISHED_TAIL_PATTERN = /\b(?:because|although|while|whereas|if|when|which|that|so that|due to the fact that|in order to)\s+(?:i|we|they|he|she|it|people|governments?)?$|\b(?:and|but|or|to|of|for|with|i|we|they|he|she|it)$/i;
-const BODY_1_START_PATTERN = /^(?:first(?:ly| of all)?|to begin with|one (?:main|major|important) (?:reason|advantage|benefit|point))\b/i;
-const BODY_2_START_PATTERN = /^(?:on the other hand|however|nevertheless|conversely|second(?:ly)?|another (?:reason|view|point|issue|disadvantage|advantage))\b/i;
 const CONCLUSION_START_PATTERN = /^(?:in conclusion|for conclusion|to conclude|in summary|to sum up)\b/i;
 
 export const TASK2_CANONICAL_TYPES = Object.freeze({
@@ -200,8 +198,11 @@ export function analyzeTask2Safety(payload = {}) {
   const structure = parseTask2Structure(writing);
   const paragraphs = structure.paragraphs;
   const introduction = paragraphs[0] || "";
-  const conclusion = structure.conclusionPresent ? paragraphs.at(-1) : "";
-  const bodyParagraphs = structure.conclusionPresent ? paragraphs.slice(1, -1) : paragraphs.slice(1);
+  const mappedParagraphs = structure.paragraphMap?.paragraphs || [];
+  const conclusion = mappedParagraphs.find((paragraph) => paragraph.role === "Conclusion")?.exactText || "";
+  const bodyParagraphs = mappedParagraphs
+    .filter((paragraph) => /^Body Paragraph \d+$/i.test(paragraph.role))
+    .map((paragraph) => paragraph.exactText);
   const ending = lastSentence(conclusion || writing);
   const unfinishedEndingDetected = detectUnfinishedEnding(ending, writing);
   const classification = classifyTask2Prompt(payload);
@@ -229,7 +230,7 @@ export function analyzeTask2Safety(payload = {}) {
     positionConfidence,
     stanceRequired
   });
-  const taskAwareRouteModel = buildTaskAwareRouteModel({
+  let taskAwareRouteModel = buildTaskAwareRouteModel({
     taskFamily: essayRoute,
     internalSubtype,
     requiredRoutes: classification.requiredRoutes,
@@ -253,6 +254,26 @@ export function analyzeTask2Safety(payload = {}) {
     unfinishedEndingDetected,
     taskAwareRouteModel
   });
+  // The public task-type assessment is the terminal authority: in addition to paragraph route
+  // frames it evaluates position/judgement, prompt-part coverage and conclusion consistency. The
+  // generic frame model establishes paragraph semantics only. Reconcile their failure class so a
+  // response missing a required judgement cannot appear “present” in one canonical projection and
+  // “absent” in another, while retaining the generic pre-reconciliation state for QA.
+  const publicStatus = String(routeAssessment.overallRouteStatus || routeAssessment.status || "");
+  const genericStatus = String(taskAwareRouteModel.overallRouteStatus || "");
+  if (isFailedRouteStatus(publicStatus) !== isFailedRouteStatus(genericStatus)) {
+    taskAwareRouteModel = Object.freeze({
+      ...taskAwareRouteModel,
+      overallRouteStatus: publicStatus,
+      conflict: isFailedRouteStatus(publicStatus),
+      validation: Object.freeze({
+        ...taskAwareRouteModel.validation,
+        terminalStatusSource: "public-task-type-route-assessment",
+        genericPreReconciliationStatus: genericStatus,
+        reconciledTerminalStatus: publicStatus
+      })
+    });
+  }
   const concessionStatus = classifyConcessionStatus({
     routeAssessment,
     introduction,
@@ -475,59 +496,15 @@ export function analyzeTask2Safety(payload = {}) {
 }
 
 export function parseTask2Structure(value) {
-  const writing = String(value || "").replace(/\r\n?/g, "\n").trim();
-  if (!writing) return { paragraphs: [], confidence: "low", method: "empty", conclusionPresent: false };
-
-  const blankLineParagraphs = writing
-    .split(/\n\s*\n+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  if (blankLineParagraphs.length >= 4) {
-    return {
-      paragraphs: blankLineParagraphs,
-      confidence: "high",
-      method: "explicit paragraph breaks",
-      conclusionPresent: hasConclusionParagraph(blankLineParagraphs)
-    };
-  }
-
-  const sentences = splitSentences(writing);
-  const body1Index = sentences.findIndex((sentence, index) => index > 0 && BODY_1_START_PATTERN.test(sentence));
-  const body2Index = sentences.findIndex((sentence, index) => index > body1Index && BODY_2_START_PATTERN.test(sentence));
-  const conclusionIndex = sentences.findIndex((sentence, index) => index > body2Index && CONCLUSION_START_PATTERN.test(sentence));
-  if (body1Index > 0 && body2Index > body1Index && conclusionIndex > body2Index) {
-    return {
-      paragraphs: [
-        sentences.slice(0, body1Index).join(" "),
-        sentences.slice(body1Index, body2Index).join(" "),
-        sentences.slice(body2Index, conclusionIndex).join(" "),
-        sentences.slice(conclusionIndex).join(" ")
-      ].filter(Boolean),
-      confidence: "medium",
-      method: "structural paragraph markers",
-      conclusionPresent: true
-    };
-  }
-
-  const lineParagraphs = writing
-    .split(/\n+/)
-    .map((item) => item.trim())
-    .filter((item) => countWords(item) >= 4);
-  if (lineParagraphs.length >= 3 && lineParagraphs.length <= 6) {
-    return {
-      paragraphs: lineParagraphs,
-      confidence: "medium",
-      method: "single-line paragraph breaks",
-      conclusionPresent: hasConclusionParagraph(lineParagraphs)
-    };
-  }
-
-  const fallback = blankLineParagraphs.length ? blankLineParagraphs : [writing];
+  const paragraphMap = buildAuthoritativeParagraphMap(value, "Task 2");
+  const paragraphs = paragraphMap.paragraphs.map((paragraph) => paragraph.exactText);
   return {
-    paragraphs: fallback,
-    confidence: "low",
-    method: "limited paragraph evidence",
-    conclusionPresent: hasConclusionParagraph(fallback)
+    paragraphs,
+    confidence: paragraphMap.confidence,
+    method: paragraphMap.method,
+    conclusionPresent: paragraphMap.paragraphs.some((paragraph) => paragraph.role === "Conclusion"),
+    paragraphMap,
+    paragraphMapAudit: paragraphMap.audit
   };
 }
 
@@ -2109,6 +2086,11 @@ function collectDeterministicLanguageIssues(source, records) {
     lexicalRule(/\b(?:the difficulty|an issue|the issue)\s+of\s+travel(?:ing|ling)\b|\bconcentration in the class\b|\bcongestion of traffic\b/gi, "collocation", "clear-error", "The noun and preposition combination is unnatural."),
     lexicalRule(/\b(?:some|same|certain|specific)\s+(?:place|places|thing|things|area|areas|period|periods|way|ways)\b/gi, "vague noun choice", "awkward-but-understandable", "The noun phrase is understandable but too vague for precise academic explanation."),
     lexicalRule(/\b(?:all the same places|specific places like towns and cities)\b/gi, "reference wording", "awkward-but-understandable", "The reference category is unclear or imprecise."),
+    lexicalRule(/\b(?:items?|products?|goods?)\s+with\s+(?:greater|better)\s+deals\b/gi, "collocation", "clear-error", "The product-and-price collocation is not natural; name the lower price, discount or better value directly."),
+    lexicalRule(/\bdivert\s+(?:their|consumer|customer)\s+choices?\s+to\b/gi, "collocation", "clear-error", "The verb does not combine naturally with 'choices' in this meaning; the sentence should describe where consumers redirect their spending."),
+    lexicalRule(/\bwithout\s+interested\s+consumers\b/gi, "precision", "awkward-but-understandable", "The phrase does not identify the intended customer group precisely enough for the causal claim."),
+    lexicalRule(/\bbankrupted\s+(?:people|workers|residents|families|households)\b/gi, "word form", "clear-error", "The participle does not naturally describe the affected people in this context."),
+    lexicalRule(/\b(?:a|an)\s+(?:economic|financial)\s+instability\b/gi, "countability", "clear-error", "The abstract noun 'instability' is uncountable in this meaning and does not take an indefinite article."),
     lexicalRule(/\b(?:a|an)\s+(?:(?:large|heavy|major|severe|traffic)\s+){0,2}(?:congestion|equipment|information|advice|research|homework)\b/gi, "countability", "clear-error", "The noun is normally uncountable in this meaning."),
     lexicalRule(/\btravel\s+through\s+(?:a\s+)?long distance\b/gi, "collocation", "clear-error", "The travel-distance phrase uses an unnatural preposition and noun pattern."),
     grammarRule(/\bpopulation\s+of\s+[^.!?]{0,45}\bcontinue\s+to\b/gi, "subject-verb agreement", "clear-error", "The subject and verb do not agree."),
@@ -2194,8 +2176,8 @@ function collectPatternLanguageIssues(source, records, rule, output) {
   }
 }
 
-function lexicalRule(pattern, category, classification, explanation, severity = "moderate") {
-  return { pattern, criterion: "Lexical Resource", category, classification, explanation, severity };
+function lexicalRule(pattern, category, classification, explanation, severity = "moderate", affectsMeaning = false) {
+  return { pattern, criterion: "Lexical Resource", category, classification, explanation, severity, affectsMeaning };
 }
 
 function grammarRule(pattern, category, classification, explanation, severity = "moderate") {
@@ -2227,23 +2209,18 @@ function collectUncommonDerivationalIssues(source, records, output) {
 }
 
 function buildLanguageSentenceRecords(source) {
-  const paragraphs = String(source || "").split(/\n\s*\n+/).map((item) => item.trim()).filter(Boolean);
+  const paragraphMap = buildAuthoritativeParagraphMap(source, "Task 2");
+  const paragraphs = paragraphMap.paragraphs;
   const records = [];
-  let sourceCursor = 0;
   for (const [paragraphIndex, paragraph] of paragraphs.entries()) {
-    const paragraphStart = source.indexOf(paragraph, sourceCursor);
-    sourceCursor = Math.max(sourceCursor, paragraphStart + paragraph.length);
-    const sentenceMatches = paragraph.matchAll(/[^.!?]+[.!?]+|[^.!?]+$/g);
-    for (const match of sentenceMatches) {
-      const exactSentence = match[0].trim();
-      if (!exactSentence) continue;
+    for (const sentence of paragraph.sentences || []) {
       records.push({
         sentenceIndex: records.length,
         paragraphIndex,
         paragraphLocation: task2ParagraphLocation(paragraphIndex, paragraphs.length),
-        exactSentence,
-        start: paragraphStart + (match.index || 0),
-        end: paragraphStart + (match.index || 0) + match[0].length
+        exactSentence: sentence.exactText,
+        start: sentence.rawStartOffset,
+        end: sentence.rawEndOffset
       });
     }
   }
@@ -2677,7 +2654,7 @@ export function freezeTask2ScoringSnapshot({
   ])));
   const overall = Object.freeze({ ...(overallBandRange || {}) });
   return Object.freeze({
-    version: "score-freeze-v12.8.0",
+    version: "score-freeze-v12.9.8",
     routeClassifierVersion,
     routeStatus: String(routeStatus || ""),
     criterionScores: criteria,

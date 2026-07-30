@@ -1,8 +1,8 @@
-export const TASK2_ROUTE_CLASSIFIER_VERSION = "task-aware-route-model-v12.8.0";
+export const TASK2_ROUTE_CLASSIFIER_VERSION = "task-aware-route-model-v12.9.8";
 
 const ROUTE_TYPES = Object.freeze([
   "cause", "problem", "solution", "effect", "advantage", "disadvantage",
-  "support", "oppose", "view-a", "view-b", "answer", "unresolved"
+  "support", "oppose", "position-reason", "view-a", "view-b", "answer", "unresolved"
 ]);
 
 const CAUSE_FRAME = /\b(?:cause[sd]?|reason(?:s)?|driver(?:s)?|factor(?:s)?|because|due to|owing to|stems? from|result(?:s|ed)? from|is caused by|plays? (?:a|an) (?:major|crucial|important) role|lack of|shortage of|absence of|inattention|careless(?:ness)?|overcrowding)\b/i;
@@ -15,7 +15,7 @@ const ADVANTAGE_FRAME = /\b(?:advantage(?:s)?|benefit(?:s)?|positive (?:effect|i
 // a clearly developed harm paragraph scored zero and its recommendation-style closing sentence
 // ("promoting X to prevent Y") was allowed to reclassify the whole paragraph as a solution.
 const DISADVANTAGE_FRAME = new RegExp([
-  "\\b(?:disadvantage(?:s)?|drawback(?:s)?|negative (?:effect|impact|outcome)|risk(?:s)?|cost(?:s)?|burden(?:s)?|harm(?:s|ed|ful)?)\\b",
+  "\\b(?:disadvantage(?:s)?|drawback(?:s)?|negative (?:effect|impact|outcome)|risk(?:s)?|burden(?:s)?|harm(?:s|ed|ful)?)\\b|\\bcosts?\\b(?![- ]efficien|[- ]saving|[- ]effective)",
   "\\b(?:damage(?:s|d)?|deteriorat(?:e|es|ed|ion)|decline(?:s|d)?|declining|worsen(?:s|ed|ing)?|erod(?:e|es|ed|ing)|suffer(?:s|ed|ing)?|threaten(?:s|ed|ing)?|destroy(?:s|ed)?)\\b",
   "\\b(?:bankrupt(?:cy|ed)?|insolven(?:t|cy)|go(?:es|ing)? out of business|clos(?:e|es|ed|ing|ure)s? down|shut(?:ting)? down|business failure|forced (?:out|into))\\b",
   "\\b(?:job (?:loss(?:es)?|cuts?)|unemploy(?:ed|ment)|redundanc(?:y|ies)|lay(?:-| )?offs?|lose (?:their )?jobs?)\\b",
@@ -23,8 +23,17 @@ const DISADVANTAGE_FRAME = new RegExp([
   "\\b(?:isolat(?:e|es|ed|ion)|abandon(?:ed|ment)|deprive(?:s|d)?|vulnerable groups?|left behind|cut off|lack of access|reduced access)\\b",
   "\\b(?:economic (?:decline|instability|stagnation|hardship)|rural decline|loss of (?:services?|amenities|infrastructure))\\b"
 ].join("|"), "i");
-const SUPPORT_FRAME = /\b(?:i (?:strongly |firmly |fully )?agree|support(?:s|ed)?|should be|is beneficial|is essential)\b/i;
+// `support` is a stance relation, not every lexical use of the verb. Without an explicit
+// stance object, “Satellites support weather forecasts” was misread as supporting the
+// writer's position and could create a false route conflict.
+const SUPPORT_FRAME = /\b(?:i (?:strongly |firmly |fully )?agree|i support|support(?:s|ed|ing)? (?:this|that|the) (?:view|position|argument|proposal|idea|claim)|should be|is beneficial|is essential)\b/i;
 const OPPOSE_FRAME = /\b(?:i (?:strongly |firmly |fully )?disagree|oppose(?:s|d)?|should not|is harmful|is unnecessary)\b/i;
+// Opinion essays need a stance-relevant reason route. Labelling every body paragraph as
+// “support” is semantically wrong for partial-agreement and concession structures because a
+// controlled opposing paragraph is still part of the promised route. This frame establishes
+// relevance through evaluative propositions without guessing whether the paragraph is the
+// writer's main reason or a concession.
+const POSITION_REASON_FRAME = /\b(?:benefit(?:s|ed|ing)?|beneficial|valuable|useful|advantage(?:s)?|disadvantage(?:s)?|drawback(?:s)?|wasteful|unjustified|justified|harm(?:s|ed|ful)?|damag(?:e|es|ed|ing)|urgent|essential|necessary|unnecessary|poor (?:healthcare|education|housing|services?)|poverty|hunger|risk(?:s)?|improv(?:e|es|ed|ing)|worsen(?:s|ed|ing)?)\b/i;
 
 const SOLUTION_NOUN = /\b(?:solution(?:s)?|measure(?:s)?|policy|policies|initiative(?:s)?|programme(?:s)?|program(?:s)?|law(?:s)?|regulation(?:s)?|investment|infrastructure|enforcement|campaign(?:s)?|subsid(?:y|ies)|tax(?:es)?|restriction(?:s)?)\b/i;
 const SOLUTION_AGENT = /\b(?:government(?:s)?|authorit(?:y|ies)|council(?:s)?|city officials?|police|schools?|employers?|companies|businesses|transport operators?|the state|policy[- ]makers?|individuals?|drivers?|residents?)\b/i;
@@ -44,7 +53,10 @@ export function buildTaskAwareRouteModel({
   bodyParagraphs = [],
   conclusion = ""
 } = {}) {
-  const family = String(internalSubtype || taskFamily || "unresolved");
+  // Keep both the public family and internal subtype available to the frame scorer. Using
+  // `internalSubtype || taskFamily` reduced an Opinion Essay with subtype `standard` to the word
+  // “standard”, so opinion-only stance-reason detection could not be scoped safely.
+  const family = `${String(taskFamily || "unresolved")} ${String(internalSubtype || "")}`.trim();
   const requirements = normalizeRequiredRouteTypes(taskFamily, internalSubtype, requiredRoutes, prompt);
   const paragraphRoutes = bodyParagraphs.map((paragraph, index) =>
     classifyParagraphRoute({ paragraph, index, family, requirements, prompt })
@@ -83,6 +95,16 @@ export function classifyParagraphRoute({ paragraph = "", index = 0, family = "",
   const controllingSentence = sentences.find((sentence) => !EXAMPLE_FRAME.test(sentence)) || sentences[0] || "";
   const controllingProposition = controllingSentence.replace(DISCOURSE_ONLY, "").trim();
   const firstPass = scoreRouteFrames(controllingProposition, family, prompt);
+  if (/discuss-both-views/i.test(family) && /\bsupporters?\b/i.test(controllingProposition)) {
+    // `view-a` and `view-b` are relative slots in a two-view essay. “Supporters of ...” can open
+    // either paragraph; the paragraph order, not the generic noun “supporters”, identifies the
+    // second slot.
+    if (index === 0) firstPass["view-a"] = Math.max(firstPass["view-a"], 3);
+    else {
+      firstPass["view-a"] = 0;
+      firstPass["view-b"] = Math.max(firstPass["view-b"], 3);
+    }
+  }
   const development = scoreRouteFrames(sentences.slice(1).join(" "), family, prompt);
   const combined = Object.fromEntries(ROUTE_TYPES.map((type) => [
     type,
@@ -135,6 +157,10 @@ function scoreRouteFrames(text, family, prompt) {
     disadvantage: weightedMatches(value, DISADVANTAGE_FRAME),
     support: weightedMatches(value, SUPPORT_FRAME),
     oppose: weightedMatches(value, OPPOSE_FRAME),
+    "position-reason": /opinion|positive-negative/i.test(String(family || ""))
+      ? weightedMatches(value, POSITION_REASON_FRAME) +
+        (/\b(?:because|therefore|as a result|this (?:means|shows)|which (?:means|shows))\b/i.test(value) ? 1 : 0)
+      : 0,
     "view-a": 0,
     "view-b": 0,
     answer: /\b(?:because|the main reason|this is because|yes|no)\b/i.test(value) ? 1 : 0,
@@ -176,11 +202,18 @@ function bestRoute(scores, preferred = []) {
     .filter(([route]) => ROUTE_TYPES.includes(route))
     .sort((left, right) => right[1] - left[1] || preferenceRank(left[0], preferred) - preferenceRank(right[0], preferred));
   const [route = "unresolved", score = 0] = entries[0] || [];
+  const nextRoute = entries[1]?.[0] || "unresolved";
   const nextScore = entries[1]?.[1] || 0;
+  // A paragraph can express its required task route through the language of a mechanism.
+  // For example, an advantage may say consumers “can reduce expenditure”, which also matches a
+  // generic solution-action frame. Equal lexical scores are contradictory only when both routes
+  // compete inside the task's required route set (or when no task preference is available).
+  const competingPreferredRoute = !preferred.length ||
+    (preferred.includes(route) && preferred.includes(nextRoute));
   return {
     route: score > 0 ? route : "unresolved",
     confidence: score >= 6 && score - nextScore >= 2 ? "high" : score >= 2 ? "medium" : "low",
-    conflict: score > 0 && score === nextScore && entries[1]?.[0] !== route,
+    conflict: score > 0 && score === nextScore && nextRoute !== route && competingPreferredRoute,
     rationale: score > 0
       ? `The controlling proposition and its development support the ${route} route.`
       : "No route was assigned because a topic mention without a controlling proposition is insufficient."
@@ -194,7 +227,7 @@ function normalizeRequiredRouteTypes(taskFamily, internalSubtype, requiredRoutes
   if (/causes-effects|cause.*effect/i.test(`${subtype} ${prompt}`)) return ["cause", "effect"];
   if (/problem-solution/i.test(family)) return [/\b(?:cause|reason|why)\b/i.test(prompt) ? "cause" : "problem", "solution"];
   if (/advantages-disadvantages|outweigh/i.test(`${family} ${subtype}`)) return ["advantage", "disadvantage"];
-  if (/opinion|positive-negative/i.test(`${family} ${subtype}`)) return ["support"];
+  if (/opinion|positive-negative/i.test(`${family} ${subtype}`)) return ["position-reason"];
   if (/discuss-both-views/i.test(family)) return ["view-a", "view-b"];
   if (/direct-question|hybrid|multi-question/i.test(`${family} ${subtype}`)) return ["answer"];
   const mapped = (Array.isArray(requiredRoutes) ? requiredRoutes : []).flatMap((item) => {
@@ -205,7 +238,7 @@ function normalizeRequiredRouteTypes(taskFamily, internalSubtype, requiredRoutes
 }
 
 function classifyRoutePromise(text, requirements) {
-  const scores = scoreRouteFrames(text, "", "");
+  const scores = scoreRouteFrames(text, requirements.includes("position-reason") ? "opinion" : "", "");
   return {
     promisedRoutes: requirements.filter((route) => (scores[route] || 0) > 0),
     exactEvidence: splitSentences(text)[0] || "",
@@ -223,6 +256,7 @@ function routeLabel(route) {
     disadvantage: "develops disadvantages",
     support: "supports the writer's position",
     oppose: "opposes the proposition",
+    "position-reason": "develops a stance-relevant reason",
     "view-a": "presents the first view",
     "view-b": "presents the second view",
     answer: "answers an explicit question",

@@ -1,4 +1,4 @@
-export const FRAMEWORK_EVIDENCE_VERSION = "framework-evidence-contract-v12.9.7";
+export const FRAMEWORK_EVIDENCE_VERSION = "framework-evidence-contract-v12.9.8";
 
 export const FRAMEWORK_CANONICAL_KEYS = Object.freeze({
   "Position Clarity": "positionClarity",

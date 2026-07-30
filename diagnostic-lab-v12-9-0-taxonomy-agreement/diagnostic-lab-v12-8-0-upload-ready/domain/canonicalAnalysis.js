@@ -67,6 +67,27 @@ export function buildCanonicalAnalysis({
   const taskType = payload.taskType || analysis.taskType || "Task 2";
   if (taskType === "Task 2" && analysis.canonicalTask2Analysis) {
     const base = analysis.canonicalTask2Analysis;
+    const projectedCriteria = analysis.criteriaScores || {};
+    const criteriaNames = [
+      "Task Response",
+      "Coherence & Cohesion",
+      "Lexical Resource",
+      "Grammatical Range & Accuracy"
+    ];
+    // Provider criteria are not a final score source. Only the post-issue, post-route scoring pass
+    // may override the deterministic canonical Task 2 scores; otherwise a stale provider range can
+    // re-inflate the report while `canonicalTask2Analysis` correctly remains at a lower band.
+    const hasFinalValidatedCriteria = criteriaNames.every((name) =>
+      /final-validated-canonical-state/i.test(String(projectedCriteria[name]?.scoreSource || ""))
+    );
+    const validatedCriterion = (name) => hasFinalValidatedCriteria ? projectedCriteria[name] || {} : {};
+    const finalCriteria = {
+      "Task Response": { ...base.criterionAssessment?.taskResponseOrAchievement, ...validatedCriterion("Task Response") },
+      "Coherence & Cohesion": { ...base.criterionAssessment?.coherenceCohesion, ...validatedCriterion("Coherence & Cohesion") },
+      "Lexical Resource": { ...base.criterionAssessment?.lexicalResource, ...validatedCriterion("Lexical Resource") },
+      "Grammatical Range & Accuracy": { ...base.criterionAssessment?.grammaticalRangeAccuracy, ...validatedCriterion("Grammatical Range & Accuracy") }
+    };
+    const finalOverallScore = deriveOverallScore(finalCriteria);
     const functionalConclusion = analysis.feedbackIntegrity?.conclusionFunction;
     const conclusionClosure = functionalConclusion?.status && functionalConclusion.status !== "Not Applicable"
       ? { status: functionalConclusion.status, diagnosis: functionalConclusion.reason }
@@ -108,22 +129,23 @@ export function buildCanonicalAnalysis({
       },
       criterionAssessment: {
         ...base.criterionAssessment,
-        taskResponseOrAchievement: {
-          ...base.criterionAssessment?.taskResponseOrAchievement,
-          diagnosis: analysis.criteriaScores?.["Task Response"]?.diagnosis || base.criterionAssessment?.taskResponseOrAchievement?.diagnosis || ""
-        },
-        coherenceCohesion: {
-          ...base.criterionAssessment?.coherenceCohesion,
-          diagnosis: analysis.criteriaScores?.["Coherence & Cohesion"]?.diagnosis || base.criterionAssessment?.coherenceCohesion?.diagnosis || ""
-        },
-        lexicalResource: {
-          ...base.criterionAssessment?.lexicalResource,
-          diagnosis: analysis.criteriaScores?.["Lexical Resource"]?.diagnosis || base.criterionAssessment?.lexicalResource?.diagnosis || ""
-        },
-        grammaticalRangeAccuracy: {
-          ...base.criterionAssessment?.grammaticalRangeAccuracy,
-          diagnosis: analysis.criteriaScores?.["Grammatical Range & Accuracy"]?.diagnosis || base.criterionAssessment?.grammaticalRangeAccuracy?.diagnosis || ""
-        }
+        taskResponseOrAchievement: finalCriteria["Task Response"],
+        coherenceCohesion: finalCriteria["Coherence & Cohesion"],
+        lexicalResource: finalCriteria["Lexical Resource"],
+        grammaticalRangeAccuracy: finalCriteria["Grammatical Range & Accuracy"]
+      },
+      criterionScores: finalCriteria,
+      overallScore: { ...base.overallScore, ...finalOverallScore, confidence: base.overallScore?.confidence || "medium" },
+      overallBandRange: { ...finalOverallScore, valid: true },
+      scoringSnapshot: {
+        version: "final-validated-score-freeze-v12.9.8",
+        routeClassifierVersion: base.scoringSnapshot?.routeClassifierVersion || "",
+        routeStatus: String(base.routeAssessment?.overallRouteStatus || base.routeAssessment?.status || ""),
+        criterionScores: finalCriteria,
+        overallBandRange: { ...finalOverallScore, valid: true },
+        preValidation: base.scoringSnapshot || null,
+        finalValidated: true,
+        frozen: true
       },
       evidenceIssues: feedbackCards,
       topIssues,
@@ -131,7 +153,12 @@ export function buildCanonicalAnalysis({
       paragraphCoverage,
       feedbackIntegrity: analysis.feedbackIntegrity || null,
       thesisDimensions,
-      repairPlan
+      repairPlan,
+      consistency: {
+        ...(base.consistency || {}),
+        scoreSource: "final-validated-canonical-state-v12.9.8",
+        scoringFrozenBeforeIssueGeneration: false
+      }
     };
   }
 

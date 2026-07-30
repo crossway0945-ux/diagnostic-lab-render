@@ -1,20 +1,20 @@
 export const ANALYSIS_VERSIONS = Object.freeze({
-  // V12.9.7 adds evidence-backed framework ratings, final issue/action projection parity,
-  // post-merge thresholding and all-plane PDF text integrity. The IELTS/Kru Pom rubric is frozen.
-  appVersion: "12.9.7",
-  engineVersion: "ielts-diagnostic-engine-v12.9.7",
+  // V12.9.8 adds the authoritative paragraph map, final-state scoring, source-inventory
+  // verification and release-package integrity. The IELTS/Kru Pom rubric and provider prompt are frozen.
+  appVersion: "12.9.8",
+  engineVersion: "ielts-diagnostic-engine-v12.9.8",
   rubricVersion: "kru-pom-ielts-writing-v12.3.0",
   promptVersion: "ielts-diagnostic-prompt-v12.8.0",
-  reportSchemaVersion: "ielts-diagnostic-report-v12.9.7",
-  feedbackSchemaVersion: "feedback-integrity-v12.9.7",
-  issueTaxonomyVersion: "issue-taxonomy-v12.9.7",
-  evidenceValidatorVersion: "framework-evidence-contract-v12.9.7",
+  reportSchemaVersion: "ielts-diagnostic-report-v12.9.8",
+  feedbackSchemaVersion: "feedback-integrity-v12.9.8",
+  issueTaxonomyVersion: "issue-taxonomy-v12.9.8",
+  evidenceValidatorVersion: "framework-evidence-contract-v12.9.8",
   revisionValidatorVersion: "revision-alignment-v12.8.0",
-  pdfTextIntegrityVersion: "pdf-text-integrity-v12.9.7",
-  routeClassifierVersion: "task-aware-route-model-v12.8.0",
+  pdfTextIntegrityVersion: "pdf-text-integrity-v12.9.8",
+  routeClassifierVersion: "task-aware-route-model-v12.9.8",
   grammarValidatorVersion: "syntactic-head-agreement-v12.9.0",
-  scoringOrchestrationVersion: "score-freeze-v12.8.0",
-  studentViewContractVersion: "student-report-allowlist-v12.9.7"
+  scoringOrchestrationVersion: "score-freeze-v12.9.8",
+  studentViewContractVersion: "student-report-allowlist-v12.9.8"
 });
 
 // Orchestration/transport version for the async-render architecture. Deliberately kept OUT of

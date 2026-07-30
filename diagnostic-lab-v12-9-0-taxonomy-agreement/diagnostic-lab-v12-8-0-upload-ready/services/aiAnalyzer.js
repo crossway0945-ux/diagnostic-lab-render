@@ -3899,6 +3899,9 @@ function normalizeAnalysis(analysis, payload) {
         maxPromotions: 8,
         reportLanguage: payload.reportLanguage
       });
+  if (payload.taskType !== "Task 1") {
+    canonicalIntegrity.issues = alignTask2FeedbackCardLocations(canonicalIntegrity.issues || [], payload.writing);
+  }
   if (canonicalIntegrity.executiveSummary?.mainScoreLimitingFactor) {
     normalized.mainScoreLimitingFactor = canonicalIntegrity.executiveSummary.mainScoreLimitingFactor;
   }
@@ -3937,6 +3940,22 @@ function normalizeAnalysis(analysis, payload) {
   const correctedCards = payload.taskType === "Task 1"
     ? canonicalIntegrity.issues
     : issueGraph.orderedIds.map((issueId) => ({ ...issueGraph.get(issueId) }));
+
+  // Final scoring occurs only after paragraph mapping, task-obligation promotion, canonical
+  // deduplication and issue ordering. Earlier score objects remain available inside the explicitly
+  // named preValidation trace, but Student View and PDF consume only the recomputed final state.
+  if (payload.taskType !== "Task 1") {
+    const finalScoring = recomputeFinalTask2Scoring({
+      criteriaScores: normalized.criteriaScores || {},
+      issues: correctedCards,
+      routeAssessment: normalized.routeAssessment || {},
+      conclusionFunction: feedbackIntegrity.conclusionFunction || null,
+      languageProfile: normalized.languageProfile || {}
+    });
+    normalized.criteriaScores = finalScoring.criteriaScores;
+    normalized.estimatedBandRange = finalScoring.overallBandRange.label;
+    if (normalized.feedbackIntegrity) normalized.feedbackIntegrity.scoreCalculationTrace = finalScoring.trace;
+  }
 
   // Top Issues: taken straight off the top of the canonical order. Engine selections are preserved
   // because they are already IN the graph — but they no longer get to keep a slot ahead of a Major
@@ -4122,6 +4141,23 @@ function normalizeAnalysis(analysis, payload) {
     if (normalized.feedbackIntegrity) normalized.feedbackIntegrity.projectionConsistencyAudit = projectionAudit;
   }
 
+  if (payload.taskType !== "Task 1" && normalized.feedbackIntegrity) {
+    normalized.feedbackIntegrity.finalValidatedState = buildFinalValidatedState({
+      paragraphMap: normalized.feedbackIntegrity.paragraphMap,
+      routeAssessment: normalized.routeAssessment,
+      conclusionFunction: canonicalConclusionFunction,
+      frameworkScores: normalized.kruPomScores,
+      frameworkEvidence: normalized.feedbackIntegrity.frameworkEvidence,
+      criteriaScores: normalized.criteriaScores,
+      estimatedBandRange: normalized.estimatedBandRange,
+      issues: correctedCards,
+      paragraphCoverage: normalized.feedbackIntegrity.paragraphCoverage || normalized.paragraphCoverage || [],
+      repairPlan: correctedRepairPlan,
+      projectionAudit: normalized.feedbackIntegrity.projectionConsistencyAudit || []
+    });
+    assertFinalValidatedState(normalized.feedbackIntegrity.finalValidatedState);
+  }
+
   // ---- Report density (V12.9.5) ---------------------------------------------------------------
   // Decides how much of the canonical set is rendered as full Detailed Feedback and how much is
   // rendered as compact Language Pattern Summary rows. This runs AFTER the canonical graph is
@@ -4150,8 +4186,185 @@ function normalizeAnalysis(analysis, payload) {
   return projected;
 }
 
+function recomputeFinalTask2Scoring({
+  criteriaScores = {},
+  issues = [],
+  routeAssessment = {},
+  conclusionFunction = null,
+  languageProfile = {}
+} = {}) {
+  const names = ["Task Response", "Coherence & Cohesion", "Lexical Resource", "Grammatical Range & Accuracy"];
+  const preValidation = Object.fromEntries(names.map((name) => [name, { ...(criteriaScores[name] || {}) }]));
+  const finalScores = Object.fromEntries(names.map((name) => [name, { ...(criteriaScores[name] || {}) }]));
+  const repairsApplied = [];
+  const cap = (criterion, maximum, reason) => {
+    const entry = finalScores[criterion] || {};
+    const low = getRangeMin(entry.range);
+    const high = getRangeMax(entry.range);
+    if (!Number.isFinite(high) || high <= maximum) return;
+    const finalLow = Number.isFinite(low) ? Math.min(low, maximum) : maximum;
+    const nextRange = formatFinalBandRange(finalLow, maximum);
+    repairsApplied.push({
+      criterion,
+      previousRange: entry.range,
+      finalRange: nextRange,
+      reason
+    });
+    finalScores[criterion] = { ...entry, range: nextRange };
+  };
+
+  for (const criterion of names) {
+    const criterionIssues = issues.filter((issue) => {
+      const criteria = [
+        ...(Array.isArray(issue.criteria) ? issue.criteria : []),
+        ...(Array.isArray(issue.criteriaAffected) ? issue.criteriaAffected : [])
+      ];
+      return criteria.includes(criterion);
+    });
+    const major = criterionIssues.filter((issue) =>
+      ["Critical", "Major"].includes(String(issue.severity || "")) || issue.affectsMeaning === true
+    );
+    const moderate = criterionIssues.filter((issue) => String(issue.severity || "") === "Moderate");
+    const affectedParagraphs = new Set(criterionIssues.map((issue) => issue.paragraphId || issue.paragraphLabel).filter(Boolean));
+    if (major.length >= 2) {
+      cap(criterion, 6.0, "Two or more independent Major final issues limit this criterion at Band 6.0.");
+    } else if (major.length === 1) {
+      cap(criterion, criterion === "Lexical Resource" && languageProfile.overallLexicalControl === "band6" ? 6.0 : 6.5,
+        "A Major final issue prevents a secure higher-band estimate.");
+    } else if (moderate.length >= 3 && affectedParagraphs.size >= 2) {
+      cap(criterion, 6.5, "Recurring Moderate final issues across paragraphs prevent a secure Band 7 estimate.");
+    }
+  }
+
+  if (languageProfile.overallLexicalControl === "band6") {
+    cap("Lexical Resource", 6.0, "The final validated lexical profile contains widespread inaccuracies across the response.");
+  }
+  if (languageProfile.overallGrammarControl === "band6") {
+    cap("Grammatical Range & Accuracy", 6.0, "The final validated grammar profile remains at the Band 6 boundary.");
+  }
+  const routeStatus = String(routeAssessment.taskAwareRouteModel?.overallRouteStatus || routeAssessment.overallRouteStatus || routeAssessment.status || "");
+  if (["absent", "contradicted", "failed"].includes(routeStatus)) {
+    cap("Task Response", 5.5, `The final task-aware route status is ${routeStatus}.`);
+    cap("Coherence & Cohesion", 5.5, `The final task-aware route status is ${routeStatus}.`);
+  }
+  if (conclusionFunction && conclusionFunction.present === false) {
+    cap("Task Response", 5.5, "The final conclusion state is absent.");
+    cap("Coherence & Cohesion", 5.5, "The final conclusion state is absent.");
+  }
+
+  for (const criterion of names) {
+    const entry = finalScores[criterion] || {};
+    const low = getRangeMin(entry.range);
+    const high = getRangeMax(entry.range);
+    finalScores[criterion] = {
+      ...entry,
+      scoreSource: "final-validated-canonical-state-v12.9.8",
+      numericRange: {
+        low: Number.isFinite(low) ? low : null,
+        high: Number.isFinite(high) ? high : null
+      }
+    };
+  }
+  const lows = names.map((name) => getRangeMin(finalScores[name]?.range));
+  const highs = names.map((name) => getRangeMax(finalScores[name]?.range));
+  const overallLow = roundFinalBand(lows.reduce((sum, value) => sum + value, 0) / lows.length);
+  const overallHigh = roundFinalBand(highs.reduce((sum, value) => sum + value, 0) / highs.length);
+  const overallBandRange = {
+    low: overallLow,
+    high: overallHigh,
+    label: formatFinalBandRange(overallLow, overallHigh),
+    valid: lows.every(Number.isFinite) && highs.every(Number.isFinite)
+  };
+  return {
+    criteriaScores: finalScores,
+    overallBandRange,
+    trace: {
+      version: "final-score-calculation-trace-v12.9.8",
+      preValidation,
+      repairsApplied,
+      finalValidatedState: {
+        criteriaScores: finalScores,
+        overallBandRange,
+        routeStatus,
+        conclusionPresent: conclusionFunction?.present !== false,
+        finalIssueIds: issues.map((issue) => issue.issueId).filter(Boolean)
+      }
+    }
+  };
+}
+
+function buildFinalValidatedState({
+  paragraphMap = null,
+  routeAssessment = {},
+  conclusionFunction = null,
+  frameworkScores = {},
+  frameworkEvidence = null,
+  criteriaScores = {},
+  estimatedBandRange = "",
+  issues = [],
+  paragraphCoverage = [],
+  repairPlan = [],
+  projectionAudit = []
+} = {}) {
+  return {
+    version: "final-validated-state-v12.9.8",
+    paragraphMap,
+    routeAssessment,
+    conclusionFunction,
+    frameworkScores,
+    frameworkEvidence,
+    criteriaScores,
+    estimatedBandRange,
+    issues,
+    paragraphCoverage,
+    repairPlan,
+    projectionAudit,
+    terminal: true
+  };
+}
+
+function assertFinalValidatedState(state = {}) {
+  const errors = [];
+  if (!state.paragraphMap?.audit?.pass) errors.push("PARAGRAPH_MAP_NOT_VALIDATED");
+  const conclusionCard = state.frameworkScores?.["Conclusion Closure"];
+  if (state.conclusionFunction?.present === false && /strong|complete/i.test(String(conclusionCard?.status || ""))) {
+    errors.push("CONCLUSION_TERMINAL_STATE_CONTRADICTION");
+  }
+  const sar = state.frameworkScores?.["SAR Example Quality"];
+  const body2Gap = (state.issues || []).some((issue) =>
+    /Body Paragraph 2/i.test(String(issue.paragraphLocation || issue.paragraphLabel || "")) &&
+    /Causal Mechanism|Explanation Depth|Example Development|SAR Example Quality/i.test(String(issue.issueCategory || issue.issueType || ""))
+  );
+  if (body2Gap && /^Strong$/i.test(String(sar?.status || ""))) errors.push("SAR_TERMINAL_STATE_CONTRADICTION");
+  const routeStatus = String(state.routeAssessment?.taskAwareRouteModel?.overallRouteStatus || "");
+  const publicRouteStatus = String(state.routeAssessment?.overallRouteStatus || state.routeAssessment?.status || "");
+  const routeFailure = (value) => /^(?:absent|contradicted|failed|not_traceable)$/i.test(String(value || ""));
+  if (routeStatus && publicRouteStatus && routeFailure(routeStatus) !== routeFailure(publicRouteStatus)) {
+    errors.push("ROUTE_TERMINAL_STATE_CONTRADICTION");
+  }
+  if ((state.projectionAudit || []).some((entry) => entry.pass === false)) errors.push("PROJECTION_TERMINAL_STATE_CONTRADICTION");
+  if (errors.length) {
+    const error = new Error(`The final validated canonical state contains contradictory terminal values: ${errors.join(", ")}`);
+    error.errorCode = "FINAL_VALIDATED_STATE_CONTRADICTION";
+    error.validationDetails = errors;
+    throw error;
+  }
+  return true;
+}
+
+function roundFinalBand(value) {
+  return Math.round(Number(value) * 2) / 2;
+}
+
+function formatFinalBandRange(low, high) {
+  const first = Number(low).toFixed(1);
+  const second = Number(high).toFixed(1);
+  return first === second ? first : `${first}-${second}`;
+}
+
 function alignTask2FeedbackCardLocations(cards, writing) {
   const records = getSentenceRecords(writing, "Task 2");
+  const paragraphCount = getParagraphs(writing, "Task 2").length;
   return cards.map((card) => {
     const evidence = normalizeEvidenceText(card?.exactSentence);
     if (!evidence) return card;
@@ -4159,7 +4372,17 @@ function alignTask2FeedbackCardLocations(cards, writing) {
       const sentence = normalizeEvidenceText(item.sentence);
       return sentence.includes(evidence) || evidence.includes(sentence);
     });
-    return record ? { ...card, paragraphLocation: record.location } : card;
+    if (!record) return card;
+    const paragraphLabel = paragraphName(record.paragraphIndex, paragraphCount);
+    return {
+      ...card,
+      paragraphLocation: record.location,
+      paragraphLabel,
+      paragraphId: `paragraph-${record.paragraphIndex + 1}`,
+      sourceParagraphId: `paragraph-${record.paragraphIndex + 1}`,
+      sourceSentenceId: `paragraph-${record.paragraphIndex + 1}-sentence-${record.sentenceIndex + 1}`,
+      sentenceIndex: record.sentenceIndex + 1
+    };
   });
 }
 

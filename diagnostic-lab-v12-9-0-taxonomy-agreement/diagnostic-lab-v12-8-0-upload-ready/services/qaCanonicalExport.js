@@ -13,7 +13,7 @@ import { resolveDataDir } from "./storage.js";
 //   persisted for that report version are marked { available:false, reason:"NOT_PERSISTED..." }.
 // Never writes or exports secrets, other students' data, prompts, or filesystem paths.
 
-export const QA_EXPORT_VERSION = "canonical-qa-export-v12.9.7";
+export const QA_EXPORT_VERSION = "canonical-qa-export-v12.9.8";
 const NOT_PERSISTED = Object.freeze({ available: false, reason: "NOT_PERSISTED_IN_THIS_REPORT_VERSION" });
 
 // Keys that must never appear in a snapshot or an export, at any depth.
@@ -137,6 +137,10 @@ export function buildQaSnapshot({ analysis = {}, savedRecord = {}, payload = {} 
     frameworkBreakdown: analysis.kruPomScores || {},
     executiveSummary: { mainScoreLimitingFactor: analysis.mainScoreLimitingFactor || "", mostUrgentRepair: analysis.mostUrgentRepair || "" },
     repairPlan: Array.isArray(analysis.practicePlan) ? analysis.practicePlan : [],
+    paragraphMapAudit: analysis.feedbackIntegrity?.paragraphMapAudit || NOT_PERSISTED,
+    frameworkEvidenceAudit: analysis.feedbackIntegrity?.frameworkEvidence?.audit || NOT_PERSISTED,
+    scoreCalculationTrace: analysis.feedbackIntegrity?.scoreCalculationTrace || NOT_PERSISTED,
+    finalValidatedState: analysis.feedbackIntegrity?.finalValidatedState || NOT_PERSISTED,
     revisionValidationResults: (Array.isArray(analysis.feedbackCards) ? analysis.feedbackCards : []).map((c) => ({
       issueId: c.issueId, revisionType: c.revisionType, revisionAlignmentStatus: c.revisionAlignmentStatus,
       grammarValidationStatus: c.grammarValidationStatus, semanticValidationStatus: c.semanticValidationStatus,

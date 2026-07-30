@@ -1589,6 +1589,29 @@ export async function prepareDiagnosticPrintFrameForQa(analysis) {
   return prepared.frame;
 }
 
+// Local acceptance runs use the real application shell (rather than a duplicate renderer). The
+// fixture endpoint and the automatic hand-off are both loopback-only, so neither exists on a
+// deployed host. This lets browser QA inspect the exact Student View/PDF renderer without exposing
+// an internal control or loading a second implementation.
+const acceptanceFixture = ["127.0.0.1", "localhost", "::1"].includes(window.location.hostname)
+  ? new URLSearchParams(window.location.search).get("acceptanceQa")
+  : "";
+if (acceptanceFixture) {
+  window.setTimeout(async () => {
+    const fixture = acceptanceFixture.replace(/[^A-Za-z0-9_-]/g, "");
+    const response = await fetch(`/__acceptance/${fixture}-render-input.json`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Could not load ${fixture} acceptance input.`);
+    const frame = await prepareDiagnosticPrintFrameForQa(await response.json());
+    const doc = frame.contentDocument;
+    if (!doc) throw new Error("The isolated print document was not created.");
+    const html = `<!doctype html>${doc.documentElement.outerHTML}`;
+    document.open();
+    document.write(html);
+    document.close();
+    document.documentElement.dataset.releaseQaReady = "true";
+  }, 0);
+}
+
 function waitForFrameLoad(frame) {
   return new Promise((resolve, reject) => {
     const timeout = window.setTimeout(() => reject(new Error("The isolated print document timed out.")), 10000);
@@ -2032,7 +2055,7 @@ function renderPrintReport(analysis) {
         <h2>${escapePrintHtml(language === "th" ? "สรุปรูปแบบภาษาที่ควรตรวจ" : "Language Pattern Summary")}</h2>
         <p class="print-note">${escapePrintHtml(language === "th"
           ? "รายการต่อไปนี้ผ่านการตรวจสอบแล้ว แต่มีลำดับความสำคัญรองจาก Detailed Feedback ด้านบน"
-          : "These points were validated but rank below the Detailed Feedback above. Repair the detailed issues first, then scan for these patterns.")}</p>
+          : "These points were validated but rank below the Detailed Feedback above. Repair the detailed issues first, then complete a full-response scan for these patterns.")}</p>
         <div class="print-language-pattern-list">
           ${languagePatterns.map((row) => renderPrintLanguagePatternRow(row, copy, language)).join("")}
         </div>

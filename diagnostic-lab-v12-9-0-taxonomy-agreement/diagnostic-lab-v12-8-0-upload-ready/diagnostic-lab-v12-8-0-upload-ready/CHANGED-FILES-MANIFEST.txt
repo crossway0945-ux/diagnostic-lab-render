@@ -1,0 +1,29 @@
+V12.9.8 CHANGED FILES RELATIVE TO DEPLOYED GITHUB MAIN SOURCE ROOT
+Added: 5
+Modified: 18
+Deleted: 0
+Renamed: 0
+
+A	CHANGE-SCOPE.md
+A	EARLY-BIRD-COPY-REMOVAL.md
+A	PROTECTED-SYSTEMS-RESULT.md
+A	REGRESSION-MATRIX.md
+A	tests/v12-9-8-stage0-control.test.mjs
+M	CHANGED-FILES-MANIFEST.txt
+M	COMPLETION-SUMMARY.md
+M	FULL-FILE-INVENTORY.txt
+M	INVENTORY-DIFF.md
+M	MIGRATION.md
+M	PRODUCTION-SMOKE-TEST.md
+M	RELEASE-MANIFEST.md
+M	ROLLBACK.md
+M	SHA256SUMS.txt
+M	SOURCE-INVENTORY.json
+M	domain/task2Safety.js
+M	index.html
+M	qa/build-stopship-acceptance-manifest.mjs
+M	qa/package-v12-9-8-release.py
+M	script.js
+M	services/apiRouter.js
+M	tests/diagnostic-api.test.mjs
+M	tests/v12-3-1-feedback-integrity-hotfix.test.mjs

@@ -4,34 +4,33 @@
   "repositoryParent": "diagnostic-lab-v12-9-0-taxonomy-agreement",
   "inventoryScope": "authoritative non-node_modules working tree",
   "nodeModulesPolicy": "excluded dependency installation; restored by npm install",
-  "totalInventoriedFiles": 176,
-  "releaseIncludedFiles": 142,
-  "releaseExcludedFiles": 34,
+  "totalInventoriedFiles": 184,
+  "releaseIncludedFiles": 151,
+  "releaseExcludedFiles": 33,
   "classificationCounts": {
     "configuration": 2,
-    "documentation": 19,
+    "documentation": 23,
     "generated acceptance artifact": 32,
     "package metadata": 2,
     "public/static asset": 5,
     "runtime data": 1,
-    "source": 70,
-    "temporary/probe": 1,
-    "test": 44
+    "source": 71,
+    "test": 48
   },
   "releaseClassificationCounts": {
     "configuration": 2,
-    "documentation": 19,
+    "documentation": 23,
     "package metadata": 2,
     "public/static asset": 5,
-    "source": 70,
-    "test": 44
+    "source": 71,
+    "test": 48
   },
   "files": [
     {
       "path": "admin-audit-log.json",
       "classification": "runtime data",
-      "bytes": 10646,
-      "sha256": "fddc8d24a2b7a3c6631c378afb56e9310b8c0365348467bd3cc95ec872819d5d",
+      "bytes": 7098,
+      "sha256": "02cd833977bc44996190bbb0bedc839f604ef26a917145784494040081207a56",
       "includedInRelease": false,
       "exclusionReason": "runtime data"
     },
@@ -52,6 +51,14 @@
       "exclusionReason": null
     },
     {
+      "path": "agreementValidator.js",
+      "classification": "source",
+      "bytes": 14580,
+      "sha256": "d6953b51d720ceec45a87020e26d3813b0f3b6a11d73f00babd7953c10609b6c",
+      "includedInRelease": true,
+      "exclusionReason": null
+    },
+    {
       "path": "assets/fonts/Noto-Sans-Thai-LICENSE.txt",
       "classification": "public/static asset",
       "bytes": 4471,
@@ -68,10 +75,18 @@
       "exclusionReason": null
     },
     {
+      "path": "CHANGE-SCOPE.md",
+      "classification": "documentation",
+      "bytes": 4710,
+      "sha256": "c064e29a846433ad3b8e5fdec25771c41e2cb8a20729752bade7bc57cac3fc95",
+      "includedInRelease": true,
+      "exclusionReason": null
+    },
+    {
       "path": "CHANGED-FILES-MANIFEST.txt",
       "classification": "documentation",
-      "bytes": 1912,
-      "sha256": "290e3e14aba6df6ea157f599bfe685fb6c8fb5010f544bba9cdca0302a905bd0",
+      "bytes": 731,
+      "sha256": "0cef7df37c32eace0afbcab3ddc13f0d5176ff0069873e2a98938821ab37a2a2",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -86,16 +101,16 @@
     {
       "path": "COMPLETION-SUMMARY.md",
       "classification": "documentation",
-      "bytes": 710,
-      "sha256": "b78f5c7df89d6a8985ba89f4138e1d8dd4293ad91f938afa30c8bd71d150fd49",
+      "bytes": 741,
+      "sha256": "77dc914eec5d4a178d9b6e80118bbc8fd0a736614935d122ba1ebe3adf0d300e",
       "includedInRelease": true,
       "exclusionReason": null
     },
     {
       "path": "domain/agreementValidator.js",
       "classification": "source",
-      "bytes": 13509,
-      "sha256": "c649afba6e99dc7ededd0fd5202597ad13881ae76848aa959f486d0059f0602a",
+      "bytes": 14580,
+      "sha256": "d6953b51d720ceec45a87020e26d3813b0f3b6a11d73f00babd7953c10609b6c",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -142,8 +157,8 @@
     {
       "path": "domain/evidenceAssertions.js",
       "classification": "source",
-      "bytes": 35379,
-      "sha256": "5228e0647d7dff5d4c830c2d55feb48149e28c54b45e7c32ae65f236f7cc72bc",
+      "bytes": 35904,
+      "sha256": "ac5499426599caf278822080928304d5631a13296d7c98420201512c27f25724",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -278,8 +293,8 @@
     {
       "path": "domain/task2Safety.js",
       "classification": "source",
-      "bytes": 185235,
-      "sha256": "5b7a3623921ba614a4ef0ba012ae8923e8338155ecd21217b5f2414d7c18f1fb",
+      "bytes": 188094,
+      "sha256": "8bb0a7fcffcd111ca9d2c6fc8e6d98f6f59d708587046f32bb416c5b6be8c3d6",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -300,6 +315,14 @@
       "exclusionReason": null
     },
     {
+      "path": "EARLY-BIRD-COPY-REMOVAL.md",
+      "classification": "documentation",
+      "bytes": 1471,
+      "sha256": "1646f1b1113838dee5ae8962127f781e12fff45a4b22f839df9cdf8ef11a71ca",
+      "includedInRelease": true,
+      "exclusionReason": null
+    },
+    {
       "path": "fixtures/v12-6-regression-corpus.json",
       "classification": "test",
       "bytes": 15606,
@@ -310,24 +333,24 @@
     {
       "path": "FULL-FILE-INVENTORY.txt",
       "classification": "documentation",
-      "bytes": 21521,
-      "sha256": "e1be9cc1d8a0ed698b7087bfeeba433f1467c111ec07e7ec53ef94ad9c09f6e6",
+      "bytes": 22467,
+      "sha256": "6ec3dccce966fb4262520019de207710141982958ceaa79f278be7938f75ee31",
       "includedInRelease": true,
       "exclusionReason": null
     },
     {
       "path": "index.html",
       "classification": "public/static asset",
-      "bytes": 33024,
-      "sha256": "33922589eafbf8b738b74c83caa2808e9e9ebda2fe5a0c70a1beb8a2731bb4e5",
+      "bytes": 33017,
+      "sha256": "65e54078c4e57a0ac9b6e2ddfd68a56ba644d4db2239df2589c8380b8f7bef76",
       "includedInRelease": true,
       "exclusionReason": null
     },
     {
       "path": "INVENTORY-DIFF.md",
       "classification": "documentation",
-      "bytes": 16638,
-      "sha256": "5f87e9c3c754dfd3b6379b13ceb0f56b55483814b69198b99c71a178b6ff0911",
+      "bytes": 17674,
+      "sha256": "6c445289b3f5a8905782e152f59382270e627fb8c57e48ad45ae4456019303d6",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -342,8 +365,8 @@
     {
       "path": "MIGRATION.md",
       "classification": "documentation",
-      "bytes": 711,
-      "sha256": "c4e09bc257b79cb57e91d7c8c5e4e95ef547c97b518e9c5354cde21af0ce1399",
+      "bytes": 748,
+      "sha256": "76b9616dbd327f4baa39fed4f18d3820276ef56b0e86e908cec596d7237d06ca",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -398,8 +421,8 @@
     {
       "path": "netlify-static-preview/domain/agreementValidator.js",
       "classification": "generated acceptance artifact",
-      "bytes": 13509,
-      "sha256": "c649afba6e99dc7ededd0fd5202597ad13881ae76848aa959f486d0059f0602a",
+      "bytes": 14580,
+      "sha256": "d6953b51d720ceec45a87020e26d3813b0f3b6a11d73f00babd7953c10609b6c",
       "includedInRelease": false,
       "exclusionReason": "excluded directory: netlify-static-preview"
     },
@@ -422,8 +445,8 @@
     {
       "path": "netlify-static-preview/domain/evidenceAssertions.js",
       "classification": "generated acceptance artifact",
-      "bytes": 35379,
-      "sha256": "5228e0647d7dff5d4c830c2d55feb48149e28c54b45e7c32ae65f236f7cc72bc",
+      "bytes": 35904,
+      "sha256": "ac5499426599caf278822080928304d5631a13296d7c98420201512c27f25724",
       "includedInRelease": false,
       "exclusionReason": "excluded directory: netlify-static-preview"
     },
@@ -542,8 +565,8 @@
     {
       "path": "netlify-static-preview/domain/task2Safety.js",
       "classification": "generated acceptance artifact",
-      "bytes": 185235,
-      "sha256": "5b7a3623921ba614a4ef0ba012ae8923e8338155ecd21217b5f2414d7c18f1fb",
+      "bytes": 188094,
+      "sha256": "8bb0a7fcffcd111ca9d2c6fc8e6d98f6f59d708587046f32bb416c5b6be8c3d6",
       "includedInRelease": false,
       "exclusionReason": "excluded directory: netlify-static-preview"
     },
@@ -566,16 +589,16 @@
     {
       "path": "netlify-static-preview/index.html",
       "classification": "generated acceptance artifact",
-      "bytes": 33024,
-      "sha256": "33922589eafbf8b738b74c83caa2808e9e9ebda2fe5a0c70a1beb8a2731bb4e5",
+      "bytes": 33017,
+      "sha256": "65e54078c4e57a0ac9b6e2ddfd68a56ba644d4db2239df2589c8380b8f7bef76",
       "includedInRelease": false,
       "exclusionReason": "excluded directory: netlify-static-preview"
     },
     {
       "path": "netlify-static-preview/script.js",
       "classification": "generated acceptance artifact",
-      "bytes": 169770,
-      "sha256": "f5491268eba68f62f71a90ae76371d02b12da81dbc3f93a3195af4a292ca5088",
+      "bytes": 170566,
+      "sha256": "636c763ba892791baf80de17afd52459381e20dfdd377a379a437aa4c3834a32",
       "includedInRelease": false,
       "exclusionReason": "excluded directory: netlify-static-preview"
     },
@@ -646,8 +669,16 @@
     {
       "path": "PRODUCTION-SMOKE-TEST.md",
       "classification": "documentation",
-      "bytes": 1317,
-      "sha256": "94786d83084a69702b41ac701cfe773a9f524e1138a6a401bc9c8c4afdbede1e",
+      "bytes": 1315,
+      "sha256": "28f94f47b34f93b3b4cb5a2bf69f850359df8996c99b4798772c5290526d2f88",
+      "includedInRelease": true,
+      "exclusionReason": null
+    },
+    {
+      "path": "PROTECTED-SYSTEMS-RESULT.md",
+      "classification": "documentation",
+      "bytes": 2159,
+      "sha256": "1a2557551f55f1360ae7cff1fcfc0892ca70cbde301338fba2c429f34fdd7ab0",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -658,14 +689,6 @@
       "sha256": "bd4c0bcec1ac84b503343e14930a9f9821444d80e86f280dae93ad3e6caee708",
       "includedInRelease": true,
       "exclusionReason": null
-    },
-    {
-      "path": "qa/__pycache__/package-release.cpython-312.pyc",
-      "classification": "temporary/probe",
-      "bytes": 16255,
-      "sha256": "6d7b33e90745a60142912defcbb788000dc7df3443c7a5131687cbe591fddaf8",
-      "includedInRelease": false,
-      "exclusionReason": "excluded directory: __pycache__"
     },
     {
       "path": "qa/build-browser-capture-pdf.py",
@@ -686,8 +709,8 @@
     {
       "path": "qa/build-stopship-acceptance-manifest.mjs",
       "classification": "source",
-      "bytes": 13436,
-      "sha256": "fa4332ba09f786e387dd6aa021ef3f1bc96de77ca3ece449bc94c9d832e3f641",
+      "bytes": 17481,
+      "sha256": "1fcce30a2ef0af647d9d7e419d46cee76b87ace613d5c50a354d3aa404ab7bec",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -710,8 +733,8 @@
     {
       "path": "qa/package-v12-9-8-release.py",
       "classification": "source",
-      "bytes": 25429,
-      "sha256": "6c23cd650e1d9e8b20cd71732616b7b0472d555fc21d83a7d273488844a0f9eb",
+      "bytes": 25594,
+      "sha256": "d8ea7d76ebcd08f9d9b72ed06ff6a3140f2d5aedbfdf0adbb69e8a2078e11527",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -732,10 +755,18 @@
       "exclusionReason": null
     },
     {
+      "path": "REGRESSION-MATRIX.md",
+      "classification": "documentation",
+      "bytes": 2039,
+      "sha256": "9bac72d2953f78f72c355f5ee6a9460f72a4d98e4ba825fd50050bd967e99c49",
+      "includedInRelease": true,
+      "exclusionReason": null
+    },
+    {
       "path": "RELEASE-MANIFEST.md",
       "classification": "documentation",
-      "bytes": 2013,
-      "sha256": "34fd6023646ab4b251401037e636e9c19c6aab80dacd5602e03eba9c822f896a",
+      "bytes": 1929,
+      "sha256": "95f77dde9671d9ddb327bd14b8429ece662a166c90a63672343611868b26e5c8",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -774,8 +805,8 @@
     {
       "path": "ROLLBACK.md",
       "classification": "documentation",
-      "bytes": 456,
-      "sha256": "846852bae758f25f9837828168c51e55783e327c9f786be168d7cdccd3206b1c",
+      "bytes": 535,
+      "sha256": "b2037c8b318c73e403ba6dfd84eab188110102a6d944943dc0fe6491f57df99e",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -806,8 +837,8 @@
     {
       "path": "script.js",
       "classification": "source",
-      "bytes": 169770,
-      "sha256": "f5491268eba68f62f71a90ae76371d02b12da81dbc3f93a3195af4a292ca5088",
+      "bytes": 170566,
+      "sha256": "636c763ba892791baf80de17afd52459381e20dfdd377a379a437aa4c3834a32",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -919,7 +950,7 @@
       "path": "services/apiRouter.js",
       "classification": "source",
       "bytes": 149731,
-      "sha256": "be93c3b87192f77326f61d418b786a8b30f0c5ba6667ae2f0e90042da8d0358e",
+      "sha256": "d055e81ef5439dc091dc9f721b3d6b0e2ab1a29ec6733be792ba4ce87d99e43e",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -1022,7 +1053,7 @@
     {
       "path": "SHA256SUMS.txt",
       "classification": "documentation",
-      "bytes": 57,
+      "bytes": 14418,
       "sha256": null,
       "includedInRelease": true,
       "exclusionReason": null
@@ -1030,7 +1061,7 @@
     {
       "path": "SOURCE-INVENTORY.json",
       "classification": "source",
-      "bytes": 51353,
+      "bytes": 53505,
       "sha256": null,
       "includedInRelease": true,
       "exclusionReason": null
@@ -1046,8 +1077,8 @@
     {
       "path": "tests/diagnostic-api.test.mjs",
       "classification": "test",
-      "bytes": 130771,
-      "sha256": "d06d83964c8d7ba450c1c5b6a068a683abc97f725f68682a1376c4cba3cdd1c3",
+      "bytes": 130916,
+      "sha256": "30b411fa91041c28f359a4b520aa6310235a51c2b4a9295b0cacbf758c16034e",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -1056,6 +1087,14 @@
       "classification": "test",
       "bytes": 1515,
       "sha256": "6256a5b9a03b20c1506d6fd6426cbdc7d019f297721ef1bddebd37341bf6cff4",
+      "includedInRelease": true,
+      "exclusionReason": null
+    },
+    {
+      "path": "tests/poon-output-validation-failure-regression.test.mjs",
+      "classification": "test",
+      "bytes": 6811,
+      "sha256": "72d1b4c2a92b89081103986665b4d007ddf0327d674de1cc3b3cb433c2dbe583",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -1134,8 +1173,8 @@
     {
       "path": "tests/v12-3-1-feedback-integrity-hotfix.test.mjs",
       "classification": "test",
-      "bytes": 11305,
-      "sha256": "3c9b5c62979d151a008d1ac0938c05c4affc157ae69415f4b8ea7c13861b2fb0",
+      "bytes": 11435,
+      "sha256": "4bf5f23e13c47af38f44442eecd7b54851e9846097a3a1be230b623ed73200a6",
       "includedInRelease": true,
       "exclusionReason": null
     },
@@ -1360,6 +1399,30 @@
       "classification": "test",
       "bytes": 22969,
       "sha256": "951d43dec5ade8bb95ed89f1dfe7eae5575afa78719cec158c57168f6711a226",
+      "includedInRelease": true,
+      "exclusionReason": null
+    },
+    {
+      "path": "tests/v12-9-8-stage0-control.test.mjs",
+      "classification": "test",
+      "bytes": 9750,
+      "sha256": "29457133f9d001a89e6558fff062aba11c3c6f0d7c31a225c18357b656463c57",
+      "includedInRelease": true,
+      "exclusionReason": null
+    },
+    {
+      "path": "tests/v12-9-9-health-label-honesty.test.mjs",
+      "classification": "test",
+      "bytes": 1240,
+      "sha256": "b5dc2224aea862c23767c9ffa823e6fd40e4e7db9c20e5d89b0a50b9aafb2a56",
+      "includedInRelease": true,
+      "exclusionReason": null
+    },
+    {
+      "path": "tests/v12-9-9-modal-infinitive-agreement-hotfix.test.mjs",
+      "classification": "test",
+      "bytes": 4048,
+      "sha256": "6a05c746afc7ba6791ee10fb06ef10724036c60623a6089ca3b393f765c609b0",
       "includedInRelease": true,
       "exclusionReason": null
     },

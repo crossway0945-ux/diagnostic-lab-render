@@ -15,7 +15,7 @@
 - Produces four paragraphs, approximately Band 6.0, SAR Mixed and a functionally strong conclusion
   with language repair.
 - Top Issues, Paragraph Coverage and Repair Plan remain aligned.
-- PDF is approximately 10–16 pages, searchable, and free of internal IDs and Unicode corruption.
+- PDF is approximately 10-16 pages, searchable, and free of internal IDs and Unicode corruption.
 
 ## Evin and Task 1
 

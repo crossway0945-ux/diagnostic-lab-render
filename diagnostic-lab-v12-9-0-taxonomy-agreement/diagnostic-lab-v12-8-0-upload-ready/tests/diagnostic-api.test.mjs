@@ -315,7 +315,7 @@ const poonCleanWaterPayload = {
 };
 
 async function main() {
-  await testPackageCopyShows10Analyses();
+  await testStage0AccessCopyIsNeutral();
   await testDeterministicWordCount();
   await testTeacherStudentSelectionReenablesAnalyzeButton();
   await testApiFlow();
@@ -351,17 +351,17 @@ async function main() {
   await testUnderlengthProviderPartialFeedbackIsRepaired();
 }
 
-async function testPackageCopyShows10Analyses() {
+async function testStage0AccessCopyIsNeutral() {
   const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
   const previewHtml = await readFile(new URL("../netlify-static-preview/index.html", import.meta.url), "utf8");
 
   for (const html of [indexHtml, previewHtml]) {
-    assert.ok(html.includes("2,999 THB"));
-    assert.ok(html.includes("10 analyses"));
-    assert.ok(html.includes("Valid for 60 days"));
-    assert.ok(html.includes("Private access only: No public signup."));
-    assert.ok(html.includes("Students receive a username and password from Kru Pom IELTS after approval/payment."));
-    assert.ok(!html.includes("20 analyses"));
+    assert.ok(html.includes("Internal Validation Access"));
+    assert.ok(html.includes("Access by invitation for authorised testers"));
+    assert.ok(html.includes("Private access only. Public signup is not available."));
+    assert.ok(html.includes("Authorised testers receive login credentials directly from Kru Pom IELTS."));
+    assert.ok(html.includes("Diagnostic estimate only."));
+    assert.doesNotMatch(html, /(?:private\s+)?early\s+access|future launch price|approval\/payment|\b\d{1,3}(?:,\d{3})?\s*THB\b/i);
   }
 }
 

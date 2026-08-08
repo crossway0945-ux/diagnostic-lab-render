@@ -61,10 +61,10 @@ import {
 const MAX_JSON_BYTES = 8 * 1024 * 1024;
 const SESSION_COOKIE = "ielts_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
-const ACCESS_EXPIRED_MESSAGE = "Your early access period has ended. Please contact Kru Pom IELTS to extend access.";
+const ACCESS_EXPIRED_MESSAGE = "Your authorised tester access has ended. Please contact Kru Pom IELTS.";
 const API_DISCONNECTED_MESSAGE = "The Diagnostic Lab API is not connected yet. Please contact Kru Pom IELTS.";
 const GENERIC_ANALYSIS_ERROR = "Analysis could not be completed. Please try again or contact Kru Pom IELTS.";
-const QUOTA_USED_MESSAGE = "Your early access quota has been used. Please contact Kru Pom IELTS to extend access.";
+const QUOTA_USED_MESSAGE = "Your analysis allowance for Internal Validation Access has been used. Please contact Kru Pom IELTS.";
 const TEACHER_DAILY_LIMIT_MESSAGE = "Teacher daily safety limit reached. Please try again tomorrow or increase TEACHER_DAILY_SAFETY_LIMIT in Render environment variables.";
 const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 

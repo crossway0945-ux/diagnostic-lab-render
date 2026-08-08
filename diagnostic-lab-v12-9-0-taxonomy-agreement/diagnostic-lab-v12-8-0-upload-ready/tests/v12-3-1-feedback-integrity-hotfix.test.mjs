@@ -157,8 +157,9 @@ assert.doesNotMatch(pdfRetrySource, /fetch\(|analy[sz]eWriting|quota|credit/i);
 assert.match(scriptSource, /Paragraph Coverage Summary/);
 assert.match(scriptSource, /runWithSingleTransientPdfRetry/);
 assert.match(htmlSource, /Diagnostic report ready/);
-assert.match(htmlSource, /2,999/);
-assert.match(htmlSource, /10 analyses/);
-assert.match(htmlSource, /60 days/);
+assert.match(htmlSource, /Internal Validation Access/);
+assert.match(htmlSource, /Access by invitation/);
+assert.match(htmlSource, /Diagnostic estimate only/);
+assert.doesNotMatch(htmlSource, /2,999|10 analyses|60 days|Future launch price/i);
 
 console.log("V12.3.1 feedback integrity, paragraph coverage, revision alignment, conclusion separation and bounded PDF retry passed.");

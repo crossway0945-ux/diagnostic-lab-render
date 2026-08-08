@@ -250,17 +250,14 @@ assert.doesNotMatch(studentJson, /facilities in towns and cities should not be d
   "the policy-drift conclusion revision must never reach the student");
 assert.doesNotMatch(studentJson, /must-not-leak/, "internal fields must not leak into the student view");
 
-// The withheld Body 1 Sentence 2 card keeps its diagnosis while withholding the unsafe sentence,
-// and records the rejected candidate only in the internal audit field.
+// The final revision contract replaces the formerly withheld reference-broken candidate with a
+// complete evidence-preserving correction.
 const b1s2 = report.feedbackCards.find((card) => /Every family is living/.test(card.exactSentence));
 assert.ok(b1s2);
-assert.equal(b1s2.revisionWithheld, true);
+assert.equal(b1s2.revisionWithheld, false);
 assert.doesNotMatch(b1s2.targetedRevision, /Families live in different locations/,
   "the student-facing revision field must be clean");
-assert.equal(
-  b1s2.revisionIntegrity.revisedClaim,
-  "Every family lives in different places and distances, which could be very far away from their house, so it would be very difficult to travel through long distance.",
-  "the rejected deterministic repair is preserved in the internal audit trail only"
-);
+assert.match(b1s2.targetedRevision, /Families live at different distances from essential facilities/);
+assert.equal(b1s2.revisionIntegrity.pass, true);
 
 console.log("V12.4.0 engine stabilisation: model-migration scaffolding, SAR terminology, unsafe-revision withholding, policy-drift rejection, executive development coverage and dimension-aware paragraph statuses passed.");

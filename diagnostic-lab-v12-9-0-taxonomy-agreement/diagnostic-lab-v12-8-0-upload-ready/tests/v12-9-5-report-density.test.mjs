@@ -29,6 +29,8 @@ const issue = (overrides = {}) => ({
   kruPomDiagnosis: "A short diagnosis.",
   studentAction: "Do the thing.",
   revisionType: "Minimal Correction",
+  targetedRevision: "A revised sentence used as a safe model.",
+  whyRevisionIsStronger: "The revision fixes the cited issue while preserving the original meaning.",
   ...overrides
 });
 
@@ -166,9 +168,12 @@ assert.equal(view.languagePatternSummary.length, plan.summaryRows.length, "the S
 for (const row of view.languagePatternSummary) {
   assert.deepEqual(
     Object.keys(row).sort(),
-    ["action", "category", "diagnosis", "paragraphLocation", "recurrence", "targetSpan"],
-    "a summary row keeps category, location, target span, diagnosis, action and recurrence"
+    ["action", "category", "diagnosis", "paragraphLocation", "recurrence", "revisionType", "targetSpan", "targetedRevision", "whyRevisionIsStronger"],
+    "a summary row keeps its evidence plus a usable student-facing revision"
   );
+  assert.equal(row.revisionType, "Minimal Correction");
+  assert.ok(row.targetedRevision);
+  assert.ok(row.whyRevisionIsStronger);
 }
 // Without a plan every card is still rendered, so an older report never loses feedback.
 const legacyView = buildStudentReportViewModel({ taskType: "Task 2", feedbackCards: many }, {});

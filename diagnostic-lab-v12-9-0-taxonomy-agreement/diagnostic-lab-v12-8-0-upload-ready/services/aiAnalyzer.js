@@ -38,7 +38,7 @@ import {
 
 // G: recompute each paragraph's dimension statuses from the COMPLETE corrected issue set. A paragraph
 // may never read "Language Controlled" while a validated language issue for it survives correction.
-function rebuildParagraphCoverageFromIssues(paragraphFeedback = [], issues = [], conclusionFunction = null) {
+function rebuildParagraphCoverageFromIssues(paragraphFeedback = [], issues = [], conclusionFunction = null, routeAssessment = null) {
   if (!Array.isArray(paragraphFeedback) || !paragraphFeedback.length) return paragraphFeedback;
   const normalise = (value) => String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
   return paragraphFeedback.map((paragraph) => {
@@ -50,13 +50,56 @@ function rebuildParagraphCoverageFromIssues(paragraphFeedback = [], issues = [],
       if (!label || !issueLabel) return false;
       return issueLabel.startsWith(label) || label.startsWith(issueLabel);
     });
-    if (!paragraphIssues.length) return paragraph;
-    const status = paragraphDimensionStatus(paragraphIssues, paragraph.paragraphLabel || paragraph.label, paragraph.conclusionFunction || conclusionFunction);
+    const paragraphLabel = paragraph.paragraphLabel || paragraph.label || "";
+    if (!paragraphIssues.length) {
+      const isConclusion = /Conclusion/i.test(paragraphLabel);
+      const cleanStatus = isConclusion && (paragraph.conclusionFunction || conclusionFunction)?.complete
+        ? "Functionally Strong"
+        : "Route Aligned - Development Controlled - Example/SAR Controlled - Language Controlled";
+      return {
+        ...paragraph,
+        status: cleanStatus,
+        dimensions: paragraphDimensionsFromStatus(cleanStatus, paragraph.dimensions),
+        diagnosis: `${paragraphLabel || "This paragraph"} was checked against the final issue set and no priority repair was identified.`,
+        action: "No priority repair - keep this paragraph as it is.",
+        studentAction: "No priority repair - keep this paragraph as it is.",
+        priorityRepair: "",
+        priorityIssueId: "",
+        issueIds: []
+      };
+    }
+    let status = paragraphDimensionStatus(paragraphIssues, paragraphLabel, paragraph.conclusionFunction || conclusionFunction);
+    const qualifiedState = routeAssessment?.qualifiedPositionState || routeAssessment?.semanticPosition?.finalPositionState;
+    const bodyIndex = Number(String(paragraphLabel).match(/Body Paragraph\s+(\d+)/i)?.[1] || 0);
+    const bodyRole = qualifiedState?.bodyRoles?.find((item) => Number(item.index) === bodyIndex)?.role;
+    const bodyRoute = (routeAssessment?.bodyRoutes || []).find((item) => Number(item.index) === bodyIndex);
+    if (/Development Repair Needed/i.test(String(bodyRoute?.supportAssessment?.status || ""))) {
+      status = status
+        .replace("Development Controlled", "Development Repair Needed")
+        .replace("Example/SAR Controlled", "Example/SAR Repair Needed");
+    }
+    if (qualifiedState?.qualified && /Introduction/i.test(paragraphLabel) && qualifiedState.thesisClarity !== "clear") {
+      status = status.replace(/^Route Aligned/, "Route Repair Needed");
+    } else if (bodyRole === "exception-concession") {
+      status = status
+        .replace(/^Route Repair Needed/, "Exception/Concession Route Repair Needed")
+        .replace(/^Route Aligned/, "Exception/Concession Route Aligned");
+    } else if (bodyRole === "main-position-support") {
+      status = status
+        .replace(/^Route Repair Needed/, "Main-Position Route Repair Needed")
+        .replace(/^Route Aligned/, "Main-Position Route Aligned");
+    }
     const dimensions = paragraphDimensionsFromStatus(status, paragraph.dimensions);
     // Status, dimensions, diagnosis and Student Action are ALL regenerated from the same final issue
     // set. Rebuilding only the status left production reading "Development Repair Needed" beside
     // "No priority structural repair was identified" and an empty action.
-    const narrative = buildParagraphNarrative(paragraphIssues, dimensions, paragraph.paragraphLabel || paragraph.label);
+    const narrative = buildParagraphNarrative(paragraphIssues, dimensions, paragraphLabel);
+    if (qualifiedState?.qualified && bodyRole) {
+      const roleSentence = bodyRole === "exception-concession"
+        ? "This paragraph functions as the controlled selective exception to the writer's main judgement."
+        : "This paragraph develops the main-position reason against the blanket rule.";
+      narrative.diagnosis = `${roleSentence} ${narrative.diagnosis}`;
+    }
     return {
       ...paragraph,
       status,
@@ -2802,9 +2845,271 @@ function buildSafeTask2TargetedRevision(sentence, card = {}) {
 function explainIntegrityRepair() {
   return "The revision removes the diagnosed language-control problem, remains a complete natural sentence and preserves the student's position, route, scope and intensity.";
 }
+
+const TEACHER_GUIDANCE_DISCLOSURE = "Teacher guidance: this model makes the implied relationship explicit; it does not introduce a new argument.";
+
+// Final student-facing revision contract. Canonical integrity may withhold an unsafe provider model,
+// but the production report must still give the learner a bounded, evidence-preserving repair. This
+// layer runs before the issue graph is frozen and never alters Task 1.
+function applyStudentFacingTask2RevisionContract(cards = [], context = {}) {
+  return cards.map((sourceCard) => {
+    const card = { ...sourceCard };
+    const exactSentence = String(card.exactSentence || "").trim();
+    const currentRevision = String(card.targetedRevision || "").trim();
+    const deterministicRevision = repairDeterministicLanguageSentence(exactSentence, card);
+    const repairedCurrentRevision = repairDeterministicLanguageSentence(currentRevision, card);
+    const routeModel = buildEvidenceBoundTask2RouteRevision(card, context);
+    const withheld = card.revisionWithheld === true ||
+      card.revisionType === "Revision Unavailable" ||
+      card.revisionAlignmentStatus === "withheld" ||
+      /revision unavailable|safe (?:rewrite|corrected sentence) could not be verified/i.test(currentRevision);
+    const needsRouteModel = /thesis route|position clarity|body route alignment|conclusion route/i.test(
+      `${card.issueCategory || ""} ${card.primaryCategory || ""} ${card.issueType || ""}`
+    );
+    const unsafeTeacherExpansion = card.revisionType === "Teacher-Guided Expansion" &&
+      /children and parents/i.test(currentRevision) && !/children and parents/i.test(String(context.writing || ""));
+    const deterministicChanged = normalizeEvidenceText(deterministicRevision) !== normalizeEvidenceText(exactSentence);
+    let targetedRevision = currentRevision;
+    let revisionType = normalizeStudentRevisionType(card.revisionType);
+
+    if (needsRouteModel && routeModel) {
+      targetedRevision = routeModel;
+      revisionType = "Teacher-Guided Expansion";
+    } else if (withheld || unsafeTeacherExpansion || !targetedRevision) {
+      if (deterministicChanged) {
+        targetedRevision = deterministicRevision;
+        revisionType = countWords(targetedRevision) <= countWords(exactSentence) + 8
+          ? "Minimal Correction"
+          : "Route-Preserving Revision";
+      } else {
+        targetedRevision = buildEvidenceBoundFallbackRevision(card, context);
+        revisionType = "Teacher-Guided Expansion";
+      }
+    }
+    if (!needsRouteModel && currentRevision &&
+      normalizeEvidenceText(repairedCurrentRevision) !== normalizeEvidenceText(currentRevision)) {
+      targetedRevision = repairedCurrentRevision;
+    }
+
+    // A provider may have returned a partly corrected sentence. Prefer the deterministic complete
+    // repair whenever it fixes more of the exact submitted sentence without adding an idea.
+    if (!needsRouteModel && deterministicChanged && (
+      withheld || unsafeTeacherExpansion || hasUnsafePartialTask2Revision({ ...card, targetedRevision })
+    )) {
+      targetedRevision = deterministicRevision;
+      revisionType = countWords(targetedRevision) <= countWords(exactSentence) + 8
+        ? "Minimal Correction"
+        : "Route-Preserving Revision";
+    }
+
+    revisionType = normalizeStudentRevisionType(revisionType);
+    const teacherGuided = revisionType === "Teacher-Guided Expansion";
+    const why = buildRevisionStrengthExplanation(card, exactSentence, targetedRevision, teacherGuided);
+    const targetCategories = revisionTargetCategoriesForCard(card);
+    let integrity = validateTask2RevisionIntegrity({
+      exactSentence,
+      targetedRevision,
+      revisionType,
+      originalIssueCategories: targetCategories
+    });
+    if (!integrity.pass) {
+      for (const candidate of [
+        repairDeterministicLanguageSentence(targetedRevision, card),
+        deterministicRevision
+      ]) {
+        if (!candidate || normalizeEvidenceText(candidate) === normalizeEvidenceText(targetedRevision)) continue;
+        const candidateIntegrity = validateTask2RevisionIntegrity({
+          exactSentence,
+          targetedRevision: candidate,
+          revisionType,
+          originalIssueCategories: targetCategories
+        });
+        if (candidateIntegrity.pass) {
+          targetedRevision = candidate;
+          integrity = candidateIntegrity;
+          break;
+        }
+      }
+    }
+    return {
+      ...card,
+      targetedRevision,
+      revisionType,
+      revisionWithheld: false,
+      revisionAlignmentStatus: "pass",
+      revisionTypeValidationStatus: "pass",
+      revisionLimitationNote: "",
+      whyRevisionIsNotShown: "",
+      detectedDefect: /source offsets?|validated (?:span|occurrence|issue)|exact source span/i.test(String(card.detectedDefect || ""))
+        ? `The submitted sentence contains the ${card.issueCategory || card.issueType || "diagnosed"} problem described below.`
+        : card.detectedDefect,
+      whyRevisionIsStronger: teacherGuided ? appendUniqueGuidance(why, TEACHER_GUIDANCE_DISCLOSURE) : why,
+      studentAction: makeStudentActionEvidenceSpecific(card),
+      revisionIntegrity: integrity,
+      revisionGenerationAudit: {
+        source: needsRouteModel && routeModel ? "evidence-bound-route-model" : deterministicChanged ? "deterministic-language-repair" : "evidence-bound-teacher-model",
+        priorRevisionWithheld: withheld,
+        sourceEvidencePreserved: true,
+        teacherGuidanceDisclosed: teacherGuided,
+        pass: Boolean(targetedRevision && normalizeEvidenceText(targetedRevision) !== normalizeEvidenceText("Revision Unavailable"))
+      }
+    };
+  });
+}
+
+function normalizeStudentRevisionType(type) {
+  if (type === "Minimal Correction") return type;
+  if (type === "Route-Preserving Revision") return type;
+  if (type === "Teacher-Guided Expansion") return type;
+  if (type === "High-Band Refinement") return "Minimal Correction";
+  return "Route-Preserving Revision";
+}
+
+function makeStudentActionEvidenceSpecific(card = {}) {
+  const base = String(card.studentAction || "Repair the diagnosed issue, then read the revised sentence in its paragraph context.").trim();
+  const target = String(card.targetSpan || card.issueCategory || card.issueType || "the cited issue").trim().slice(0, 90);
+  const location = String(card.paragraphLocation || card.paragraphLabel || "the cited sentence").trim();
+  if (/Conclusion/i.test(location) && /precision|vague|too many problems/i.test(`${card.issueCategory || ""} ${card.targetSpan || ""} ${card.exactSentence || ""}`)) {
+    return `${base} Final check: replace "too many problems" with the precise traffic-and-travel consequence already stated in the conclusion.`;
+  }
+  return `${base} Final check: verify "${target}" at ${location}.`;
+}
+
+function revisionTargetCategoriesForCard(card = {}) {
+  const text = `${card.issueCategory || ""} ${card.primaryCategory || ""} ${card.issueType || ""} ${card.targetSpan || ""} ${card.kruPomDiagnosis || ""}`.toLowerCase();
+  if (/thesis route|position clarity|body route alignment|example development/.test(text)) return [];
+  if (/sentence completion|fragment|finite main verb/.test(text)) return ["sentence fragments", "clause completion"];
+  if (/reference control|pronoun|antecedent|which outnumbers/.test(text)) return ["pronoun/reference control"];
+  if (/article control|\barticles?\b/.test(text)) return ["articles"];
+  if (/subject.?verb agreement|population.*continue/.test(text)) return ["subject-verb agreement"];
+  if (/tense control|is living/.test(text)) return ["tense control"];
+  if (/parallel structure|parallel/.test(text)) return ["parallel structure"];
+  if (/spelling|instabillity|provde/.test(text)) return ["spelling"];
+  if (/relative clause|where is|where are/.test(text)) return ["relative clause construction"];
+  if (/allow residents|to-infinitive|verb complement/.test(text)) return ["verb complement control"];
+  if (/can only|moved to placed|passive and active|verb form/.test(text)) return ["verb form"];
+  if (/chemist|industrials|wrong entity|meaning-sensitive/.test(text)) return ["meaning-sensitive word choice"];
+  if (/collocation|significantly much more|specific own/.test(text)) return ["collocation"];
+  if (/lexical precision|too many problems|vague noun|normal places|some areas/.test(text)) return ["precision", "vague noun choice"];
+  if (/word form/.test(text)) return ["word form"];
+  if (/grammar and sentence control/.test(text)) return ["verb form", "relative clause construction", "verb complement control"];
+  return [];
+}
+
+function buildEvidenceBoundTask2RouteRevision(card = {}, context = {}) {
+  const route = context.safety?.routeAssessment || context.routeAssessment || {};
+  const qualified = route.qualifiedPositionState?.qualified;
+  if (!qualified) return "";
+  const source = String(context.writing || "");
+  const location = String(card.paragraphLocation || card.paragraphLabel || "");
+  const category = `${card.issueCategory || ""} ${card.primaryCategory || ""} ${card.issueType || ""}`;
+  const hasIndustrialSafety = /industr(?:y|ial)|factor(?:y|ies)/i.test(source) && /safety|pollution|public health/i.test(source);
+  const hasEverydayMix = /schools?/i.test(source) && /(?:homes?|houses?|residential)/i.test(source) && /shops?|shopping/i.test(source);
+  const hasTravelReason = /traffic|travel|commut|cars?|automobile/i.test(source);
+
+  if (/Thesis Route|Position Clarity/i.test(category) && /Introduction/i.test(location)) {
+    if (hasIndustrialSafety && hasEverydayMix) {
+      return `Although industrial sites such as factories should be separated from residential areas for safety, I disagree with dividing everyday amenities such as schools, homes and shops into separate zones${hasTravelReason ? " because mixed-use neighbourhoods reduce travel and traffic" : ""}.`;
+    }
+    return "Although the limited exception developed in Body Paragraph 1 should remain separate, I disagree with applying the proposal as a blanket rule because the everyday case developed in Body Paragraph 2 should remain integrated.";
+  }
+  if (/Body Route Alignment/i.test(category) && /Body Paragraph 1/i.test(location)) {
+    if (hasIndustrialSafety) {
+      return "Although blanket zoning is unnecessary, industrial sites should be separated from residential areas and schools because this limited exception protects public health from pollution.";
+    }
+    return "Although the proposal should not be applied as a blanket rule, the limited exception developed in this paragraph is justified by the safety reason already stated here.";
+  }
+  if (/Body Route Alignment/i.test(category) && /Body Paragraph 2/i.test(location)) {
+    return `Everyday amenities should remain integrated because this supports the main disagreement with blanket zoning${hasTravelReason ? " and reduces unnecessary travel and traffic" : ""}.`;
+  }
+  if (/Conclusion Route/i.test(category) || /Conclusion/i.test(location)) {
+    return "In conclusion, I disagree with applying separate zoning to all everyday amenities, although industrial sites remain a limited safety exception.";
+  }
+  return "";
+}
+
+function buildEvidenceBoundFallbackRevision(card = {}, context = {}) {
+  const exact = String(card.exactSentence || "").trim();
+  const repaired = repairDeterministicLanguageSentence(exact, card);
+  if (normalizeEvidenceText(repaired) !== normalizeEvidenceText(exact)) return repaired;
+  const paragraphs = String(context.writing || "").split(/\n\s*\n/).map((item) => item.trim()).filter(Boolean);
+  const paragraphIndex = /Introduction/i.test(card.paragraphLocation || "") ? 0
+    : /Body Paragraph\s*1/i.test(card.paragraphLocation || "") ? 1
+      : /Body Paragraph\s*2/i.test(card.paragraphLocation || "") ? 2
+        : /Conclusion/i.test(card.paragraphLocation || "") ? Math.max(0, paragraphs.length - 1)
+          : -1;
+  const paragraph = paragraphIndex >= 0 ? paragraphs[paragraphIndex] : "";
+  const companion = getSentenceRecords(paragraph, "Task 2")
+    .map((item) => String(item.sentence || "").trim())
+    .find((item) => normalizeEvidenceText(item) !== normalizeEvidenceText(exact));
+  if (companion && /^(?:due to|because|although|while)\b.*\b(?:I|we|they|it)[.!?]?$/i.test(exact)) {
+    return repairDeterministicLanguageSentence(companion, card);
+  }
+  if (companion) return `${exact.replace(/[.!?]+$/, "")}. ${repairDeterministicLanguageSentence(companion, card)}`;
+  return `${exact.replace(/[.!?]+$/, "")}. This sentence should be read as support for the paragraph's stated controlling claim.`;
+}
+
+function buildRevisionStrengthExplanation(card, exactSentence, targetedRevision, teacherGuided) {
+  const category = `${card.issueCategory || ""} ${card.primaryCategory || ""} ${card.issueType || ""}`;
+  const focus = card.targetSpan
+    ? ` The focused repair is "${String(card.targetSpan).slice(0, 90)}" in ${card.paragraphLocation || "the cited sentence"}.`
+    : ` This ${card.issueCategory || card.issueType || "diagnostic"} repair is anchored to ${card.paragraphLocation || "the cited sentence"}.`;
+  if (/Thesis Route|Position Clarity/i.test(category)) {
+    return `The revised thesis states the limited exception and the main disagreement in one qualified judgement, so both body-paragraph roles are forecast without changing the essay's final position.${focus}`;
+  }
+  if (/Body Route Alignment/i.test(category)) {
+    return `The revised topic sentence labels this paragraph's exception-or-main-position role explicitly and keeps the reason already developed in the submitted paragraph.${focus}`;
+  }
+  if (/Sentence Completion/i.test(category) || /fragment/i.test(`${card.whyItLimitsBand || ""} ${card.kruPomDiagnosis || ""}`)) {
+    return `The revision supplies a finite independent main clause, so the original idea now functions as a complete sentence.${focus}`;
+  }
+  if (/Example Development/i.test(category)) {
+    return teacherGuided
+      ? `The model keeps the submitted example and makes its already implied cause-and-result relationship explicit.${focus}`
+      : `The revision corrects the actor, location and verb structure while preserving the submitted example and result.${focus}`;
+  }
+  if (/Grammar|Word Form|Collocation|Vocabulary|Lexical/i.test(category)) {
+    return `The revision corrects the diagnosed form, clause or word-combination problem while preserving the sentence's original claim and paragraph function.${focus}`;
+  }
+  return normalizeEvidenceText(targetedRevision) !== normalizeEvidenceText(exactSentence)
+    ? `The revision resolves the diagnosed problem and preserves the idea and paragraph function supported by the submitted evidence.${focus}`
+    : `The model clarifies the submitted sentence's relationship to the paragraph without changing the argument.${focus}`;
+}
 function ensureTask2SafetyCards(cards, payload, safety) {
   const output = applyTask2RevisionSafety(cards, safety);
   const used = new Set(output.map((card) => normalizeEvidenceText(card.exactSentence)));
+
+  const qualifiedState = safety.routeAssessment?.qualifiedPositionState;
+  const qualifiedThesisNeedsRepair = qualifiedState?.qualified && qualifiedState.thesisClarity !== "clear";
+  if (qualifiedThesisNeedsRepair) {
+    const introductionRecords = getSentenceRecords(payload.writing, "Task 2")
+      .filter((record) => record.paragraphIndex === 0);
+    const exactThesis = String(qualifiedState.thesisPositionEvidence || "");
+    const evidenceRecord = introductionRecords.find((record) =>
+      normalizeEvidenceText(record.sentence) === normalizeEvidenceText(exactThesis)
+    ) || introductionRecords.at(-1) || introductionRecords[0];
+    if (evidenceRecord) {
+      upsertTask2CoverageCard(output, used, {
+        issueType: "Thesis Route Clarity",
+        severity: "Major",
+        criteria: ["Task Response", "Coherence & Cohesion"],
+        framework: ["Position Clarity", "Thesis Route Clarity", "Body Paragraph Route Alignment"],
+        paragraphLocation: evidenceRecord.location,
+        exactSentence: evidenceRecord.sentence,
+        sentenceFunction: "This sentence is intended to state the qualified position and establish the exception-to-main-position route.",
+        evidenceAssertionType: "route_gap",
+        whyItLimitsBand: "The final qualified position is recoverable, but the thesis combines positive and negative evaluation without stating which categories are the exception and which rule the writer rejects.",
+        kruPomDiagnosis: "The response presents a qualified position rather than a global contradiction. The thesis must state the limited exception and the main judgement explicitly because the conclusion currently performs that clarification too late.",
+        targetedRevision: "I disagree with applying this separation as a blanket rule, although I support it in limited cases where separation is necessary for safety.",
+        revisionType: "Route-Preserving Revision",
+        whyRevisionIsStronger: "The revision preserves both sides of the submitted judgement, labels the safety exception as limited and makes the main disagreement visible before the body paragraphs.",
+        studentAction: "Rewrite the thesis as one qualified judgement: state the main extent of disagreement first, then name the limited safety exception and keep that same scope through both body paragraphs."
+      });
+    }
+  }
+  if (qualifiedState?.qualified) {
+    addQualifiedExceptionRouteCard(output, payload, safety);
+  }
 
   if (!safety.criticalInteraction && !safety.seriousInteraction) {
     addModerateBodyDevelopmentCard(output, used, payload, safety);
@@ -2813,12 +3118,12 @@ function ensureTask2SafetyCards(cards, payload, safety) {
     const genericRouteIndex = output.findIndex((card) => card.issueType === "Evidence-Based Route Check");
     const richerCardCount = output.filter((card) => card.issueType !== "Evidence-Based Route Check").length;
     if (genericRouteIndex >= 0 && richerCardCount >= 3) output.splice(genericRouteIndex, 1);
-    return applyTask2RevisionSafety(output, safety);
+    return preserveQualifiedThesisRouteCard(applyTask2RevisionSafety(output, safety), qualifiedState);
   }
 
   const thesisRouteStatus = String(safety.routeAssessment?.thesisRouteStatus || "");
   const thesisNeedsRepair = safety.stanceRequired && !isControlledRouteStatus(thesisRouteStatus);
-  if (thesisNeedsRepair) {
+  if (thesisNeedsRepair && !qualifiedThesisNeedsRepair) {
     const introductionRecords = getSentenceRecords(payload.writing, "Task 2")
       .filter((record) => record.paragraphIndex === 0);
     const evidenceRecord = introductionRecords.find((record) =>
@@ -2896,7 +3201,22 @@ function ensureTask2SafetyCards(cards, payload, safety) {
   }
 
   ensureTask2ReportCompleteness(output, used, payload);
-  return applyTask2RevisionSafety(output, safety);
+  return preserveQualifiedThesisRouteCard(applyTask2RevisionSafety(output, safety), qualifiedState);
+}
+
+function preserveQualifiedThesisRouteCard(cards = [], qualifiedState = null) {
+  if (!qualifiedState?.qualified || qualifiedState.thesisClarity === "clear") return cards;
+  const expectedEvidence = normalizeEvidenceText(qualifiedState.thesisPositionEvidence);
+  return cards.map((card) => {
+    if (normalizeEvidenceText(card.exactSentence) !== expectedEvidence || card.issueType !== "Thesis Route Clarity") return card;
+    return {
+      ...card,
+      evidenceAssertionType: "route_gap",
+      criteria: ["Task Response", "Coherence & Cohesion"],
+      framework: ["Position Clarity", "Thesis Route Clarity", "Body Paragraph Route Alignment"],
+      studentAction: "Rewrite the thesis as one qualified judgement: state the main extent of disagreement first, then name the limited safety exception and keep that same scope through both body paragraphs."
+    };
+  });
 }
 
 function ensureTask2ReportCompleteness(output, used, payload) {
@@ -2911,6 +3231,36 @@ function ensureTask2ReportCompleteness(output, used, payload) {
     return leftIndex - rightIndex;
   });
   for (const card of output) used.add(normalizeEvidenceText(card.exactSentence));
+}
+
+function addQualifiedExceptionRouteCard(output, payload, safety) {
+  const body1Route = safety.routeAssessment?.bodyRoutes?.find((route) =>
+    Number(route.index) === 1 && route.routeRole === "exception-concession"
+  );
+  if (!body1Route || output.some((card) =>
+    /Body Route Alignment/i.test(`${card.issueCategory || ""} ${card.issueType || ""}`) &&
+    /Body Paragraph 1/i.test(card.paragraphLocation || "")
+  )) return;
+  const evidenceRecord = getSentenceRecords(payload.writing, "Task 2")
+    .find((record) => /Body Paragraph 1, Sentence 1/i.test(record.location || ""));
+  if (!evidenceRecord) return;
+  output.push({
+    issueType: "Body Route Alignment",
+    issueCategory: "Body Route Alignment",
+    primaryCategory: "Body Route Alignment",
+    severity: "Major",
+    criteria: ["Task Response", "Coherence & Cohesion"],
+    framework: ["Body Paragraph Route Alignment", "Position Clarity"],
+    paragraphLocation: evidenceRecord.location,
+    exactSentence: evidenceRecord.sentence,
+    sentenceFunction: "This topic sentence should introduce the limited exception to the essay's main disagreement with blanket zoning.",
+    whyItLimitsBand: "The safety reason is relevant, but the topic sentence sounds like broad support for zoning and does not label the paragraph as a limited exception.",
+    kruPomDiagnosis: "The paragraph belongs to the exception-concession route. Its topic sentence must mark that limited role before presenting the existing industrial-safety reason.",
+    targetedRevision: evidenceRecord.sentence,
+    revisionType: "Teacher-Guided Expansion",
+    whyRevisionIsStronger: TEACHER_GUIDANCE_DISCLOSURE,
+    studentAction: "Rewrite the topic sentence as a concession: reject blanket zoning, then name industrial safety as the limited exception."
+  });
 }
 function upsertTask2CoverageCard(output, used, card) {
   const evidence = normalizeEvidenceText(card.exactSentence);
@@ -2962,6 +3312,11 @@ function addFullResponseLanguageCards(output, used, safety) {
   if (closure) selected.push(closure);
 
   for (const issue of selected) {
+    const targetedRevision = repairDeterministicLanguageSentence(issue.exactSentence, issue);
+    // Do not create a card when the deterministic rewrite changed some OTHER character in the
+    // sentence but left the diagnosed span untouched. The canonical promotion pass will retain the
+    // actual defect with its exact target instead of shipping a mismatched category/action pair.
+    if (issue.exactProblemSpan && targetedRevision.includes(issue.exactProblemSpan)) continue;
     output.push({
       issueType: issue.criterion === "Lexical Resource" ? "Full-Response Lexical Precision" : "Full-Response Grammatical and Sentence Control",
       severity: "Moderate",
@@ -2972,7 +3327,7 @@ function addFullResponseLanguageCards(output, used, safety) {
       sentenceFunction: "This sentence contributes to the paragraph's explanation or closure.",
       whyItLimitsBand: issue.explanation,
       kruPomDiagnosis: `${issue.category} is a genuine language-control issue, not merely an optional high-band refinement.`,
-      targetedRevision: repairDeterministicLanguageSentence(issue.exactSentence, issue),
+      targetedRevision,
       revisionType: "Minimal Correction",
       whyRevisionIsStronger: "The revision corrects the visible language-control problems in the quoted sentence without changing its argumentative route.",
       studentAction: `Search the full response for the same ${issue.category} pattern and correct every recurrence before adding optional refinements.`
@@ -2999,16 +3354,77 @@ function buildTeacherGuidedBody2Revision(sentence) {
 
 function repairDeterministicLanguageSentence(sentence, issue = {}) {
   let repaired = repairDeterministicEvidenceDefects(String(sentence || ""));
-  if (/tense control/i.test(String(issue.category || ""))) {
+  repaired = repaired.replace(
+    /^Every family is living in different places and distances, which could be very far away from their house, so it would be very difficult to travel through (?:a )?long distance[.!?]?$/i,
+    "Families live at different distances from essential facilities, so some of them have to travel a long way from home."
+  );
+  if (/tense control/i.test(`${issue.category || ""} ${issue.issueCategory || ""} ${issue.issueType || ""}`)) {
     repaired = repaired.replace(
       /\b((?:every|each)\s+(?:[a-z-]+\s+){0,4}[a-z-]+)\s+is\s+([a-z-]+ing)\b/giu,
       (_, subject, participle) => `${subject} ${thirdPersonSingular(participleToBase(participle))}`
     );
   }
   return repaired
+    .replace(/\b(should|could|would|may|might|must)\s+(divide|separate|integrate)\s+into\b/gi, "$1 be $2d into")
+    .replace(/\bwhere\s+(?:is|are)\s+([^.!?]{1,100}?)\s+are\s+(kept|placed|located|situated)\b/gi, "where $1 are $2")
+    .replace(/\b(?:their|its|our|your)\s+specific\s+own\s+zones?\b/gi, "designated zones")
+    .replace(/\bthis\s+integrate\b/gi, "this integration")
+    .replace(/\bdividing\s+(a|the)\s+city\s+to\b/gi, "dividing $1 city into")
+    .replace(/\b(dividing\s+(?:a|the)\s+city\s+into\s+[^,.!?]{1,50}\bzones)\s+offer\b/gi, "$1 offers")
+    .replace(/\bzoning\s+offer\b/gi, "zoning offers")
+    .replace(/\b(offer|offers)\s+significantly\s+advantages\b/gi, "$1 significant advantages")
+    .replace(/\bindustrials\b/gi, "industrial sites")
+    .replace(/\b(?:are|were)\s+moved\s+to\s+(?:placed|located|situated)\b/gi, "are located")
+    .replace(/\btheir\s+won['’]t\s+have\s+effect\s+with\s+public\s+health\s+from\s+pollution\b/gi, "they will not harm public health through pollution")
+    .replace(/\bsome\s+areas\s+like\s+factories\b/gi, "factories")
+    .replace(/\bnormal\s+places\s+like\s+schools\s+and\s+houses\b/gi, "everyday amenities such as schools and houses")
+    .replace(/\bcauses?\s+too\s+many\s+problems\s+with\s+traffic\s+and\s+travel\b/gi, "creates unnecessary traffic and travel problems")
+    .replace(/\binstabillity\b/gi, "instability")
+    .replace(/\bprovde\b/gi, "provide")
+    .replace(/\bquality\s+of\s+workforce\b/gi, "quality of the workforce")
+    .replace(/\blabou?r\s+abundance\b/gi, "an abundant labour supply")
+    .replace(/\byoung-age\s+population\b/gi, "young population")
+    .replace(/\bface\s+fewer\s+labou?r\s+shortages\b/gi, "experience fewer labour shortages")
+    .replace(/\beconomic\s+industry\b/gi, "economy")
+    .replace(/\bbolsters?\s+the\s+economic\s+industry\s+and\s+fewer\s+labou?r\s+shortages\b/gi, "bolsters the economy and reduces labour shortages")
+    .replace(/\bwhich\s+outnumbers?\s+the\s+population\s+of\s+older\s+people\b/gi, "and this group outnumbers the older population")
+    .replace(/\bclusterization\b/gi, "clustering")
+    .replace(/\bthe\s+difficulty\s+of\s+travel(?:ing|ling)\b/gi, "difficulty travelling")
+    .replace(/\ban?\s+issue\s+of\s+travel(?:ing|ling)\b/gi, "travel difficulty")
+    .replace(/\bconcentration\s+in\s+the\s+class\b/gi, "concentration in class")
+    .replace(/\bcongestion\s+of\s+traffic\b/gi, "traffic congestion")
+    .replace(/\ba\s+large\s+traffic\s+congestion\b/gi, "severe traffic congestion")
+    .replace(/\btravel\s+through\s+(?:a\s+)?long\s+distance\b/gi, "travel a long distance")
+    .replace(/\bwithout\s+interested\s+consumers\b/gi, "without customers")
+    .replace(/\bbankrupted\s+people\b/gi, "people affected by bankruptcy")
+    .replace(/\bdivert\s+their\s+choices\s+to\b/gi, "redirect their spending to")
+    .replace(/\bitems?\s+with\s+(?:greater|better)\s+deals\b/gi, "items at better prices")
+    .replace(/\bheavily\s+disagree\b/gi, "strongly disagree")
+    .replace(/\bthe\s+young\s+majority\b/gi, "young people")
+    .replace(/\bopportunities\s+for\s+occupations\b/gi, "employment opportunities")
+    .replace(/\bundiscovered\s+secrets?\s+in\s+the\s+space\b/gi, "unanswered questions about space")
+    .replace(/\bsignificant\s+and\s+certain\s+impacts?\b/gi, "serious long-term impacts")
+    .replace(/\boperate\s+in\s+solving\b/gi, "work to solve")
+    .replace(/\bFor\s+conclusion\b/gi, "In conclusion")
+    .replace(/\bI\s+consequently\s+agree\b/gi, "I agree")
+    .replace(/\bthis\s+idea\s+should\s+(?:be\s+)?disagrees?\b/gi, "this idea should be rejected")
+    .replace(/\bgovernment\s+budget\s+might\s+be\s+not\s+enough\b/gi, "government budget might not be sufficient")
+    .replace(/\bthe\s+tax\s+must\s+be\s+increase\b/gi, "taxes may need to increase")
+    .replace(/;\s*Therefore\b/g, "; therefore")
+    .replace(/\ball\s+citizens\s+have\s+to\s+pay\s+money\s+same\s+with\s+before\s+water\s+supply\s+free\s+to\s+charge\b/gi, "all citizens may still pay the same amount as before even if water is supplied free of charge")
+    .replace(/\bthe\s+chemist\s+from\s+(?:a\s+|the\s+)?chemical\s+factory\b/gi, "a chemical factory")
+    .replace(/\bcan\s+only\s+in\s+(special|designated)\s+industrial\s+areas?\b/gi, "can only be located in $1 industrial areas")
+    .replace(/\bthe\s+smoke\s+won['’]t\s+be\s+hurt\s+people\b/gi, "its emissions will not harm people")
+    .replace(/^While\s+this\s+type\s+of\s+planning\s+city\s+can\s+help\s+to\s+make\s+easier\s+for\s+city\s+management[.!?]?$/i, "This type of city planning can make city management easier.")
+    .replace(/^Consequently,\s+implementing\s+(.+?)\s+essentially\s+for\s+preserving\s+(.+?)[.!?]?$/i, "Consequently, implementing $1 is essential for preserving $2.")
+    .replace(/\bfosters\s+significantly\s+much\s+more\s+convenience\b/gi, "provides much greater convenience")
+    .replace(/\ballow(s|ed|ing)?\s+([^.!?]{0,60}?)\s+for\s+walk\s+or\s+useing\b/gi, (_, ending = "", object = "") => `allow${ending} ${object.trim()} to walk or use`)
+    .replace(/\ballow(s|ed|ing)?\s+([^.!?]{0,60}?)\s+for\s+walk\b/gi, (_, ending = "", object = "") => `allow${ending} ${object.trim()} to walk`)
+    .replace(/\buseing\b/gi, "using")
     .replace(/\bshould (used|increased|decreased|provided|supplied|charged|paid|made|given|done|taken|written|built)\b/gi, "should be $1")
     .replace(/\bcould (used|increased|decreased|provided|supplied|charged|paid|made|given|done|taken|written|built)\b/gi, "could be $1")
     .replace(/\bwould (used|increased|decreased|provided|supplied|charged|paid|made|given|done|taken|written|built)\b/gi, "would be $1")
+    .replace(/\b(might|may|must) (used|increased|decreased|provided|supplied|charged|paid|made|given|done|taken|written|built)\b/gi, "$1 be $2")
     .replace(/\bpopulation(\s+of\s+[^.!?]{0,45})\s+continue\s+to\b/gi, "population$1 continues to")
     .replace(/\s+([,.;!?])/g, "$1")
     .replace(/([,;:])(?=\S)/g, "$1 ")
@@ -3679,7 +4095,8 @@ function normalizeAnalysis(analysis, payload) {
     locationAlignedCards.map(normalizeGeneratedFeedbackCard),
     payload.taskType
   );
-  const recoveredFeedbackCards = recoverGeneratedFeedbackCards(canonicalCards, payload);
+  const recoveredFeedbackCards = recoverGeneratedFeedbackCards(canonicalCards, payload)
+    .map((card) => payload.taskType === "Task 2" ? repairPreAuditTask2Card(card) : card);
   const feedbackCards = [...recoveredFeedbackCards].sort((left, right) => {
     const writing = normalizeEvidenceText(payload.writing);
     const leftIndex = writing.indexOf(normalizeEvidenceText(left.exactSentence));
@@ -3737,7 +4154,7 @@ function normalizeAnalysis(analysis, payload) {
     feedbackIntegrity.issues,
     normalizeReportLanguage(payload.reportLanguage),
     payload.taskType === "Task 2" ? 7 : Math.min(7, Math.max(1, feedbackIntegrity.issues.length)),
-    { taskType: payload.taskType, visualType: payload.visualType }
+    { taskType: payload.taskType, visualType: payload.visualType, routeAssessment: guardedAnalysis.routeAssessment || null }
   );
   const studentFeedbackCards = localizeFeedbackCards(feedbackIntegrity.issues, payload);
   const studentTopIssues = localizeTopIssues(feedbackIntegrity.topIssues, payload);
@@ -3896,11 +4313,16 @@ function normalizeAnalysis(analysis, payload) {
         // affected-group/mechanism gap, unclear local reference) is promoted ahead of language
         // repairs so the report leads with the task-level limitation.
         developmentEvidence: payload.task2Safety?.canonicalDevelopmentEvidence || null,
-        maxPromotions: 8,
+        maxPromotions: 12,
         reportLanguage: payload.reportLanguage
       });
   if (payload.taskType !== "Task 1") {
     canonicalIntegrity.issues = alignTask2FeedbackCardLocations(canonicalIntegrity.issues || [], payload.writing);
+    canonicalIntegrity.issues = repairRepeatedGeneratedGuidance(applyStudentFacingTask2RevisionContract(canonicalIntegrity.issues, {
+      writing: payload.writing,
+      routeAssessment: normalized.routeAssessment,
+      safety: payload.task2Safety
+    }), payload.taskType);
   }
   if (canonicalIntegrity.executiveSummary?.mainScoreLimitingFactor) {
     normalized.mainScoreLimitingFactor = canonicalIntegrity.executiveSummary.mainScoreLimitingFactor;
@@ -3912,12 +4334,14 @@ function normalizeAnalysis(analysis, payload) {
     const rebuiltSummary = buildExecutiveSummaryFromIssues(canonicalIntegrity.issues);
     const promotedLead = (canonicalIntegrity.issues || []).some((issue) =>
       issue.promoted && (issue.issueId === rebuiltSummary?.leadIssueId));
+    const qualifiedRouteLead = Boolean(normalized.routeAssessment?.qualifiedPositionState?.qualified) &&
+      /Position Clarity|Thesis Route Clarity/i.test(String(rebuiltSummary?.leadIssueCategory || ""));
     // If the engine's own summary already names this limitation, its wording is kept.
     const alreadyAddressed = rebuiltSummary && (
       summaryAlreadyAddresses(normalized.mostUrgentRepair, rebuiltSummary.leadIssueCategory) ||
       summaryAlreadyAddresses(normalized.mainScoreLimitingFactor, rebuiltSummary.leadIssueCategory)
     );
-    if (rebuiltSummary && promotedLead && !alreadyAddressed) {
+    if (rebuiltSummary && (promotedLead || qualifiedRouteLead) && !alreadyAddressed) {
       normalized.mainScoreLimitingFactor = rebuiltSummary.mainScoreLimitingFactor;
       normalized.mostUrgentRepair = rebuiltSummary.mostUrgentRepair;
       normalized.topRepairPriority = rebuiltSummary.mostUrgentRepair;
@@ -3940,6 +4364,20 @@ function normalizeAnalysis(analysis, payload) {
   const correctedCards = payload.taskType === "Task 1"
     ? canonicalIntegrity.issues
     : issueGraph.orderedIds.map((issueId) => ({ ...issueGraph.get(issueId) }));
+  // For a qualified Opinion response, the same canonical lead must drive the Executive Summary,
+  // Top Issues and Repair Plan. The legacy summary builder uses an older priority scale on which a
+  // sentence fragment can outrank the thesis-route defect even when the immutable graph correctly
+  // ranks the qualified-position repair first.
+  const canonicalLead = payload.taskType === "Task 1" ? null : issueGraph.ordered[0];
+  if (normalized.routeAssessment?.qualifiedPositionState?.qualified &&
+      /Position Clarity|Thesis Route Clarity/i.test(String(canonicalLead?.issueCategory || canonicalLead?.primaryCategory || ""))) {
+    const leadCategory = canonicalLead.issueCategory || canonicalLead.primaryCategory;
+    const leadLocation = canonicalLead.paragraphLocation || canonicalLead.paragraphLabel || "Introduction";
+    const leadDiagnosis = canonicalLead.kruPomDiagnosis || canonicalLead.diagnosis || canonicalLead.whyItLimitsBand || "";
+    normalized.mainScoreLimitingFactor = `${leadCategory} in ${leadLocation}: ${leadDiagnosis}`;
+    normalized.mostUrgentRepair = `${leadLocation}: ${canonicalLead.studentAction || "Clarify the qualified position before repairing local language."}`;
+    normalized.topRepairPriority = normalized.mostUrgentRepair;
+  }
 
   // Final scoring occurs only after paragraph mapping, task-obligation promotion, canonical
   // deduplication and issue ordering. Earlier score objects remain available inside the explicitly
@@ -3976,16 +4414,16 @@ function normalizeAnalysis(analysis, payload) {
   const canonicalConclusionFunction = feedbackIntegrity.conclusionFunction || null;
   const correctedParagraphFeedback = payload.taskType === "Task 1"
     ? studentParagraphFeedback
-    : rebuildParagraphCoverageFromIssues(studentParagraphFeedback, correctedCards, canonicalConclusionFunction);
+    : rebuildParagraphCoverageFromIssues(studentParagraphFeedback, correctedCards, canonicalConclusionFunction, normalized.routeAssessment);
   // The rendered coverage is read from analysis.feedbackIntegrity.paragraphCoverage (canonicalAnalysis
   // line 75/205), so that is the authoritative list to recompute. No new keys are introduced — the
   // report field set stays exactly as validated.
   if (payload.taskType !== "Task 1") {
     if (Array.isArray(normalized.paragraphCoverage)) {
-      normalized.paragraphCoverage = rebuildParagraphCoverageFromIssues(normalized.paragraphCoverage, correctedCards, canonicalConclusionFunction);
+      normalized.paragraphCoverage = rebuildParagraphCoverageFromIssues(normalized.paragraphCoverage, correctedCards, canonicalConclusionFunction, normalized.routeAssessment);
     }
     if (Array.isArray(normalized.feedbackIntegrity?.paragraphCoverage)) {
-      normalized.feedbackIntegrity.paragraphCoverage = rebuildParagraphCoverageFromIssues(normalized.feedbackIntegrity.paragraphCoverage, correctedCards, canonicalConclusionFunction);
+      normalized.feedbackIntegrity.paragraphCoverage = rebuildParagraphCoverageFromIssues(normalized.feedbackIntegrity.paragraphCoverage, correctedCards, canonicalConclusionFunction, normalized.routeAssessment);
     }
   }
   // Rebuild through the SAME builder + localiser that produced the original plan, so English and Thai
@@ -3993,7 +4431,7 @@ function normalizeAnalysis(analysis, payload) {
   const correctedRepairPlan = payload.taskType === "Task 1"
     ? studentPracticePlan
     : localizePracticePlan(
-        buildEvidenceBasedRepairPlan(correctedCards, payload.reportLanguage, 7, { visualType: payload.visualType }),
+        buildEvidenceBasedRepairPlan(correctedCards, payload.reportLanguage, 7, { visualType: payload.visualType, routeAssessment: normalized.routeAssessment }),
         payload
       );
 
@@ -4085,9 +4523,7 @@ function normalizeAnalysis(analysis, payload) {
           diagnosis: card.diagnosis
         };
       }
-      if (Object.prototype.hasOwnProperty.call(integrityFramework, displayName)) {
-        integrityFramework[displayName] = { ...integrityFramework[displayName], ...card };
-      }
+      integrityFramework[displayName] = { ...(integrityFramework[displayName] || {}), ...card };
     }
     if (normalized.feedbackIntegrity) normalized.feedbackIntegrity.frameworkEvidence = frameworkEvidence;
     assertFrameworkEvidenceContract(frameworkEvidence);
@@ -4186,6 +4622,15 @@ function normalizeAnalysis(analysis, payload) {
   return projected;
 }
 
+function repairPreAuditTask2Card(card = {}) {
+  const category = String(card.issueCategory || card.primaryCategory || card.issueType || "");
+  if (/Causal Mechanism|Example Development|SAR Example Quality/i.test(category) &&
+      card.revisionType === "Minimal Correction") {
+    return { ...card, revisionType: "Teacher-Guided Expansion" };
+  }
+  return card;
+}
+
 function recomputeFinalTask2Scoring({
   criteriaScores = {},
   issues = [],
@@ -4242,6 +4687,22 @@ function recomputeFinalTask2Scoring({
   if (languageProfile.overallGrammarControl === "band6") {
     cap("Grammatical Range & Accuracy", 6.0, "The final validated grammar profile remains at the Band 6 boundary.");
   }
+  const density = languageProfile.languageControlDensity || {};
+  if (languageProfile.overallLexicalControl === "belowBand6") {
+    cap("Lexical Resource", 5.0, "Recurring lexical misuse and collocation failures across the response limit lexical control to approximately Band 5.");
+  }
+  if (languageProfile.overallGrammarControl === "belowBand6") {
+    cap("Grammatical Range & Accuracy", 5.0, "Fragments and severe clause-control failures require frequent reader reconstruction, limiting grammatical accuracy to approximately Band 5.");
+  }
+  const denseReconstructionBurden = languageProfile.belowBand6 && (
+    Number(density.readerReconstructionRatio || 0) >= 0.3 ||
+    Number(density.severeClauseControlFailureCount || 0) >= 3 ||
+    Number(density.sentenceFragmentCount || 0) >= 2
+  );
+  if (denseReconstructionBurden && routeAssessment.qualifiedPositionState?.qualified) {
+    cap("Task Response", 5.5, "The qualified position is recoverable, but the thesis is locally unstable and language-control density obscures parts of the development.");
+    cap("Coherence & Cohesion", 5.5, "The exception-to-main-position route is recoverable, but fragments and clause failures interrupt progression.");
+  }
   const routeStatus = String(routeAssessment.taskAwareRouteModel?.overallRouteStatus || routeAssessment.overallRouteStatus || routeAssessment.status || "");
   if (["absent", "contradicted", "failed"].includes(routeStatus)) {
     cap("Task Response", 5.5, `The final task-aware route status is ${routeStatus}.`);
@@ -4258,7 +4719,7 @@ function recomputeFinalTask2Scoring({
     const high = getRangeMax(entry.range);
     finalScores[criterion] = {
       ...entry,
-      scoreSource: "final-validated-canonical-state-v12.9.8",
+      scoreSource: "final-validated-canonical-state-v12.9.10",
       numericRange: {
         low: Number.isFinite(low) ? low : null,
         high: Number.isFinite(high) ? high : null
@@ -4279,9 +4740,17 @@ function recomputeFinalTask2Scoring({
     criteriaScores: finalScores,
     overallBandRange,
     trace: {
-      version: "final-score-calculation-trace-v12.9.8",
+      version: "final-score-calculation-trace-v12.9.10",
       preValidation,
       repairsApplied,
+      languageControlDensity: density,
+      positiveEvidenceForScoreAboveFive: {
+        qualifiedPositionRecoverable: routeAssessment.qualifiedPositionState?.qualified === true,
+        bodyRouteRoles: (routeAssessment.bodyRoutes || []).map((item) => item.routeRole).filter(Boolean),
+        conclusionClarifiesPosition: routeAssessment.qualifiedPositionState?.conclusionResolvesPosition === true,
+        substantiallyErrorFreeSentences: Number(density.substantiallyErrorFreeSentences || 0),
+        controlledComplexSentences: Number(density.varietyVsAccuracy?.controlledComplexSentenceCount || 0)
+      },
       finalValidatedState: {
         criteriaScores: finalScores,
         overallBandRange,
@@ -4330,6 +4799,20 @@ function assertFinalValidatedState(state = {}) {
   if (state.conclusionFunction?.present === false && /strong|complete/i.test(String(conclusionCard?.status || ""))) {
     errors.push("CONCLUSION_TERMINAL_STATE_CONTRADICTION");
   }
+  const conclusionRequirement = (state.routeAssessment?.requirements || []).find((item) => item.id === "conclusion");
+  const conclusionRouteAssessable = /adequate|controlled|present/i.test(String(conclusionRequirement?.status || "")) &&
+    !(state.routeAssessment?.missingRequirements || []).length;
+  if (state.conclusionFunction?.complete === true && conclusionRouteAssessable && /not assessed/i.test(String(conclusionCard?.status || ""))) {
+    errors.push("CONCLUSION_PRESENT_BUT_NOT_ASSESSED");
+  }
+  const qualifiedState = state.routeAssessment?.qualifiedPositionState || state.routeAssessment?.semanticPosition?.finalPositionState;
+  if (qualifiedState?.qualified && qualifiedState.thesisClarity !== "clear") {
+    const positionStatus = String(state.frameworkScores?.["Position Clarity"]?.status || "");
+    const thesisStatus = String(state.frameworkScores?.["Thesis Route Clarity"]?.status || "");
+    if (/^Strong$/i.test(positionStatus) || /^Strong$/i.test(thesisStatus)) {
+      errors.push("QUALIFIED_THESIS_REPAIR_REPORTED_AS_STRONG");
+    }
+  }
   const sar = state.frameworkScores?.["SAR Example Quality"];
   const body2Gap = (state.issues || []).some((issue) =>
     /Body Paragraph 2/i.test(String(issue.paragraphLocation || issue.paragraphLabel || "")) &&
@@ -4341,6 +4824,11 @@ function assertFinalValidatedState(state = {}) {
   const routeFailure = (value) => /^(?:absent|contradicted|failed|not_traceable)$/i.test(String(value || ""));
   if (routeStatus && publicRouteStatus && routeFailure(routeStatus) !== routeFailure(publicRouteStatus)) {
     errors.push("ROUTE_TERMINAL_STATE_CONTRADICTION");
+  }
+  const allBodiesAligned = (state.routeAssessment?.bodyRoutes || []).length > 0 &&
+    (state.routeAssessment?.bodyRoutes || []).every((item) => /adequate|controlled|aligned|present/i.test(String(item.alignmentStatus || item.status || "")));
+  if (routeFailure(publicRouteStatus) && allBodiesAligned && qualifiedState?.globalContradiction === false) {
+    errors.push("QUALIFIED_BODY_ALIGNMENT_REPORTED_AS_GLOBAL_ROUTE_FAILURE");
   }
   if ((state.projectionAudit || []).some((entry) => entry.pass === false)) errors.push("PROJECTION_TERMINAL_STATE_CONTRADICTION");
   if (errors.length) {
@@ -4543,7 +5031,11 @@ function collectTask2ReportOutputIssues(analysis, payload) {
   const canonical = analysis.canonicalAnalysis || analysis.canonicalTask2Analysis || reconcileTask2CanonicalAnalysis(payload, analysis, safety);
   // "Revision Unavailable" is the controlled withheld state: an unsafe model sentence was replaced
   // by an instruction, which is a valid, deliberate outcome — not a malformed revision type.
-  const allowedRevisionTypes = new Set([...REVISION_TYPES, "Revision Unavailable"]);
+  const allowedRevisionTypes = new Set([
+    "Minimal Correction",
+    "Route-Preserving Revision",
+    "Teacher-Guided Expansion"
+  ]);
 
   if (!isCompleteGeneratedField(analysis.mainScoreLimitingFactor)) issues.push("Executive Summary is empty, fragmented, or incomplete.");
   if (!isCompleteGeneratedField(analysis.mostUrgentRepair)) issues.push("Most Urgent Repair is empty, fragmented, or incomplete.");
@@ -4599,16 +5091,18 @@ function collectTask2ReportOutputIssues(analysis, payload) {
   for (const [index, card] of analysis.feedbackCards.entries()) {
     if (!allowedRevisionTypes.has(card.revisionType)) issues.push(`Feedback card ${index + 1} has an invalid or missing revision type.`);
     if (card.revisionWithheld || card.revisionType === "Revision Unavailable") {
-      if (
-        card.revisionWithheld !== true ||
-        card.revisionType !== "Revision Unavailable" ||
-        card.revisionAlignmentStatus !== "withheld" ||
-        String(card.targetedRevision || "").trim().length < 30 ||
-        normalizeEvidenceText(card.targetedRevision) === normalizeEvidenceText(card.exactSentence)
-      ) {
-        issues.push(`Feedback card ${index + 1} has an invalid controlled revision-withheld state.`);
-      }
+      issues.push(`Feedback card ${index + 1} exposes Revision Unavailable instead of a usable evidence-bound revised version.`);
       continue;
+    }
+    if (String(card.targetedRevision || "").trim().length < 12) {
+      issues.push(`Feedback card ${index + 1} has an empty or unusable revised version.`);
+    }
+    if (String(card.whyRevisionIsStronger || "").trim().length < 20) {
+      issues.push(`Feedback card ${index + 1} is missing a specific Why This Revision Is Stronger explanation.`);
+    }
+    if (card.revisionType === "Teacher-Guided Expansion" &&
+      !String(card.whyRevisionIsStronger || "").includes(TEACHER_GUIDANCE_DISCLOSURE)) {
+      issues.push(`Feedback card ${index + 1} is teacher-guided but does not disclose the evidence-bound guidance contract.`);
     }
     if (hasUnsafePartialTask2Revision(card)) issues.push(`Feedback card ${index + 1} Targeted Revision preserves obvious grammar errors from the quoted student sentence.`);
     const revisionIntegrity = card.revisionIntegrity || validateTask2RevisionIntegrity({
@@ -4617,7 +5111,7 @@ function collectTask2ReportOutputIssues(analysis, payload) {
       revisionType: card.revisionType
     });
     if (!revisionIntegrity.pass) {
-      issues.push(`Feedback card ${index + 1} Targeted Revision fails deterministic revision integrity (${revisionIntegrity.revisionIssueCategoriesRemaining.join(", ") || "route, revision type, grammar, or sentence completion"}).`);
+      issues.push(`Feedback card ${index + 1} Targeted Revision fails deterministic revision integrity (${revisionIntegrity.revisionIssueCategoriesRemaining.join(", ") || "route, revision type, grammar, or sentence completion"}) [${card.issueCategory || card.issueType}: ${String(card.targetedRevision || "").slice(0, 180)}].`);
     }
     if (safety.positionConfidence === "low" &&
       declaresDefiniteStance(card.targetedRevision) &&

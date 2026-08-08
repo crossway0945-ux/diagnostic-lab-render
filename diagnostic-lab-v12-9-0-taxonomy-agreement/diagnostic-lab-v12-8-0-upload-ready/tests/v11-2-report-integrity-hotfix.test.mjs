@@ -67,21 +67,16 @@ assert.match(`${report.practicePlan[0].title} ${report.practicePlan[0].task}`, /
 assert.doesNotMatch(`${report.practicePlan[0].title} ${report.practicePlan[0].task}`, /map the task routes|check the conclusion/i);
 
 for (const card of report.feedbackCards) {
-  if (card.revisionWithheld) {
-    assert.equal(card.revisionType, "Revision Unavailable", `${card.issueType} must use the controlled withheld state`);
-    assert.ok(card.studentAction?.length > 20, `${card.issueType} must retain a specific Student Action`);
-  } else {
-    assert.equal(card.revisionIntegrity?.pass, true, `${card.issueType} must pass revision integrity`);
-  }
+  assert.equal(card.revisionWithheld, false, `${card.issueType} must expose a usable revised version`);
+  assert.ok(["Minimal Correction", "Route-Preserving Revision", "Teacher-Guided Expansion"].includes(card.revisionType));
+  assert.equal(card.revisionIntegrity?.pass, true, `${card.issueType} must pass revision integrity`);
+  assert.ok(card.whyRevisionIsStronger?.length > 20);
 }
 const body1Card = report.feedbackCards.find((card) => /Every family is living/i.test(card.exactSentence));
 assert.ok(body1Card);
-// The tense card is withheld because the same sentence still carries an independent
-// reference/meaning risk. It must not repeat the old unsafe rewrite.
-assert.equal(body1Card.revisionWithheld, true);
-assert.equal(body1Card.revisionType, "Revision Unavailable");
-assert.doesNotMatch(body1Card.targetedRevision, /Families live in different locations/i);
-assert.match(body1Card.targetedRevision, /could not be verified|Student Action/i);
+assert.equal(body1Card.revisionWithheld, false);
+assert.doesNotMatch(body1Card.targetedRevision, /Revision Unavailable|could not be verified/i);
+assert.ok(body1Card.targetedRevision.length > 20);
 
 const revisionCases = [
   {

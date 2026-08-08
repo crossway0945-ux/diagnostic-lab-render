@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Diagnostic report release renderer</title>
+</head>
+<body>
+  <p id="status">Preparing report…</p>
+  <script type="module">
+    const params = new URLSearchParams(location.search);
+    const inputUrl = params.get("input");
+    const scriptUrl = params.get("script");
+    if (!inputUrl || !scriptUrl) throw new Error("Both input and script query parameters are required.");
+    const inputResponse = await fetch(inputUrl, { cache: "no-store" });
+    if (!inputResponse.ok) throw new Error(`Render input could not be loaded (${inputResponse.status}).`);
+    const input = await inputResponse.json();
+    const { prepareDiagnosticPrintFrameForQa } = await import(scriptUrl);
+    const frame = await prepareDiagnosticPrintFrameForQa(input);
+    const prepared = frame.contentDocument;
+    if (!prepared) throw new Error("The isolated print document was not created.");
+    prepared.documentElement.dataset.releaseQaReady = "true";
+    document.open();
+    document.write(`<!doctype html>${prepared.documentElement.outerHTML}`);
+    document.close();
+  </script>
+</body>
+</html>

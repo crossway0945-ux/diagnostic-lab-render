@@ -53,6 +53,10 @@ RELEASE_DOCS = [
     "MIGRATION.md",
     "ROLLBACK.md",
     "PRODUCTION-SMOKE-TEST.md",
+    "CHANGE-SCOPE.md",
+    "PROTECTED-SYSTEMS-RESULT.md",
+    "REGRESSION-MATRIX.md",
+    "EARLY-BIRD-COPY-REMOVAL.md",
 ]
 
 
@@ -203,23 +207,24 @@ No database or report-data migration is required.
 2. Upload the extracted changed-files package into the existing repository parent
    `diagnostic-lab-v12-9-0-taxonomy-agreement/`, so its preserved
    `diagnostic-lab-v12-8-0-upload-ready/` wrapper overwrites the live source root.
-3. Commit to `main` with `Release v12.9.8 diagnostic integrity and paragraph mapping fixes`.
+3. Review `CHANGED-FILES-MANIFEST.txt`, then commit the Stage 0 global prompt-coverage update.
 4. Wait for Render to build with `npm install` and start with `npm start`.
 5. Run every item in `PRODUCTION-SMOKE-TEST.md`.
 
-The IELTS/Kru Pom rubric and provider prompt are unchanged. Stored V12.9.7 reports remain readable.
+The IELTS/Kru Pom rubric, provider prompt, application version and storage schema are unchanged.
+This package does not deploy itself.
 """,
         encoding="utf-8",
     )
     (root / "ROLLBACK.md").write_text(
-        """# Rollback from V12.9.8
+        """# Rollback — V12.9.8 Stage 0 Control Update
 
-1. In Render, redeploy the last known-good V12.9.7 commit.
+1. In Render, redeploy the last known-good commit from immediately before this Stage 0 update.
 2. Do not delete or recreate the persistent disk.
-3. Confirm `/api/health` reports `appVersion: 12.9.7`.
+3. Confirm `/api/health` still reports `appVersion: 12.9.8`.
 4. Re-run one cached-report read and one administrator access check.
 
-V12.9.8 introduces no irreversible storage migration. Rollback does not require deleting reports,
+This update introduces no version or irreversible storage migration. Rollback does not require deleting reports,
 users, quota records, jobs, audit records or sessions. Permanent Delete remains disabled.
 """,
         encoding="utf-8",
@@ -242,7 +247,7 @@ users, quota records, jobs, audit records or sessions. Permanent Delete remains 
 - Produces four paragraphs, approximately Band 6.0, SAR Mixed and a functionally strong conclusion
   with language repair.
 - Top Issues, Paragraph Coverage and Repair Plan remain aligned.
-- PDF is approximately 10–16 pages, searchable, and free of internal IDs and Unicode corruption.
+- PDF is approximately 10-16 pages, searchable, and free of internal IDs and Unicode corruption.
 
 ## Evin and Task 1
 
@@ -262,14 +267,14 @@ users, quota records, jobs, audit records or sessions. Permanent Delete remains 
     (root / "COMPLETION-SUMMARY.md").write_text(
         """# V12.9.8 Completion Summary
 
-This release converts the verified V12.9.7 Stop-Ship working tree into a complete upload-ready
-candidate. It preserves the full application, all tests, public assets and release tooling; adds an
-authoritative paragraph map and fail-closed consistency checks; updates release contracts to
-V12.9.8; and packages a full-source ZIP separately from the GitHub changed-files ZIP.
+This Stage 0 update starts from the authoritative V12.9.8 full-source ZIP and preserves the complete
+application, tests, public assets, release tooling, package version and deployment contract. It fixes
+semantic obligation extraction for coordinated and hybrid Task 2 prompts, keeps Task 1 family rules
+intact, and removes commercial Early-Bird/Founder/pricing copy only from tester/student-facing output.
 
-The 51-file V12.9.7 archive was a changed-only upload subset. It was never the full source. The
-V12.9.7 full package contained 126 files and the GitHub deployed source root contained 127 files.
-This release publishes machine-readable inventories and checksums so those roles cannot be confused.
+The full-source ZIP and GitHub changed-files ZIP deliberately have different file counts. The first
+is the complete upload wrapper; the second contains only added or modified files relative to deployed
+GitHub main. No source or test is removed merely to stay below the GitHub web-upload limit.
 """,
         encoding="utf-8",
     )
@@ -395,16 +400,16 @@ def write_release_docs(
     inventory_diff = f"""# V{RELEASE} Inventory Diff
 
 The deployed GitHub baseline is the `main` branch source root at
-`{REPOSITORY_PARENT}/{WRAPPER}/`. The V12.9.7 full package is the Stop-Ship handoff baseline.
-The V12.9.0 internal-validation ZIP is retained as the earlier full-package comparison.
+`{REPOSITORY_PARENT}/{WRAPPER}/`. The supplied V12.9.8 full-source ZIP is the authoritative
+starting/handoff baseline and the prior-validation comparison.
 
 {deletion_note}
 
 {diff_section("Deployed GitHub main baseline", deployed_diff)}
 
-{diff_section("Previous full V12.9.0 internal-validation package", validation_diff)}
+{diff_section("Authoritative supplied V12.9.8 full-source ZIP", validation_diff)}
 
-{diff_section("V12.9.7 Stop-Ship handoff package", handoff_diff)}
+{diff_section("Authoritative V12.9.8 handoff tree", handoff_diff)}
 """
     (root / "INVENTORY-DIFF.md").write_text(inventory_diff, encoding="utf-8")
 
@@ -412,7 +417,7 @@ The V12.9.0 internal-validation ZIP is retained as the earlier full-package comp
 
 ## Identity
 
-- Starting deployed application version: 12.9.7
+- Starting deployed application version: 12.9.8
 - Final application version: 12.9.8
 - Preserved source wrapper: `{WRAPPER}/`
 - Existing repository parent: `{REPOSITORY_PARENT}/`
@@ -421,12 +426,11 @@ The V12.9.0 internal-validation ZIP is retained as the earlier full-package comp
 - Full release file count: {len(release_rows)}
 - Test-file count: {sum(1 for row in release_rows if row['classification'] == 'test' and row['path'].endswith('.test.mjs'))}
 
-## Why the user saw 51 files
+## Why package file counts differ
 
-`diagnostic-lab-v12.9.7-GITHUB-CHANGED-FILES.zip` contained exactly 51 added or modified files
-relative to its V12.9.0 packaging baseline. It was a GitHub overwrite subset, not a full source
-archive. The matching V12.9.7 full source archive contained 126 files. GitHub `main` currently
-contains 127 files in the deployed source root.
+The full ZIP is the complete release-safe source. The GitHub changed-files ZIP is an overwrite subset
+calculated against deployed `main`; it is not a second copy of the full application. File removal is
+not used to satisfy GitHub's 100-file web-upload limit.
 
 ## V12.9.8 Git baseline diff
 
@@ -438,15 +442,15 @@ contains 127 files in the deployed source root.
 
 ## Protected-system verification
 
-- Source check: 102 JavaScript modules passed.
-- Complete suite: 42 test files passed before packaging.
+- Source check: 106 JavaScript modules passed.
+- Complete suite: 46 test files passed before packaging.
 - Eva: four-paragraph map, route, Band 6.0 boundary, SAR Mixed, conclusion closure and issue/action
   parity passed.
 - Evin and Sun route/language regressions passed.
 - Task 1 chart, map, process and mixed-graph regressions passed.
 - Async-render, durable jobs, idempotency, quota, admin authentication, CSRF, lifecycle guards,
   audit, session revocation, archive/restore and anonymisation regressions passed.
-- PDF binary/text acceptance evidence from the verified working tree passed 11/11 page inspection.
+- PDF binary/text acceptance evidence passed all 25 rendered pages (Eva 13, Evin 12).
 
 ## Packaging policy
 
@@ -610,7 +614,7 @@ def main() -> None:
 
     full_zip = output_root / f"diagnostic-lab-v{RELEASE}-full-release.zip"
     changed_zip = output_root / f"diagnostic-lab-v{RELEASE}-GITHUB-CHANGED-FILES.zip"
-    patch = output_root / f"PATCH-v12.9.7-to-v{RELEASE}.patch"
+    patch = output_root / f"PATCH-deployed-main-to-v{RELEASE}-stage0.patch"
 
     changed_upload = sorted(set(deployed_diff["added"]) | set(deployed_diff["modified"]))
     write_zip(full_zip, current_paths)

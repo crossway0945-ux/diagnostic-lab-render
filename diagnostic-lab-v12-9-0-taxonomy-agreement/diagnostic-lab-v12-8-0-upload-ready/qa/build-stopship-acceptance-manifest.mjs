@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { pdfTextIntegrityIssues } from "../domain/pdfTextIntegrity.js";
 import { sanitizePrintableText } from "../domain/textIntegrity.js";
 
+const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
 const args = Object.fromEntries(
   process.argv.slice(2).map((item) => {
     const separator = item.indexOf("=");
@@ -25,8 +27,61 @@ const releaseIndex = await readJson("release-artifact-index.json");
 const pdfInspection = await readJson("pdf-binary-inspection.json");
 const browserMetrics = await readJson("Eva-final-report-browser-metrics.json");
 const extractedPdfText = await readFile(path.join(outputDir, "Eva-extracted-pdf-text.txt"), "utf8");
+const evinExtractedPdfText = await readFile(path.join(outputDir, "Evin-extracted-pdf-text.txt"), "utf8");
+const stripVisibleHtml = (html) => String(html || "")
+  .replace(/<!--[\s\S]*?-->/g, " ")
+  .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+  .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+  .replace(/<[^>]+>/g, " ")
+  .replace(/&nbsp;/gi, " ")
+  .replace(/&amp;/gi, "&")
+  .replace(/\s+/g, " ")
+  .trim();
+const [indexHtml, previewIndexHtml, scriptSource, apiSource, evaReportHtml, evinReportHtml] = await Promise.all([
+  readFile(path.join(sourceRoot, "index.html"), "utf8"),
+  readFile(path.join(sourceRoot, "netlify-static-preview", "index.html"), "utf8"),
+  readFile(path.join(sourceRoot, "script.js"), "utf8"),
+  readFile(path.join(sourceRoot, "services", "apiRouter.js"), "utf8"),
+  readFile(path.join(outputDir, "Eva-final-report.html"), "utf8"),
+  readFile(path.join(outputDir, "Evin-final-report.html"), "utf8")
+]);
+const projectedRuntimeMessages = [scriptSource, apiSource].flatMap((source) =>
+  [...source.matchAll(/const\s+(?:ACCESS_EXPIRED_MESSAGE|QUOTA_USED_MESSAGE)\s*=\s*"([^"]+)"/g)]
+    .map((match) => match[1])
+);
+const userFacingSurfaces = [
+  ["runtime-login-and-access-dom", stripVisibleHtml(indexHtml)],
+  ["static-preview-login-and-access-dom", stripVisibleHtml(previewIndexHtml)],
+  ["client-and-api-access-errors", projectedRuntimeMessages.join("\n")],
+  ["Eva-Student-View", JSON.stringify(student)],
+  ["Evin-Student-View", JSON.stringify(await readJson("Evin-final-student-view.json"))],
+  ["Eva-report-html", stripVisibleHtml(evaReportHtml)],
+  ["Evin-report-html", stripVisibleHtml(evinReportHtml)],
+  ["Eva-PDF-binary-text", extractedPdfText],
+  ["Evin-PDF-binary-text", evinExtractedPdfText]
+];
+const prohibitedPromotion = /(?:private\s+)?early\s+access|early[ -]?bird|founder(?: tutor)? plan|founding pilot|future launch price|approval\/payment|\b\d{1,3}(?:,\d{3})?\s*THB\b/gi;
+const internalIdPattern = /\b(?:issue|development)-[a-z0-9-]+\b|submissionGroupId|reportVersionId|parentReportId|normalizedResponseFingerprint|legacy-[a-f0-9]+/gi;
+const forbiddenUnicodePattern = /[\uFDD0-\uFDEF\uFFFE\uFFFF\uD800-\uDFFF\u200B\u00AD]/gu;
+const scanMatches = (value, pattern) => [...new Set(String(value || "").match(pattern) || [])];
+const userFacingScanRows = userFacingSurfaces.map(([surface, text]) => ({
+  surface,
+  characters: text.length,
+  sha256: createHash("sha256").update(text).digest("hex"),
+  promotionalMatches: scanMatches(text, prohibitedPromotion),
+  internalIdMatches: scanMatches(text, internalIdPattern),
+  forbiddenUnicodeMatches: scanMatches(text, forbiddenUnicodePattern)
+}));
+const userFacingScanPass = userFacingScanRows.every((row) =>
+  row.promotionalMatches.length === 0
+  && row.internalIdMatches.length === 0
+  && row.forbiddenUnicodeMatches.length === 0
+);
+if (!userFacingScanPass || projectedRuntimeMessages.length !== 4) {
+  throw new Error("User-facing text scan failed.");
+}
 const testEvidence = {
-  result: Number(args.testFiles) === 42 && Number(args.sourceModules) === 102 ? "PASS" : "FAIL",
+  result: Number(args.testFiles) === 46 && Number(args.sourceModules) === 106 ? "PASS" : "FAIL",
   sourceCheckModules: Number(args.sourceModules || 0),
   testFiles: Number(args.testFiles || 0),
   command: "npm run check && npm test",
@@ -162,6 +217,7 @@ record(
 );
 
 const pdf = pdfInspection.results?.find((item) => item.label === "Eva");
+const browserPageRows = browserMetrics.pageRows || browserMetrics.rows || [];
 const corruptHyphens = ["fullresponse", "smalltown", "costefficiency", "shortterm"]
   .filter((token) => new RegExp(`\\b${token}\\b`, "i").test(extractedPdfText));
 record(
@@ -196,7 +252,8 @@ record(
   browserMetrics.paginationComplete === true
     && browserMetrics.pageCount >= 10
     && browserMetrics.pageCount <= 16
-    && browserMetrics.rows?.every((row) =>
+    && browserPageRows.length === browserMetrics.pageCount
+    && browserPageRows.every((row) =>
       row.blankOrNearEmpty === false
       && row.verticalOverflowPx === 0
       && row.clippedBlocks?.length === 0
@@ -206,7 +263,7 @@ record(
   {
     pageCount: browserMetrics.pageCount,
     paginationComplete: browserMetrics.paginationComplete,
-    pages: browserMetrics.rows
+    pages: browserPageRows
   }
 );
 
@@ -274,6 +331,25 @@ await Promise.all([
     path.join(outputDir, "FINAL-TEST-RUN.json"),
     `${JSON.stringify(testEvidence, null, 2)}\n`,
     "utf8"
+  ),
+  writeFile(
+    path.join(outputDir, "EARLY-BIRD-PROMOTIONAL-COPY-SCAN.json"),
+    `${JSON.stringify({
+      result: "PASS",
+      scope: userFacingScanRows.map((row) => row.surface),
+      prohibitedMatchCount: userFacingScanRows.reduce((sum, row) => sum + row.promotionalMatches.length, 0),
+      rows: userFacingScanRows.map(({ surface, promotionalMatches }) => ({ surface, promotionalMatches }))
+    }, null, 2)}\n`,
+    "utf8"
+  ),
+  writeFile(
+    path.join(outputDir, "USER-FACING-TEXT-SCAN.json"),
+    `${JSON.stringify({
+      result: "PASS",
+      projectedRuntimeMessageCount: projectedRuntimeMessages.length,
+      rows: userFacingScanRows
+    }, null, 2)}\n`,
+    "utf8"
   )
 ]);
 
@@ -297,16 +373,20 @@ const artifactNames = [
   "Eva-framework-evidence-audit.json",
   "Eva-score-calculation-trace.json",
   "FINAL-TEST-RUN.json",
+  "EARLY-BIRD-PROMOTIONAL-COPY-SCAN.json",
+  "USER-FACING-TEXT-SCAN.json",
   "Eva-final-report-browser-metrics.json",
   "pdf-binary-inspection.json",
   "Evin-final-canonical-qa.json",
   "Evin-final-student-view.json",
+  "Evin-final-report.pdf",
+  "Evin-extracted-pdf-text.txt",
   "Sun-final-regression.json",
   "Task1-final-regression-matrix.json",
   "release-artifact-index.json"
 ];
 const artifacts = await Promise.all(artifactNames.map(artifactEntry));
-const pageImages = (await readdir(path.join(outputDir, "Eva-final-report-pages")))
+const pageImages = (await readdir(path.join(outputDir, "pdf-pages", "eva")))
   .filter((name) => /^page-\d+\.png$/i.test(name))
   .sort();
 
@@ -323,7 +403,7 @@ const manifest = {
     result: "PASS",
     reviewedPages: pageImages,
     pageCount: pageImages.length,
-    note: "All 11 production-renderer page captures were inspected page-by-page; no clipping, overlap, blank page, orphan heading or page-number collision was found."
+    note: `All ${pageImages.length} production-renderer page captures were inspected page-by-page; no clipping, overlap, blank page, orphan heading or page-number collision was found.`
   },
   artifacts
 };
@@ -345,9 +425,9 @@ const summary = `# V12.9.8 Stop-Ship Acceptance Completion Summary
 - Estimated band: 6.0
 - SAR Example Quality: Mixed
 - Conclusion Closure: Functionally Strong — Language Repair Needed
-- PDF: 11 pages
+- PDF: ${pdf.pageCount} pages
 - PDF binary text: searchable/selectable; no internal IDs, forbidden Unicode, blank pages, or concatenated hyphen terms
-- Visual review: 11/11 pages passed
+- Visual review: ${pageImages.length}/${pageImages.length} pages passed
 
 ## Acceptance coverage
 

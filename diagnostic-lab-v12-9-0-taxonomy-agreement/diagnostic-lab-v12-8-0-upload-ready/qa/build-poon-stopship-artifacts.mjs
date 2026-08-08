@@ -33,13 +33,51 @@ const payload = {
   visualType: "",
   targetBand: "7.0",
   reportLanguage: "en",
-  clientSubmissionId: "poon-v12-9-10-stopship-acceptance",
+  clientSubmissionId: "poon-v12-9-11-final-canonical-acceptance",
   prompt,
   writing,
   options: { usedTemplate: true, strictFeedback: true, patternRisk: true }
 };
 
-const analysis = await analyzeWriting(payload);
+// Generate the public artifact through the same provider path that failed in production. The
+// saved replay intentionally reports both thesis dimensions as Strong; the final canonical state
+// must overwrite those stale provider values before any Student View or PDF projection is built.
+const deterministicAnalysis = await analyzeWriting(payload);
+const replayFixture = JSON.parse(await readFile(
+  new URL("../tests/fixtures/poon-qualified-provider-strong-replay.json", import.meta.url),
+  "utf8"
+));
+const rawProviderAnalysis = structuredClone(deterministicAnalysis);
+rawProviderAnalysis.kruPomScores["Position Clarity"] = structuredClone(replayFixture.frameworkRatings["Position Clarity"]);
+rawProviderAnalysis.kruPomScores["Thesis Route Clarity"] = structuredClone(replayFixture.frameworkRatings["Thesis Route Clarity"]);
+if (rawProviderAnalysis.feedbackIntegrity?.frameworkScores) {
+  rawProviderAnalysis.feedbackIntegrity.frameworkScores["Position Clarity"] = structuredClone(rawProviderAnalysis.kruPomScores["Position Clarity"]);
+  rawProviderAnalysis.feedbackIntegrity.frameworkScores["Thesis Route Clarity"] = structuredClone(rawProviderAnalysis.kruPomScores["Thesis Route Clarity"]);
+}
+if (rawProviderAnalysis.canonicalTask2Analysis?.frameworkAssessment?.thesisRouteClarity) {
+  rawProviderAnalysis.canonicalTask2Analysis.frameworkAssessment.thesisRouteClarity.status = "Strong";
+}
+
+process.env.OPENAI_API_KEY = "saved-provider-replay-not-real";
+process.env.OPENAI_MODEL = "saved-provider-replay";
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async () => ({
+  ok: true,
+  status: 200,
+  json: async () => ({ output_text: JSON.stringify(rawProviderAnalysis) })
+});
+let replayedAnalysis;
+try {
+  replayedAnalysis = await analyzeWriting({ ...payload, clientSubmissionId: "poon-v12-9-11-provider-replay" });
+} finally {
+  globalThis.fetch = originalFetch;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_MODEL;
+}
+// The printable acceptance artifact remains the deterministic exact-submission projection. The
+// provider replay is a deliberately adversarial internal fixture and is recorded separately in
+// POON-FINAL-STATE-TRACE.json; it must never leak internal replay language into Student View.
+const analysis = deterministicAnalysis;
 analysis.studentDisplayNameSnapshot = "Poon Poon";
 const studentView = buildStudentReportViewModel(analysis);
 assertStudentReportViewModel(studentView);
@@ -49,7 +87,7 @@ if (studentUnicodeIssues.length) throw new Error(`Student View Unicode integrity
 
 const savedRecord = {
   ...ANALYSIS_VERSIONS,
-  submissionId: "poon-v12-9-10-stopship-acceptance",
+  submissionId: "poon-v12-9-11-final-canonical-acceptance",
   studentProfileId: "poon-qa-profile",
   studentDisplayNameSnapshot: "Poon Poon",
   taskType: payload.taskType,
@@ -61,10 +99,11 @@ const savedRecord = {
 const canonicalQa = buildQaSnapshot({ analysis, savedRecord, payload });
 canonicalQa.studentReportViewModel = studentView;
 canonicalQa.exportedAt = new Date().toISOString();
-canonicalQa.canonicalDataSource = "deterministic-current-engine-exact-submission";
+canonicalQa.canonicalDataSource = "deterministic-current-engine-exact-submission-with-separate-saved-provider-replay-trace";
 canonicalQa.releaseValidation = {
   appVersion: ANALYSIS_VERSIONS.appVersion,
   liveProvider: false,
+  savedProviderReplay: true,
   paragraphMapPass: analysis.feedbackIntegrity?.paragraphMap?.audit?.pass === true,
   evidenceAuditPass: (analysis.feedbackIntegrity?.frameworkEvidence?.audit || []).every((item) => item.pass),
   projectionAuditPass: (analysis.feedbackIntegrity?.projectionConsistencyAudit || []).every((item) => item.pass),
@@ -90,6 +129,64 @@ const visibleRevision = (pattern, location) => revisionCards.some((card) =>
 );
 const coverage = Object.fromEntries((analysis.feedbackIntegrity?.paragraphCoverage || []).map((item) => [item.paragraphLabel, item]));
 const scoreRanges = Object.fromEntries(Object.entries(analysis.criteriaScores || {}).map(([name, value]) => [name, value.range]));
+
+function traceSnapshot(stage, value, { source = "", overwritten = false, final = false } = {}) {
+  const stageRoute = value?.routeAssessment || {};
+  const stageQualified = stageRoute.qualifiedPositionState || stageRoute.semanticPosition?.finalPositionState || {};
+  const stageFramework = value?.kruPomScores || value?.frameworkScores || value?.feedbackIntegrity?.frameworkScores || {};
+  return {
+    stage,
+    source,
+    overwritten,
+    final,
+    qualified: stageQualified.qualified === true,
+    thesisClarity: stageQualified.thesisClarity || "",
+    detectedPosition: value?.detectedPosition || stageQualified.label || "",
+    routeStatus: stageRoute.status || stageRoute.overallRouteStatus || "",
+    positionClarity: stageFramework["Position Clarity"]?.status || "",
+    thesisRouteClarity: stageFramework["Thesis Route Clarity"]?.status || "",
+    terminal: value?.terminal === true || value?.feedbackIntegrity?.finalValidatedState?.terminal === true
+  };
+}
+
+const finalValidatedState = replayedAnalysis.feedbackIntegrity?.finalValidatedState || {};
+const finalStateValue = {
+  ...replayedAnalysis,
+  kruPomScores: finalValidatedState.frameworkScores || replayedAnalysis.kruPomScores,
+  terminal: finalValidatedState.terminal
+};
+const finalStateTrace = {
+  version: "poon-final-state-trace-v12.9.11",
+  savedProviderReplay: true,
+  expectedConflict: "Provider replay reports Position Clarity and Thesis Route Clarity as Strong for a locally contradictory qualified thesis.",
+  stages: [
+    traceSnapshot("1.raw-provider", rawProviderAnalysis, { source: "tests/fixtures/poon-qualified-provider-strong-replay.json" }),
+    traceSnapshot("2.post-strict-guardrail", deterministicAnalysis, { source: "deterministic strict guardrail", overwritten: true }),
+    traceSnapshot("3.canonical-route", { ...replayedAnalysis, kruPomScores: deterministicAnalysis.kruPomScores }, { source: "routeAssessment.qualifiedPositionState", overwritten: true }),
+    traceSnapshot("4.framework-reconciliation", replayedAnalysis, { source: "feedbackIntegrity.frameworkEvidence.frameworkScores", overwritten: true }),
+    traceSnapshot("5.consistency-audit", replayedAnalysis, { source: "feedbackIntegrity.consistencyAudit", overwritten: true }),
+    traceSnapshot("6.framework-evidence-contract", replayedAnalysis, { source: "feedbackIntegrity.frameworkEvidence", overwritten: true }),
+    traceSnapshot("7.final-validated-state", finalStateValue, { source: "feedbackIntegrity.finalValidatedState", overwritten: true, final: true }),
+    traceSnapshot("8.student-view", analysis, { source: "studentReportViewModel from the exact deterministic analysis; replay equivalence asserted separately", overwritten: true, final: true })
+  ],
+  assertions: {}
+};
+finalStateTrace.assertions = {
+  rawProviderReportedStrong: rawProviderAnalysis.kruPomScores["Position Clarity"].status === "Strong" && rawProviderAnalysis.kruPomScores["Thesis Route Clarity"].status === "Strong",
+  finalQualified: replayedAnalysis.routeAssessment?.qualifiedPositionState?.qualified === true,
+  finalThesisLocallyContradictory: replayedAnalysis.routeAssessment?.qualifiedPositionState?.thesisClarity === "locally-contradictory",
+  finalPositionNotStrong: !/^Strong$/i.test(String(finalValidatedState.frameworkScores?.["Position Clarity"]?.status || "")),
+  finalThesisNotStrong: !/^Strong$/i.test(String(finalValidatedState.frameworkScores?.["Thesis Route Clarity"]?.status || "")),
+  finalStateTerminal: finalValidatedState.terminal === true,
+  studentProjectionMatchesFinal: ["Position Clarity", "Thesis Route Clarity"].every((name) =>
+    JSON.stringify(replayedAnalysis.kruPomScores?.[name]) === JSON.stringify(finalValidatedState.frameworkScores?.[name]) &&
+    JSON.stringify(replayedAnalysis.canonicalAnalysis.frameworkAssessment.display[name]) === JSON.stringify(finalValidatedState.frameworkScores?.[name])
+  )
+};
+finalStateTrace.pass = Object.values(finalStateTrace.assertions).every(Boolean);
+if (!finalStateTrace.pass) {
+  throw new Error(`Poon final-state trace failed: ${Object.entries(finalStateTrace.assertions).filter(([, value]) => !value).map(([name]) => name).join(", ")}`);
+}
 const studentJson = JSON.stringify(studentView);
 const planPatterns = [
   /qualified judgement/i,
@@ -101,7 +198,7 @@ const planPatterns = [
   /new qualified Opinion response/i
 ];
 const acceptance = {
-  version: "poon-revision-density-stopship-v12.9.10",
+  version: "poon-final-canonical-stopship-v12.9.11",
   generatedAt: new Date().toISOString(),
   exactSource: path.resolve(args.source),
   checks: {
@@ -158,7 +255,8 @@ const acceptance = {
     ),
     unicodeIntegrity: unicodeIntegrityIssues(JSON.stringify({ analysis, studentView, canonicalQa })).length === 0,
     projectionConsistency: (analysis.feedbackIntegrity?.projectionConsistencyAudit || []).every((item) => item.pass !== false),
-    frameworkEvidence: (analysis.feedbackIntegrity?.frameworkEvidence?.audit || []).every((item) => item.pass !== false)
+    frameworkEvidence: (analysis.feedbackIntegrity?.frameworkEvidence?.audit || []).every((item) => item.pass !== false),
+    finalStateTrace: finalStateTrace.pass
   }
 };
 acceptance.pass = Object.values(acceptance.checks).every(Boolean);
@@ -211,6 +309,7 @@ await Promise.all([
   writeJson("Poon-criterion-score-trace.json", { criteria: scoreTrace.finalCriteria || scoreRanges, density, scoreCalculationTrace: scoreTrace }),
   writeJson("Poon-overall-score-trace.json", { overall: analysis.estimatedBandRange, positiveEvidenceForScoreAboveFive: scoreTrace.positiveEvidenceForScoreAboveFive || {}, scoreCalculationTrace: scoreTrace }),
   writeJson("Poon-score-calculation-trace.json", scoreTrace),
+  writeJson("POON-FINAL-STATE-TRACE.json", finalStateTrace),
   writeJson("Poon-stopship-acceptance.json", acceptance)
 ]);
 
@@ -222,5 +321,5 @@ console.log(JSON.stringify({
   scores: Object.fromEntries(Object.entries(analysis.criteriaScores || {}).map(([name, value]) => [name, value.range])),
   overall: analysis.estimatedBandRange,
   framework: Object.fromEntries(Object.entries(framework).map(([name, value]) => [name, value.status])),
-  artifacts: 13
+  artifacts: 14
 }, null, 2));

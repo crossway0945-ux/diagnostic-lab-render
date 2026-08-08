@@ -53,6 +53,22 @@ def unicode_issues(text: str) -> list[dict]:
         )
         if forbidden:
             issues.append({"index": index, "codePoint": f"U+{point:04X}"})
+    mojibake_sequences = (
+        "\u00ef\u00bf\u00be",
+        "\u00ef\u00bf\u00bf",
+        "\u00ef\u00bf\u00bd",
+        "\u00c3\u00af\u00c2\u00bf\u00c2\u00be",
+        "\u00c3\u00af\u00c2\u00bf\u00c2\u00bf",
+        "\u00c3\u00af\u00c2\u00bf\u00c2\u00bd",
+    )
+    for sequence in mojibake_sequences:
+        start = 0
+        while True:
+            index = text.find(sequence, start)
+            if index < 0:
+                break
+            issues.append({"index": index, "codePoint": "MOJIBAKE_NONCHARACTER_SEQUENCE"})
+            start = index + len(sequence)
     return issues
 
 
@@ -190,6 +206,7 @@ def main() -> None:
     candidates = [
         ("Eva", output_dir / "Eva-final-report.pdf"),
         ("Evin", output_dir / "Evin-final-report.pdf"),
+        ("Poon", output_dir / "Poon-final-report.pdf"),
     ]
     available = [(label, pdf_path) for label, pdf_path in candidates if pdf_path.exists()]
     if not available:

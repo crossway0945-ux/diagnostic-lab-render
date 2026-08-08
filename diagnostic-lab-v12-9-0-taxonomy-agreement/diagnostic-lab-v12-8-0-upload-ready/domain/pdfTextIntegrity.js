@@ -98,5 +98,6 @@ function tokenCounts(tokens) {
 
 function containsCorruptedHyphenation(value) {
   if (/\u041b\u0438[_-]?/u.test(String(value || ""))) return true;
+  if (/(?:\u00ef\u00bf\u00be|\u00ef\u00bf\u00bf|\u00ef\u00bf\u00bd|\u00c3\u00af\u00c2\u00bf\u00c2\u00be|\u00c3\u00af\u00c2\u00bf\u00c2\u00bf|\u00c3\u00af\u00c2\u00bf\u00c2\u00bd)/u.test(String(value || ""))) return true;
   return /(?:\u00ad|\uFFFD|\uFFFE|\uFFFF|ï¿¾|ï¿½|â€‘|â€“|â€”)/u.test(String(value || ""));
 }

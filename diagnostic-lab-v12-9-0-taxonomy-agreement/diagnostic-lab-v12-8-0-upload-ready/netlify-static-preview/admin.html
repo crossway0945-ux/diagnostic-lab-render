@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Diagnostic Lab Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-page">
+  <main class="admin-shell">
+    <header class="admin-header">
+      <div>
+        <p class="eyebrow">IELTS Writing 7+ Diagnostic Lab</p>
+        <h1>Account Admin</h1>
+        <p>Create students, reset passwords, and review quota status. Passwords are shown only once.</p>
+      </div>
+      <a class="ghost-button compact" href="/">Back to Lab</a>
+    </header>
+
+    <section class="admin-card" id="admin-auth-card">
+      <h2>Admin Session</h2>
+      <p id="admin-session-status">Checking admin access...</p>
+    </section>
+
+    <section class="admin-card">
+      <h2>Create Account</h2>
+      <form id="admin-create-form" class="admin-form">
+        <label>Username
+          <input name="username" autocomplete="off" required minlength="3">
+        </label>
+        <label>Display name
+          <input name="displayName" autocomplete="off" required>
+        </label>
+        <label>Role
+          <select name="role">
+            <option value="student">student</option>
+            <option value="teacher">teacher</option>
+            <option value="admin">admin</option>
+          </select>
+        </label>
+        <label>Quota
+          <input name="quotaLimit" type="number" min="0" value="10">
+        </label>
+        <label>Expiry date
+          <input name="expiryDate" type="date">
+        </label>
+        <button class="primary-button" type="submit">Create Account</button>
+      </form>
+      <div class="credential-box hidden" id="credential-box">
+        <strong>Generated login</strong>
+        <pre id="credential-text"></pre>
+        <button class="ghost-button compact" type="button" id="copy-credentials">Copy credentials</button>
+      </div>
+    </section>
+
+    <section class="admin-card">
+      <div class="admin-section-header">
+        <h2>Users</h2>
+        <button class="ghost-button compact" type="button" id="refresh-users">Refresh</button>
+      </div>
+      <div class="admin-filter-bar">
+        <label class="admin-filter">Search
+          <input type="search" id="user-search" placeholder="Username, name or plan" aria-label="Search users">
+        </label>
+        <label class="admin-filter">Status
+          <select id="user-status-filter" aria-label="Filter by status">
+            <option value="active" selected>Active only</option>
+            <option value="inactive">Inactive</option>
+            <option value="archived">Archived</option>
+            <option value="expired">Expired</option>
+            <option value="all">All statuses</option>
+          </select>
+        </label>
+        <label class="admin-filter">Role
+          <select id="user-role-filter" aria-label="Filter by role">
+            <option value="">All roles</option>
+            <option value="student">student</option>
+            <option value="teacher">teacher</option>
+            <option value="admin">admin</option>
+          </select>
+        </label>
+        <label class="admin-filter">Sort
+          <select id="user-sort" aria-label="Sort users">
+            <option value="newest" selected>Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="last-login">Last login</option>
+            <option value="expiry">Expiry date</option>
+            <option value="used">Most used</option>
+          </select>
+        </label>
+        <label class="admin-filter">Per page
+          <select id="user-page-size" aria-label="Results per page">
+            <option value="10">10</option>
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </label>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Quota</th>
+              <th>Expiry</th>
+              <th>Last login</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="admin-users-body"></tbody>
+        </table>
+      </div>
+      <div class="admin-pagination">
+        <button class="ghost-button compact" type="button" id="user-prev-page">Previous</button>
+        <span id="user-page-indicator" aria-live="polite">Page 1</span>
+        <button class="ghost-button compact" type="button" id="user-next-page">Next</button>
+        <span id="user-result-count" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <section class="admin-card">
+      <div class="admin-section-header">
+        <h2>Admin Audit Log</h2>
+        <button class="ghost-button compact" type="button" id="audit-refresh">Load audit log</button>
+      </div>
+      <p class="admin-hint">Durable record of privileged actions. Survives a restart. Never stores passwords, hashes, session cookies, API keys, student essays or environment values.</p>
+      <div class="admin-filter-bar">
+        <label class="admin-filter">Search
+          <input type="search" id="audit-search" placeholder="Action, administrator, target" aria-label="Search audit log">
+        </label>
+        <label class="admin-filter">Action
+          <select id="audit-action-filter" aria-label="Filter by action"><option value="">All actions</option></select>
+        </label>
+        <label class="admin-filter">Result
+          <select id="audit-result-filter" aria-label="Filter by result">
+            <option value="">All results</option>
+            <option value="ok">ok</option>
+            <option value="blocked">blocked</option>
+            <option value="rejected">rejected</option>
+            <option value="forbidden">forbidden</option>
+            <option value="unauthenticated">unauthenticated</option>
+            <option value="incomplete">incomplete</option>
+          </select>
+        </label>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Action</th>
+              <th>Administrator ID</th>
+              <th>Target ID</th>
+              <th>Result</th>
+              <th>Metadata</th>
+            </tr>
+          </thead>
+          <tbody id="admin-audit-body"></tbody>
+        </table>
+      </div>
+      <div class="admin-pagination">
+        <button class="ghost-button compact" type="button" id="audit-prev-page">Previous</button>
+        <span id="audit-page-indicator" aria-live="polite">Page 1</span>
+        <button class="ghost-button compact" type="button" id="audit-next-page">Next</button>
+        <span id="audit-result-count" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <section class="admin-card">
+      <div class="admin-section-header">
+        <h2>System Diagnostics</h2>
+        <button class="ghost-button compact" type="button" id="diagnostics-system">Refresh status</button>
+      </div>
+      <p class="admin-hint">Run real checks to see exactly why analysis is or is not working. No student credit is used and no report is saved.</p>
+      <div class="diagnostics-actions">
+        <button class="ghost-button compact" type="button" id="diagnostics-provider">Test Provider Connectivity</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-contract">Test Production Output Contract</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-storage">Test Storage</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-jobs">Job Queue Status</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-recovery">Stale Job Recovery Test</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-idempotency">Duplicate / Idempotency Test</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-failures">View Recent Analysis Failures</button>
+        <button class="ghost-button compact" type="button" id="diagnostics-clear-failures">Clear Failure History</button>
+      </div>
+      <pre id="diagnostics-output" class="diagnostics-output" aria-live="polite"></pre>
+    </section>
+
+    <section class="admin-card">
+      <div class="admin-section-header">
+        <h2>Canonical QA Export</h2>
+        <button class="ghost-button compact" type="button" id="qa-refresh">Load reports</button>
+      </div>
+      <p class="admin-hint">Export the complete internal canonical diagnostic data for one selected report, for QA and defect reproduction. Admin only. Exporting never calls OpenAI, never uses a credit, and never changes the report.</p>
+      <div class="diagnostics-actions">
+        <input type="search" id="qa-search" placeholder="Search student, report ID, date, task or essay type" aria-label="Search QA reports" />
+        <button class="ghost-button compact" type="button" id="qa-export">Export Canonical QA JSON</button>
+      </div>
+      <div id="qa-report-list" class="diagnostics-output" role="listbox" aria-label="Reports available for QA export"></div>
+      <p class="admin-hint" id="qa-status" aria-live="polite"></p>
+    </section>
+
+    <p class="form-error" id="admin-error" role="alert"></p>
+  </main>
+  <div class="toast" id="admin-toast"></div>
+  <script src="/admin.js" type="module"></script>
+</body>
+</html>

@@ -358,7 +358,8 @@ export function canonicalCategoryForLanguage(category = "", explanation = "") {
   if (/tense/.test(text)) return "Tense Control";
   if (/preposition/.test(text)) return "Preposition Control";
   if (/fragment|incomplete sentence|main clause/.test(text)) return "Sentence Completion";
-  if (/word form/.test(text)) return "Word Form";
+  if (/word form|spelling|misspell/.test(text)) return "Word Form";
+  if (/verb form|verb complement|to-infinitive|relative clause|finite structure|modal clause|passive relationship/.test(text)) return "Grammar and Sentence Control";
   if (/vague|imprecise|noun choice|word choice|meaning|lexical/.test(text)) return "Lexical Precision";
   // A semantic or noun-phrase relation defect is NOT a grammar defect. "The resulting economic
   // decline of small center shops" is syntactically well formed; what is wrong is the relation the
@@ -693,9 +694,13 @@ export function promoteLanguageCandidates(issues = [], languageProfile = {}, { m
   // A sentence already carrying a LANGUAGE issue is not promoted again. A development finding on the
   // same sentence is a different defect class (what the essay does, not how it is worded), so it must
   // not suppress the language evidence that also lives there.
+  const targetKey = (sentence, span) => `${normalizedSentenceKey(sentence)}|${normalizedSentenceKey(span)}`;
   const coveredSentences = new Set(issues
     .filter((issue) => issue.promotionSource !== "canonical-development-evidence")
     .map((issue) => normalizedSentenceKey(issue.exactEvidence || issue.exactSentence)));
+  const coveredTargets = new Set(issues
+    .filter((issue) => issue.promotionSource !== "canonical-development-evidence")
+    .map((issue) => targetKey(issue.exactEvidence || issue.exactSentence, issue.targetSpan || issue.exactEvidence || issue.exactSentence)));
   const usedRecurrence = new Set();
   const promoted = [];
   // Paragraph-diverse ordering: the strongest candidate from each paragraph is considered before a
@@ -707,7 +712,12 @@ export function promoteLanguageCandidates(issues = [], languageProfile = {}, { m
     if (!byParagraph.has(bucket)) byParagraph.set(bucket, []);
     byParagraph.get(bucket).push(candidate);
   }
-  const rank = (candidate) => (candidate?.affectsMeaning ? 0 : candidate?.classification === "clear-error" ? 1 : 2);
+  const rank = (candidate) => {
+    const category = String(candidate?.category || "").toLowerCase();
+    if (/relative clause construction|verb complement control|verb form/.test(category)) return -2;
+    if (/spelling/.test(category)) return -1;
+    return candidate?.affectsMeaning ? 0 : candidate?.classification === "clear-error" ? 1 : 2;
+  };
   const buckets = [...byParagraph.values()].map((items) => items.slice().sort((a, b) => rank(a) - rank(b)));
   const ordered = [];
   for (let round = 0; ordered.length < sources.length; round += 1) {
@@ -749,13 +759,23 @@ export function promoteLanguageCandidates(issues = [], languageProfile = {}, { m
     }
     // Already represented by an existing canonical issue on the same sentence — but only when that
     // issue targets the SAME span. Two distinct defects in one sentence are two distinct issues.
-    if (coveredSentences.has(key)) continue;
+    const candidateTargetKey = targetKey(sentence, candidate.exactProblemSpan || sentence);
+    // Preserve the long-standing one-language-card-per-sentence rule unless the validator has
+    // identified one of the explicitly separable local spans needed for a faithful repair. This
+    // prevents broad reference/lexical candidates from displacing an existing deterministic card,
+    // while still allowing the Poon verb-complement + spelling pair (and a bounded relative-clause
+    // span) to coexist on one sentence without collapsing distinct diagnoses.
+    const separableTarget = /relative clause|verb complement|word form|spelling|misspell/i
+      .test(`${candidate.category || ""} ${candidate.explanation || ""}`);
+    if (coveredSentences.has(key) && !separableTarget) continue;
+    if (coveredTargets.has(candidateTargetKey)) continue;
     // A recurring mechanical pattern is represented once, not per occurrence.
     const recurrence = String(candidate.recurringPatternKey || "");
     const mechanical = ["Punctuation", "Article Control"].includes(category);
     if (mechanical && recurrence && usedRecurrence.has(recurrence)) continue;
     if (recurrence) usedRecurrence.add(recurrence);
     coveredSentences.add(key);
+    coveredTargets.add(candidateTargetKey);
     promoted.push(buildPromotedIssue(candidate, promoted.length + 1, thai));
   }
   // Refinements are returned, not discarded: they feed the compact Language Pattern Summary so the

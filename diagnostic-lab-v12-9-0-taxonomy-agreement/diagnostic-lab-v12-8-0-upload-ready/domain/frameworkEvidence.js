@@ -103,21 +103,37 @@ function requirementEvidence(routeAssessment, dimension, filter = () => true) {
 
 function buildPositionRecord(routeAssessment = {}) {
   const semantic = routeAssessment.semanticPosition || {};
+  const qualifiedState = routeAssessment.qualifiedPositionState || semantic.finalPositionState;
+  const qualified = qualifiedState?.qualified === true;
+  const qualifiedNeedsThesisRepair = qualified && qualifiedState.thesisClarity !== "clear";
   const exact = semantic.exactPositionEvidence ||
     (routeAssessment.requirements || []).find((item) => item.id === "judgement")?.evidence ||
     "";
   const clear = /clear/i.test(text(semantic.positionClarity)) &&
     /consistent/i.test(text(semantic.positionConsistency)) &&
     /high|medium/i.test(text(semantic.positionConfidence || routeAssessment.confidence));
-  const positives = clear
+  const positives = (clear || qualified)
     ? [evidence("Position Clarity", "Introduction", exact, "explicit-position", semantic.positionConfidence || routeAssessment.confidence, "routeAssessment.semanticPosition")]
     : [];
+  const qualifiedLimit = qualifiedNeedsThesisRepair
+    ? evidence(
+        "Position Clarity",
+        "Introduction",
+        semantic.thesisPositionEvidence || qualifiedState.thesisPositionEvidence || exact,
+        "qualified-thesis-limiter",
+        "high",
+        "routeAssessment.qualifiedPositionState"
+      )
+    : null;
   return contractRecord({
     frameworkDimension: "Position Clarity",
-    rating: positives.length ? "Strong" : "Not Demonstrated",
+    rating: qualifiedNeedsThesisRepair ? "Needs Work in Thesis - Clarified by Conclusion" : positives.length ? "Strong" : "Not Demonstrated",
     positiveEvidence: positives,
+    limitingEvidence: qualifiedLimit ? [qualifiedLimit] : [],
     confidence: positives.length ? text(semantic.positionConfidence || routeAssessment.confidence || "medium") : "low",
-    rationale: positives.length
+    rationale: qualifiedNeedsThesisRepair
+      ? "The conclusion makes the qualified judgement traceable, but the thesis initially combines positive and negative evaluation without clearly separating the limited exception from the main position."
+      : positives.length
       ? "The position is explicit, consistent and traceable to the submitted introduction."
       : "A positive position judgement cannot be made without explicit, consistent position evidence.",
     aggregationMethod: "explicit-position-and-consistency"
@@ -125,25 +141,29 @@ function buildPositionRecord(routeAssessment = {}) {
 }
 
 function buildThesisRecord(routeAssessment = {}, thesisDimensions = {}, issues = []) {
+  const qualifiedState = routeAssessment.qualifiedPositionState || routeAssessment.semanticPosition?.finalPositionState;
+  const qualifiedNeedsRepair = qualifiedState?.qualified === true && qualifiedState.thesisClarity !== "clear";
   const routeEvidence = text(
     routeAssessment.semanticPosition?.exactPositionEvidence ||
     routeAssessment.taskAwareRouteModel?.introductionRoutePromise?.exactEvidence ||
     routeAssessment.requirements?.find((item) => item.id === "judgement")?.evidence
   );
-  const routePresent = thesisDimensions.structurallyClear === true ||
+  const routePresent = !qualifiedNeedsRepair && (thesisDimensions.structurallyClear === true ||
     (Array.isArray(routeAssessment.missingRequirements) && routeAssessment.missingRequirements.length === 0 &&
-      /adequate|controlled|present/i.test(text(routeAssessment.thesisRouteStatus)));
+      /adequate|controlled|present/i.test(text(routeAssessment.thesisRouteStatus))));
   const limits = issues.filter((issue) => /Thesis Route Clarity/i.test(issueCategory(issue)));
   const positives = routePresent && routeEvidence
     ? [evidence("Thesis Route Clarity", "Introduction", routeEvidence, "thesis-route", routeAssessment.confidence || "medium", "thesisDimensions + routeAssessment")]
     : [];
   return contractRecord({
     frameworkDimension: "Thesis Route Clarity",
-    rating: positives.length ? "Strong" : limits.length ? "Needs Work" : "Not Assessed",
+    rating: qualifiedNeedsRepair ? "Needs Work - Qualified Route Clarified Later" : positives.length ? "Strong" : limits.length ? "Needs Work" : "Not Assessed",
     positiveEvidence: positives,
     limitingEvidence: limits.map((issue) => evidence("Thesis Route Clarity", paragraphLabelForIssue(issue), issue.exactSentence || issue.exactEvidence, "limiting-issue", "high", issue.issueId)),
     confidence: positives.length ? "high" : "low",
-    rationale: positives.length
+    rationale: qualifiedNeedsRepair
+      ? "The thesis contains the intended qualified route but does not yet label the limited exception and main judgement clearly; the conclusion resolves that scope."
+      : positives.length
       ? "The thesis states a traceable route. Whether every promised idea is fully developed is assessed separately."
       : "No explicit positive thesis-route evidence was available.",
     sourceIssueIds: limits.map((issue) => issue.issueId),
@@ -157,18 +177,24 @@ function buildBodyRouteRecord(routeAssessment = {}, issues = []) {
     const label = `Body Paragraph ${route.index}`;
     const exact = route.controllingSentence || route.evidence || route.paragraphClaim;
     const controlled = /adequate|controlled|present/i.test(text(route.alignmentStatus || route.status));
+    const qualifiedRole = route.routeRole === "exception-concession"
+      ? "Exception/Concession Aligned"
+      : route.routeRole === "main-position-support"
+        ? "Main-Position Aligned"
+        : "Aligned";
     return {
       paragraphLabel: label,
-      status: controlled && exact ? "Aligned" : "Not Demonstrated",
+      status: controlled && exact ? qualifiedRole : "Not Demonstrated",
       exactEvidence: text(exact),
       confidence: exact ? "high" : "low"
     };
   });
   const positives = coverage
-    .filter((item) => item.status === "Aligned")
+    .filter((item) => /Aligned$/.test(item.status))
     .map((item) => evidence("Body Paragraph Route Alignment", item.paragraphLabel, item.exactEvidence, "controlling-proposition", item.confidence, "routeAssessment.bodyRoutes"));
   const limits = issues.filter((issue) =>
-    /Body Route Alignment|Route Clarity/i.test(issueCategory(issue)) &&
+    (/Body Route Alignment/i.test(issueCategory(issue)) ||
+      (/Route Clarity/i.test(issueCategory(issue)) && /Body Paragraph/i.test(paragraphLabelForIssue(issue)))) &&
     !/High-Band Refinement/i.test(text(issue.severity || issue.revisionType)) &&
     !/\broute is functional\b|\broute-consistent\b|\boptional\b/i.test(text(issue.kruPomDiagnosis || issue.diagnosis || issue.whyItLimitsBand))
   );
@@ -181,7 +207,7 @@ function buildBodyRouteRecord(routeAssessment = {}, issues = []) {
     paragraphCoverage: coverage,
     confidence: allAligned ? "high" : positives.length ? "medium" : "low",
     rationale: allAligned
-      ? "Each body paragraph has a positively identified controlling route."
+      ? routes.map((route) => `Body ${route.index}: ${text(route.label || route.promptObligationServed || "route aligned")}`).join(" | ")
       : "At least one body paragraph lacks a positively identified controlling route.",
     sourceIssueIds: limits.map((issue) => issue.issueId),
     aggregationMethod: "all-body-controlling-propositions"
@@ -242,7 +268,11 @@ function buildSarRecord(routeAssessment = {}, issues = []) {
     let status = "Not Assessed";
     let exactEvidence = "";
     let evidenceType = "";
-    if (exampleText && !exampleGaps.length) {
+    if (route.supportAssessment?.status) {
+      status = text(route.supportAssessment.status);
+      exactEvidence = text(route.supportAssessment.exactEvidence || exampleText || explanationText);
+      evidenceType = status === "Development Repair Needed" ? "limited-example" : "controlled-support-language-repair";
+    } else if (exampleText && !exampleGaps.length) {
       status = "Strong Support";
       exactEvidence = exampleText;
       evidenceType = "concrete-example";
@@ -269,15 +299,15 @@ function buildSarRecord(routeAssessment = {}, issues = []) {
       sourceIssueIds: exampleGaps.map((issue) => text(issue.issueId)).filter(Boolean)
     };
   });
-  const positiveStatuses = new Set(["Strong Support", "Controlled Support", "Explanation Sufficient Without Example"]);
+  const isPositiveStatus = (status) => /^(?:Strong Support|Controlled Support|Explanation Sufficient Without Example)/.test(text(status));
   const positives = coverage
-    .filter((item) => positiveStatuses.has(item.status))
+    .filter((item) => isPositiveStatus(item.status))
     .map((item) => evidence("SAR Example Quality", item.paragraphLabel, item.exactEvidence, item.evidenceType, "high", "routeAssessment.bodyRoutes"));
-  const limitingRows = coverage.filter((item) => /Repair Needed|Not Demonstrated/.test(item.status));
+  const limitingRows = coverage.filter((item) => !isPositiveStatus(item.status) && /Repair Needed|Not Demonstrated/.test(item.status));
   const limits = limitingRows.map((item) =>
     evidence("SAR Example Quality", item.paragraphLabel, item.exactEvidence || item.paragraphLabel, item.evidenceType || "support-not-demonstrated", "high", item.sourceIssueIds.join(",")));
   const hasStrong = coverage.some((item) => item.status === "Strong Support");
-  const allPositive = coverage.length > 0 && coverage.every((item) => positiveStatuses.has(item.status));
+  const allPositive = coverage.length > 0 && coverage.every((item) => isPositiveStatus(item.status));
   const anyLimited = limitingRows.length > 0;
   let rating = "Not Assessed";
   if (allPositive) rating = hasStrong ? "Strong" : "Controlled";
@@ -291,7 +321,7 @@ function buildSarRecord(routeAssessment = {}, issues = []) {
     paragraphCoverage: coverage,
     confidence: coverage.length ? "high" : "low",
     rationale: positives.length && anyLimited
-      ? `${coverage.find((item) => positiveStatuses.has(item.status))?.paragraphLabel || "One body paragraph"} uses controlled support, while ${limitingRows[0]?.paragraphLabel || "another paragraph"} still needs development repair, so support quality is uneven.`
+      ? `${coverage.find((item) => isPositiveStatus(item.status))?.paragraphLabel || "One body paragraph"} uses controlled support, while ${limitingRows[0]?.paragraphLabel || "another paragraph"} still needs development repair, so support quality is uneven.`
       : allPositive
         ? "Each body paragraph has positively demonstrated support; an explicit example is not required when a complete causal explanation performs the support function."
         : "Positive example/support quality was not demonstrated across the body paragraphs.",
@@ -302,10 +332,19 @@ function buildSarRecord(routeAssessment = {}, issues = []) {
 
 function buildLinkBackRecord(routeAssessment = {}, issues = []) {
   const routes = Array.isArray(routeAssessment.bodyRoutes) ? routeAssessment.bodyRoutes : [];
+  const qualified = Boolean(routeAssessment.qualifiedPositionState?.qualified || routeAssessment.semanticPosition?.finalPositionState?.qualified);
   const coverage = routes.map((route) => {
     const label = `Body Paragraph ${route.index}`;
-    const paragraphIssues = issuesForParagraph(issues, label).filter((issue) => /Link Back Control|Paragraph Closure|Reference Control/i.test(issueCategory(issue)));
     const exact = text(route.linkBack || route.controllingSentence || route.evidence);
+    const paragraphIssues = issuesForParagraph(issues, label).filter((issue) => {
+      const category = issueCategory(issue);
+      const targetsLinkBack = Boolean(text(route.linkBack)) &&
+        text(issue.exactSentence || issue.exactEvidence).trim() === text(route.linkBack).trim();
+      if (/Link Back Control|Paragraph Closure/i.test(category)) return true;
+      if (/Reference Control/i.test(category)) return targetsLinkBack;
+      if (!qualified || !/Sentence Completion/i.test(category)) return false;
+      return targetsLinkBack;
+    });
     return {
       paragraphLabel: label,
       status: exact && !paragraphIssues.length ? "Controlled" : paragraphIssues.length ? "Repair Needed" : "Not Demonstrated",
@@ -406,7 +445,9 @@ function genericRecord(name, card = {}, routeAssessment = {}, issues = []) {
         ? /Paragraph Balance|Development Depth|Route Coverage/i
         : null;
   const limits = issuePattern ? issues.filter((issue) => issuePattern.test(issueCategory(issue))) : [];
-  const rating = isPositiveFrameworkRating(card.status) && !positives.length ? "Not Assessed" : text(card.status || "Not Assessed");
+  const rating = name === "Prompt Coverage" && positives.length && !(routeAssessment.missingRequirements || []).length
+    ? "Aligned"
+    : isPositiveFrameworkRating(card.status) && !positives.length ? "Not Assessed" : text(card.status || "Not Assessed");
   const originalDiagnosis = text(card.diagnosis);
   return contractRecord({
     frameworkDimension: name,
@@ -416,7 +457,7 @@ function genericRecord(name, card = {}, routeAssessment = {}, issues = []) {
       evidence(name, paragraphLabelForIssue(issue), issue.exactSentence || issue.exactEvidence, "limiting-issue", "high", issue.issueId)),
     confidence: positives.length || limits.length ? "medium" : "low",
     rationale: positives.length
-      ? "The positive judgement is supported by traceable canonical route evidence."
+      ? "The positive judgement is supported by clear, traceable evidence in the response."
       : originalDiagnosis || "No explicit positive evidence record was available, so the rating is not inferred from the absence of an issue.",
     sourceIssueIds: limits.map((issue) => issue.issueId),
     aggregationMethod: "generic-fail-closed"
